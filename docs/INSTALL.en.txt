@@ -1,0 +1,24 @@
+Click2Screen - screen recorder and screenshot tool for Windows 10/11
+====================================================================
+
+1. Installation
+   - Run Click2Screen-Setup.exe (asks for administrator rights). It picks the 64- or 32-bit installer.
+   - Optional: "Desktop shortcut", "Start menu shortcut", "Start with Windows (in the tray)".
+   - Click "Install" ("Update" when it is already installed). The program goes to
+     C:\Program Files\Click2Screen\ and appears in Settings > Apps. "Launch" starts it.
+   - For scripts: Click2Screen-Setup.exe /install /silent [/autostart] [/desktop-] [/startmenu-]
+     (the exit code is 0 on success).
+
+2. First use
+   - Hotkeys: Ctrl+PrintScreen - screenshot of the whole desktop, Alt+Shift+4 - region, Alt+Shift+5 - window,
+     F11 - stop a recording. The buttons of the main window do the same.
+   - Recording: "Record desktop / region / window", then press Start in the small panel (a delay countdown
+     runs first when one is set in Options). Start again pauses, Stop (F11) saves an MP4 to the Videos folder.
+   - The program keeps running in the tray when its window is closed ("Exit" in the tray menu quits).
+
+3. Removal
+   - Click2Screen-Setup.exe > "Remove", or uninstall.cmd as administrator. Your settings and the screenshots /
+     videos you made are kept.
+
+4. Logs
+   - C:\ProgramData\Click2Screen\logs\ : setup.log (installer), panel.log (program).

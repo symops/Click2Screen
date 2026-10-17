@@ -1,0 +1,31 @@
+#include <winuser.h>
+#include <winver.h>
+#include "version.h"
+1 RT_MANIFEST "Click2Screen.manifest"
+1 ICON "Click2Screen.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     C2S_VER_MAJOR, C2S_VER_MINOR, C2S_VER_BUILD, C2S_VER_REV
+PRODUCTVERSION  C2S_VER_MAJOR, C2S_VER_MINOR, C2S_VER_BUILD, C2S_VER_REV
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      C2S_AUTHOR_STR
+            VALUE "LegalCopyright",   C2S_COPYRIGHT_STR
+            VALUE "FileDescription",  "Click2Screen screen recorder"
+            VALUE "FileVersion",      C2S_VER_STR
+            VALUE "InternalName",     "Click2Screen"
+            VALUE "OriginalFilename", "Click2Screen.exe"
+            VALUE "ProductName",      "Click2Screen"
+            VALUE "ProductVersion",   C2S_VER_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1200
+    END
+END

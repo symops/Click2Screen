@@ -1,0 +1,125 @@
+Click2Screen
+Rekam desktop
+Rekam area
+Rekam jendela
+Tangkap desktop\n(Ctrl+PrintScreen)
+Tangkap area\n(Alt+Shift+4)
+Tangkap jendela\n(Alt+Shift+5)
+Opsi
+Rekam video
+Ambil tangkapan layar
+F11 menghentikan rekaman
+Siap
+Perekam Click2Screen
+Waktu
+Ukuran
+Mulai
+Jeda
+Lanjutkan
+Berhenti
+Sembunyikan
+Tampilkan panel
+Keluar
+F11: Berhenti
+Klik untuk memulai rekaman video, klik lagi untuk menjeda
+Klik untuk melanjutkan rekaman
+Klik untuk menghentikan rekaman video
+Sembunyikan panel kontrol?\nAnda akan mengendalikan rekaman dari area notifikasi.
+Rekaman dimulai dalam %d...
+Sedang merekam
+Dijeda
+Tersimpan: %s
+Click2Screen sedang merekam. Klik ikon di area notifikasi untuk menjeda, klik kanan untuk opsi lain.
+Opsi Click2Screen
+Umum
+Video dan audio
+Berkas
+Bahasa
+OK
+Batal
+Pulihkan default
+Jalankan aplikasi saat komputer dinyalakan
+Sertakan penunjuk mouse dalam tangkapan
+Sorot penunjuk mouse
+Buka folder keluaran setelah penangkapan
+Buka editor setelah tangkapan layar
+Aktifkan suara
+Rekam audio dari mikrofon
+Jeda sebelum penangkapan:
+detik
+Codec video:
+Codec audio:
+Kualitas video:
+Kualitas audio:
+Bingkai per detik:
+Hentikan rekaman setelah (0 = tanpa batas):
+jam
+menit
+Folder video:
+Folder gambar:
+Format gambar:
+Templat nama berkas:
+Tips: # – satu digit nomor urut, $Y tahun, $M bulan, $D hari, $H jam, $N menit, $S detik, %USERNAME% – nama pengguna. Contoh: $Y-$M-$D at $H-$N-$S atau Img####
+Telusuri...
+Bahasa sistem
+H.264, kualitas terbaik (lebih lambat)
+H.264, cepat
+AAC (lebih lambat)
+MP3 (lebih cepat)
+kualitas tinggi
+kualitas sedang
+kualitas rendah
+Folder keluaran tidak ada, silakan ganti folder.
+Folder keluaran tidak dapat dibuat, silakan tentukan folder lain.
+Tidak dapat menulis ke folder keluaran, silakan ganti folder.
+Templat nama berkas tidak valid: karakter # harus berdampingan dan nama tidak boleh kosong.
+Tidak dapat menangkap layar.
+Tidak dapat memulai perekam (encoder video tidak tersedia): %s
+Mikrofon tidak dapat dibuka; video direkam tanpa suara.
+Tidak dapat menyimpan berkas: %s
+Area yang dipilih terlalu kecil.
+Pintasan %s sudah dipakai oleh program lain.
+Rekaman sedang berlangsung.
+Editor Click2Screen
+Persegi panjang
+Perbesar
+Perkecil
+Urungkan
+Simpan
+Simpan sebagai...
+Gambar
+Seret untuk memilih area. Esc membatalkan.
+Arahkan ke jendela lalu klik. Esc membatalkan.
+Ekspor pengaturan...
+Impor pengaturan...
+Berkas pengaturan (*.ini)
+Tidak dapat menulis berkas pengaturan: %s
+Tidak dapat membaca berkas pengaturan: %s
+Perekam layar dan alat tangkapan layar
+Belum terpasang
+Terpasang: versi %s, %s
+Pintasan desktop
+Pintasan menu Start
+Mulai bersama Windows (di area notifikasi)
+Pasang
+Perbarui
+Hapus
+Jalankan
+Tutup
+Bahasa:
+— Memasang Click2Screen —
+— Menghapus Click2Screen —
+Menutup Click2Screen yang sedang berjalan…
+Menyalin berkas ke %s
+Kesalahan: tidak dapat menyalin %s (kesalahan %lu).
+Mendaftarkan program di Aplikasi & fitur.
+Membuat pintasan.
+Menghapus pintasan.
+Click2Screen akan dimulai bersama Windows.
+Click2Screen tidak akan dimulai bersama Windows.
+Selesai.
+Gagal.
+Pengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.
+Kesalahan: Click2Screen.exe tidak ditemukan di samping pemasang.
+Kesalahan: folder Program Files tidak ditemukan.
+Hapus Click2Screen dari komputer ini?\n\nPengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.

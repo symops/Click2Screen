@@ -1,0 +1,125 @@
+Click2Screen
+Bureaublad opnemen
+Gebied opnemen
+Venster opnemen
+Bureaublad vastleggen\n(Ctrl+PrintScreen)
+Gebied vastleggen\n(Alt+Shift+4)
+Venster vastleggen\n(Alt+Shift+5)
+Opties
+Video opnemen
+Schermafbeelding maken
+F11 stopt een opname
+Gereed
+Click2Screen-recorder
+Tijd
+Grootte
+Start
+Pauze
+Hervatten
+Stop
+Verbergen
+Paneel tonen
+Afsluiten
+F11: Stop
+Klik om de video-opname te starten; klik opnieuw om te pauzeren
+Klik om de opname te hervatten
+Klik om de video-opname te stoppen
+Het bedieningspaneel verbergen?\nU bedient de opname dan via het systeemvak.
+De opname start over %d...
+Opname bezig
+Gepauzeerd
+Opgeslagen: %s
+Click2Screen neemt op. Klik op het pictogram in het systeemvak om te pauzeren, rechtsklik voor meer.
+Opties van Click2Screen
+Algemeen
+Video en audio
+Bestanden
+Taal
+OK
+Annuleren
+Standaardwaarden herstellen
+De toepassing starten wanneer de computer opstart
+De muisaanwijzer opnemen in de opname
+De muisaanwijzer markeren
+De uitvoermap openen na het vastleggen
+De editor openen na een schermafbeelding
+Geluiden inschakelen
+Audio van de microfoon opnemen
+Vertraging vóór het vastleggen:
+seconden
+Videocodec:
+Audiocodec:
+Videokwaliteit:
+Audiokwaliteit:
+Beeldjes per seconde:
+Opname stoppen na (0 = geen limiet):
+uur
+minuten
+Map voor video’s:
+Map voor afbeeldingen:
+Afbeeldingsindeling:
+Sjabloon voor bestandsnaam:
+Tips: # – één cijfer van het volgnummer, $Y jaar, $M maand, $D dag, $H uur, $N minuut, $S seconde, %USERNAME% – gebruikersnaam. Voorbeeld: $Y-$M-$D at $H-$N-$S of Img####
+Bladeren...
+Systeemtaal
+H.264, beste kwaliteit (langzamer)
+H.264, snel
+AAC (langzamer)
+MP3 (sneller)
+hoge kwaliteit
+gemiddelde kwaliteit
+lage kwaliteit
+De uitvoermap bestaat niet; wijzig de map.
+De uitvoermap kan niet worden gemaakt; geef een andere map op.
+Er kan niet naar de uitvoermap worden geschreven; wijzig de map.
+Het sjabloon voor de bestandsnaam is ongeldig: de #-tekens moeten bij elkaar staan en de naam mag niet leeg zijn.
+Het scherm kan niet worden vastgelegd.
+De recorder kan niet worden gestart (de video-encoder is niet beschikbaar): %s
+De microfoon kon niet worden geopend; de video wordt zonder geluid opgenomen.
+Het bestand kan niet worden opgeslagen: %s
+Het gekozen gebied is te klein.
+De sneltoets %s wordt al door een ander programma gebruikt.
+Er is al een opname bezig.
+Click2Screen-editor
+Rechthoek
+Inzoomen
+Uitzoomen
+Ongedaan maken
+Opslaan
+Opslaan als...
+Afbeeldingen
+Sleep om het gebied te selecteren. Esc annuleert.
+Wijs een venster aan en klik. Esc annuleert.
+Instellingen exporteren...
+Instellingen importeren...
+Instellingenbestanden (*.ini)
+Het instellingenbestand kan niet worden geschreven: %s
+Het instellingenbestand kan niet worden gelezen: %s
+Schermrecorder en hulpmiddel voor schermafbeeldingen
+Niet geïnstalleerd
+Geïnstalleerd: versie %s, %s
+Snelkoppeling op het bureaublad
+Snelkoppeling in het startmenu
+Starten met Windows (in het systeemvak)
+Installeren
+Bijwerken
+Verwijderen
+Starten
+Sluiten
+Taal:
+— Click2Screen wordt geïnstalleerd —
+— Click2Screen wordt verwijderd —
+Het actieve Click2Screen wordt gesloten…
+Bestanden worden gekopieerd naar %s
+Fout: %s kan niet worden gekopieerd (fout %lu).
+Het programma wordt geregistreerd in Apps en onderdelen.
+Snelkoppelingen worden gemaakt.
+Snelkoppelingen worden verwijderd.
+Click2Screen start met Windows.
+Click2Screen start niet met Windows.
+Klaar.
+Mislukt.
+Uw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven behouden.
+Fout: Click2Screen.exe is niet gevonden naast het installatieprogramma.
+Fout: de map Program Files is niet gevonden.
+Click2Screen van deze computer verwijderen?\n\nUw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven behouden.

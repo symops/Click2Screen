@@ -1,0 +1,125 @@
+Click2Screen
+Nagrywaj pulpit
+Nagrywaj obszar
+Nagrywaj okno
+Przechwyć pulpit\n(Ctrl+PrintScreen)
+Przechwyć obszar\n(Alt+Shift+4)
+Przechwyć okno\n(Alt+Shift+5)
+Opcje
+Nagraj wideo
+Zrób zrzut ekranu
+F11 zatrzymuje nagrywanie
+Gotowe
+Rejestrator Click2Screen
+Czas
+Rozmiar
+Start
+Pauza
+Wznów
+Stop
+Ukryj
+Pokaż panel
+Zakończ
+F11: Stop
+Kliknij, aby rozpocząć nagrywanie wideo; kliknij ponownie, aby wstrzymać
+Kliknij, aby wznowić nagrywanie
+Kliknij, aby zatrzymać nagrywanie wideo
+Ukryć panel sterowania?\nNagrywaniem będzie można sterować z obszaru powiadomień.
+Nagrywanie rozpocznie się za %d...
+Trwa nagrywanie
+Wstrzymano
+Zapisano: %s
+Click2Screen nagrywa. Kliknij ikonę w obszarze powiadomień, aby wstrzymać; prawy przycisk – więcej opcji.
+Opcje Click2Screen
+Ogólne
+Wideo i dźwięk
+Pliki
+Język
+OK
+Anuluj
+Przywróć domyślne
+Uruchamiaj aplikację przy starcie komputera
+Uwzględnij wskaźnik myszy w przechwytywaniu
+Wyróżnij wskaźnik myszy
+Otwórz folder docelowy po przechwyceniu
+Otwórz edytor po zrzucie ekranu
+Włącz dźwięki
+Nagrywaj dźwięk z mikrofonu
+Opóźnienie przed przechwyceniem:
+sekund
+Kodek wideo:
+Kodek audio:
+Jakość wideo:
+Jakość dźwięku:
+Klatek na sekundę:
+Zatrzymaj nagrywanie po (0 = bez limitu):
+godz.
+min
+Folder wideo:
+Folder obrazów:
+Format obrazu:
+Wzorzec nazwy pliku:
+Wskazówki: # – jedna cyfra numeru kolejnego, $Y rok, $M miesiąc, $D dzień, $H godzina, $N minuta, $S sekunda, %USERNAME% – nazwa użytkownika. Przykład: $Y-$M-$D at $H-$N-$S lub Img####
+Przeglądaj...
+Język systemu
+H.264, najlepsza jakość (wolniej)
+H.264, szybko
+AAC (wolniej)
+MP3 (szybciej)
+wysoka jakość
+średnia jakość
+niska jakość
+Folder docelowy nie istnieje, zmień folder.
+Nie można utworzyć folderu docelowego, podaj inny folder.
+Nie można zapisać w folderze docelowym, zmień folder.
+Wzorzec nazwy pliku jest nieprawidłowy: znaki # muszą stać obok siebie, a nazwa nie może być pusta.
+Nie można przechwycić ekranu.
+Nie można uruchomić rejestratora (koder wideo jest niedostępny): %s
+Nie udało się otworzyć mikrofonu; wideo jest nagrywane bez dźwięku.
+Nie można zapisać pliku: %s
+Wybrany obszar jest zbyt mały.
+Skrót %s jest już używany przez inny program.
+Nagrywanie już trwa.
+Edytor Click2Screen
+Prostokąt
+Powiększ
+Pomniejsz
+Cofnij
+Zapisz
+Zapisz jako...
+Obrazy
+Przeciągnij, aby zaznaczyć obszar. Esc anuluje.
+Wskaż okno i kliknij. Esc anuluje.
+Eksportuj ustawienia...
+Importuj ustawienia...
+Pliki ustawień (*.ini)
+Nie można zapisać pliku ustawień: %s
+Nie można odczytać pliku ustawień: %s
+Rejestrator ekranu i narzędzie do zrzutów ekranu
+Nie zainstalowano
+Zainstalowano: wersja %s, %s
+Skrót na pulpicie
+Skrót w menu Start
+Uruchamiaj z systemem Windows (w obszarze powiadomień)
+Zainstaluj
+Aktualizuj
+Usuń
+Uruchom
+Zamknij
+Język:
+— Instalowanie Click2Screen —
+— Usuwanie Click2Screen —
+Zamykanie uruchomionego Click2Screen…
+Kopiowanie plików do %s
+Błąd: nie można skopiować %s (błąd %lu).
+Rejestrowanie programu w Aplikacjach i funkcjach.
+Tworzenie skrótów.
+Usuwanie skrótów.
+Click2Screen będzie uruchamiany z systemem Windows.
+Click2Screen nie będzie uruchamiany z systemem Windows.
+Gotowe.
+Nie powiodło się.
+Twoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostały zachowane.
+Błąd: nie znaleziono pliku Click2Screen.exe obok instalatora.
+Błąd: nie znaleziono folderu Program Files.
+Usunąć Click2Screen z tego komputera?\n\nTwoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostaną zachowane.

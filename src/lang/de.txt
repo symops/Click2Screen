@@ -1,0 +1,125 @@
+Click2Screen
+Desktop aufnehmen
+Bereich aufnehmen
+Fenster aufnehmen
+Desktop erfassen\n(Strg+Druck)
+Bereich erfassen\n(Alt+Umschalt+4)
+Fenster erfassen\n(Alt+Umschalt+5)
+Optionen
+Video aufnehmen
+Screenshot erstellen
+F11 beendet die Aufnahme
+Bereit
+Click2Screen-Recorder
+Zeit
+Größe
+Start
+Pause
+Fortsetzen
+Stopp
+Ausblenden
+Panel anzeigen
+Beenden
+F11: Stopp
+Klicken, um die Videoaufnahme zu starten; erneut klicken für Pause
+Klicken, um die Aufnahme fortzusetzen
+Klicken, um die Videoaufnahme zu beenden
+Bedienfeld ausblenden?\nDie Aufnahme wird dann über den Infobereich gesteuert.
+Die Aufnahme startet in %d...
+Aufnahme läuft
+Pausiert
+Gespeichert: %s
+Click2Screen nimmt auf. Klick auf das Symbol im Infobereich: Pause, Rechtsklick: Menü.
+Click2Screen-Optionen
+Allgemein
+Video und Audio
+Dateien
+Sprache
+OK
+Abbrechen
+Standard wiederherstellen
+Anwendung beim Start des Computers starten
+Mauszeiger in die Aufnahme einbeziehen
+Mauszeiger hervorheben
+Ausgabeordner nach der Aufnahme öffnen
+Editor nach einem Screenshot öffnen
+Töne aktivieren
+Audio vom Mikrofon aufnehmen
+Verzögerung vor der Aufnahme:
+Sekunden
+Videocodec:
+Audiocodec:
+Videoqualität:
+Audioqualität:
+Bilder pro Sekunde:
+Aufnahme beenden nach (0 = unbegrenzt):
+Stunden
+Minuten
+Ordner für Videos:
+Ordner für Bilder:
+Bildformat:
+Dateinamenvorlage:
+Tipps: # – eine Ziffer der laufenden Nummer, $Y Jahr, $M Monat, $D Tag, $H Stunde, $N Minute, $S Sekunde, %USERNAME% – Benutzername. Beispiel: $Y-$M-$D at $H-$N-$S oder Img####
+Durchsuchen...
+Systemsprache
+H.264, beste Qualität (langsamer)
+H.264, schnell
+AAC (langsamer)
+MP3 (schneller)
+hohe Qualität
+mittlere Qualität
+niedrige Qualität
+Der Ausgabeordner existiert nicht, bitte ändern Sie den Ordner.
+Der Ausgabeordner kann nicht erstellt werden, bitte geben Sie einen anderen an.
+In den Ausgabeordner kann nicht geschrieben werden, bitte ändern Sie den Ordner.
+Die Dateinamenvorlage ist ungültig: Die #-Zeichen müssen zusammenstehen und der Name darf nicht leer sein.
+Der Bildschirm kann nicht erfasst werden.
+Der Recorder kann nicht gestartet werden (der Videoencoder ist nicht verfügbar): %s
+Das Mikrofon konnte nicht geöffnet werden; das Video wird ohne Ton aufgenommen.
+Die Datei kann nicht gespeichert werden: %s
+Der gewählte Bereich ist zu klein.
+Die Tastenkombination %s wird bereits von einem anderen Programm verwendet.
+Eine Aufnahme läuft bereits.
+Click2Screen-Editor
+Rechteck
+Vergrößern
+Verkleinern
+Rückgängig
+Speichern
+Speichern unter...
+Bilder
+Ziehen Sie, um den Bereich zu wählen. Esc bricht ab.
+Zeigen Sie auf ein Fenster und klicken Sie. Esc bricht ab.
+Einstellungen exportieren...
+Einstellungen importieren...
+Einstellungsdateien (*.ini)
+Die Einstellungsdatei kann nicht geschrieben werden: %s
+Die Einstellungsdatei kann nicht gelesen werden: %s
+Bildschirmrekorder und Screenshot-Werkzeug
+Nicht installiert
+Installiert: Version %s, %s
+Desktopverknüpfung
+Startmenüverknüpfung
+Mit Windows starten (im Infobereich)
+Installieren
+Aktualisieren
+Entfernen
+Starten
+Schließen
+Sprache:
+— Click2Screen wird installiert —
+— Click2Screen wird entfernt —
+Das laufende Click2Screen wird geschlossen…
+Dateien werden nach %s kopiert
+Fehler: %s kann nicht kopiert werden (Fehler %lu).
+Das Programm wird unter „Apps & Features“ registriert.
+Verknüpfungen werden erstellt.
+Verknüpfungen werden entfernt.
+Click2Screen startet mit Windows.
+Click2Screen startet nicht mit Windows.
+Fertig.
+Fehlgeschlagen.
+Ihre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.
+Fehler: Click2Screen.exe wurde neben dem Installationsprogramm nicht gefunden.
+Fehler: Der Ordner „Programme“ wurde nicht gefunden.
+Click2Screen von diesem Computer entfernen?\n\nIhre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.

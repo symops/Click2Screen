@@ -1,0 +1,125 @@
+Click2Screen
+Record desktop
+Record region
+Record window
+Capture desktop\n(Ctrl+PrintScreen)
+Capture region\n(Alt+Shift+4)
+Capture window\n(Alt+Shift+5)
+Options
+Record video
+Take a screenshot
+F11 stops a recording
+Ready
+Click2Screen recorder
+Time
+Size
+Start
+Pause
+Resume
+Stop
+Hide
+Show panel
+Exit
+F11: Stop
+Click to start recording video, click again to pause
+Click to resume recording
+Click to stop recording video
+Hide the control panel?\nYou will control recording from the system tray.
+Recording starts in %d...
+Recording
+Paused
+Saved: %s
+Click2Screen is recording. Click the tray icon to pause, right-click for more.
+Click2Screen options
+General
+Video and audio
+Files
+Language
+OK
+Cancel
+Restore default
+Start the application when my computer starts
+Include the mouse pointer in the capture
+Highlight the mouse pointer
+Open the output folder after capture
+Open the editor after a screenshot
+Enable sounds
+Record audio from the microphone
+Delay before capture:
+seconds
+Video codec:
+Audio codec:
+Video quality:
+Audio quality:
+Frames per second:
+Stop recording after (0 = no limit):
+hours
+minutes
+Videos folder:
+Pictures folder:
+Image format:
+File name template:
+Tips: # - one digit of the sequential number, $Y year, $M month, $D day, $H hour, $N minute, $S second, %USERNAME% - user name. Example: $Y-$M-$D at $H-$N-$S, or Img####
+Browse...
+System language
+H.264, best quality (slower)
+H.264, fast
+AAC (slower)
+MP3 (faster)
+high quality
+medium quality
+low quality
+Output folder does not exist, please change the folder.
+Cannot create the output folder, please specify another folder.
+Cannot write to the output folder, please change the folder.
+The file name template is not valid: the # characters must stand together and the name must not be empty.
+Cannot capture the screen.
+Cannot start the recorder (the video encoder is not available): %s
+The microphone could not be opened; the video is recorded without sound.
+Cannot save the file: %s
+The selected area is too small.
+Hotkey %s is already used by another program.
+A recording is in progress.
+Click2Screen editor
+Rectangle
+Zoom in
+Zoom out
+Undo
+Save
+Save as...
+Images
+Drag to select the area. Esc cancels.
+Point at a window and click. Esc cancels.
+Export settings...
+Import settings...
+Settings files (*.ini)
+Cannot write the settings file: %s
+Cannot read the settings file: %s
+Screen recorder and screenshot tool
+Not installed
+Installed: version %s, %s
+Desktop shortcut
+Start menu shortcut
+Start with Windows (in the tray)
+Install
+Update
+Remove
+Launch
+Close
+Language:
+— Installing Click2Screen —
+— Removing Click2Screen —
+Closing the running Click2Screen…
+Copying the files to %s
+Error: cannot copy %s (error %lu).
+Registering the program in Apps & features.
+Creating the shortcuts.
+Removing the shortcuts.
+Click2Screen will start with Windows.
+Click2Screen will not start with Windows.
+Done.
+Failed.
+Your settings and the screenshots / videos you made are kept.
+Error: Click2Screen.exe was not found next to the installer.
+Error: cannot find the Program Files folder.
+Remove Click2Screen from this computer?\n\nYour settings and the screenshots / videos you made are kept.

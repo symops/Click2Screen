@@ -1,0 +1,125 @@
+Click2Screen
+Grabar el escritorio
+Grabar una región
+Grabar una ventana
+Capturar el escritorio\n(Ctrl+Impr Pant)
+Capturar una región\n(Alt+Mayús+4)
+Capturar una ventana\n(Alt+Mayús+5)
+Opciones
+Grabar vídeo
+Hacer una captura de pantalla
+F11 detiene la grabación
+Listo
+Grabadora de Click2Screen
+Tiempo
+Tamaño
+Iniciar
+Pausa
+Reanudar
+Detener
+Ocultar
+Mostrar panel
+Salir
+F11: Detener
+Haga clic para iniciar la grabación de vídeo; otro clic para pausar
+Haga clic para reanudar la grabación
+Haga clic para detener la grabación de vídeo
+¿Ocultar el panel de control?\nPodrá controlar la grabación desde el área de notificación.
+La grabación comienza en %d...
+Grabando
+En pausa
+Guardado: %s
+Click2Screen está grabando. Haga clic en el icono del área de notificación para pausar; clic derecho para más opciones.
+Opciones de Click2Screen
+General
+Vídeo y audio
+Archivos
+Idioma
+Aceptar
+Cancelar
+Restaurar valores predeterminados
+Iniciar la aplicación al arrancar el equipo
+Incluir el puntero del ratón en la captura
+Resaltar el puntero del ratón
+Abrir la carpeta de destino tras la captura
+Abrir el editor tras una captura de pantalla
+Activar los sonidos
+Grabar audio del micrófono
+Retraso antes de la captura:
+segundos
+Códec de vídeo:
+Códec de audio:
+Calidad de vídeo:
+Calidad de audio:
+Fotogramas por segundo:
+Detener la grabación después de (0 = sin límite):
+horas
+minutos
+Carpeta de vídeos:
+Carpeta de imágenes:
+Formato de imagen:
+Plantilla del nombre de archivo:
+Consejos: # – un dígito del número de secuencia, $Y año, $M mes, $D día, $H hora, $N minuto, $S segundo, %USERNAME% – nombre de usuario. Ejemplo: $Y-$M-$D at $H-$N-$S o Img####
+Examinar...
+Idioma del sistema
+H.264, mejor calidad (más lento)
+H.264, rápido
+AAC (más lento)
+MP3 (más rápido)
+calidad alta
+calidad media
+calidad baja
+La carpeta de destino no existe; cámbiela.
+No se puede crear la carpeta de destino; indique otra.
+No se puede escribir en la carpeta de destino; cámbiela.
+La plantilla del nombre de archivo no es válida: los caracteres # deben ir juntos y el nombre no puede estar vacío.
+No se puede capturar la pantalla.
+No se puede iniciar la grabadora (el codificador de vídeo no está disponible): %s
+No se pudo abrir el micrófono; el vídeo se graba sin sonido.
+No se puede guardar el archivo: %s
+El área seleccionada es demasiado pequeña.
+La combinación %s ya la usa otro programa.
+Ya hay una grabación en curso.
+Editor de Click2Screen
+Rectángulo
+Acercar
+Alejar
+Deshacer
+Guardar
+Guardar como...
+Imágenes
+Arrastre para seleccionar el área. Esc cancela.
+Señale una ventana y haga clic. Esc cancela.
+Exportar configuración...
+Importar configuración...
+Archivos de configuración (*.ini)
+No se puede escribir el archivo de configuración: %s
+No se puede leer el archivo de configuración: %s
+Grabadora de pantalla y herramienta de capturas
+No instalado
+Instalado: versión %s, %s
+Acceso directo en el escritorio
+Acceso directo en el menú Inicio
+Iniciar con Windows (en el área de notificación)
+Instalar
+Actualizar
+Quitar
+Iniciar
+Cerrar
+Idioma:
+— Instalando Click2Screen —
+— Quitando Click2Screen —
+Cerrando Click2Screen en ejecución…
+Copiando los archivos a %s
+Error: no se puede copiar %s (error %lu).
+Registrando el programa en Aplicaciones y características.
+Creando los accesos directos.
+Quitando los accesos directos.
+Click2Screen se iniciará con Windows.
+Click2Screen no se iniciará con Windows.
+Hecho.
+Error.
+Se conservan su configuración y las capturas y vídeos que haya realizado.
+Error: no se encontró Click2Screen.exe junto al instalador.
+Error: no se encuentra la carpeta Archivos de programa.
+¿Quitar Click2Screen de este equipo?\n\nSe conservan su configuración y las capturas y vídeos que haya realizado.

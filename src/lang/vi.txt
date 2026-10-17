@@ -1,0 +1,125 @@
+Click2Screen
+Quay màn hình nền
+Quay một vùng
+Quay một cửa sổ
+Chụp màn hình nền\n(Ctrl+PrintScreen)
+Chụp một vùng\n(Alt+Shift+4)
+Chụp một cửa sổ\n(Alt+Shift+5)
+Tùy chọn
+Quay video
+Chụp ảnh màn hình
+F11 dừng quay
+Sẵn sàng
+Trình quay Click2Screen
+Thời gian
+Kích thước
+Bắt đầu
+Tạm dừng
+Tiếp tục
+Dừng
+Ẩn
+Hiện bảng điều khiển
+Thoát
+F11: Dừng
+Nhấp để bắt đầu quay video, nhấp lần nữa để tạm dừng
+Nhấp để tiếp tục quay
+Nhấp để dừng quay video
+Ẩn bảng điều khiển?\nBạn sẽ điều khiển việc quay từ khay hệ thống.
+Quay sẽ bắt đầu sau %d...
+Đang quay
+Đã tạm dừng
+Đã lưu: %s
+Click2Screen đang quay. Nhấp biểu tượng ở khay hệ thống để tạm dừng, nhấp chuột phải để xem thêm.
+Tùy chọn Click2Screen
+Chung
+Video và âm thanh
+Tệp
+Ngôn ngữ
+OK
+Hủy
+Khôi phục mặc định
+Khởi động ứng dụng cùng máy tính
+Bao gồm con trỏ chuột trong ảnh quay
+Làm nổi bật con trỏ chuột
+Mở thư mục đầu ra sau khi quay/chụp
+Mở trình chỉnh sửa sau khi chụp ảnh màn hình
+Bật âm thanh
+Ghi âm từ micrô
+Độ trễ trước khi quay/chụp:
+giây
+Codec video:
+Codec âm thanh:
+Chất lượng video:
+Chất lượng âm thanh:
+Số khung hình mỗi giây:
+Dừng quay sau (0 = không giới hạn):
+giờ
+phút
+Thư mục video:
+Thư mục ảnh:
+Định dạng ảnh:
+Mẫu tên tệp:
+Mẹo: # – một chữ số của số thứ tự, $Y năm, $M tháng, $D ngày, $H giờ, $N phút, $S giây, %USERNAME% – tên người dùng. Ví dụ: $Y-$M-$D at $H-$N-$S hoặc Img####
+Duyệt...
+Ngôn ngữ hệ thống
+H.264, chất lượng tốt nhất (chậm hơn)
+H.264, nhanh
+AAC (chậm hơn)
+MP3 (nhanh hơn)
+chất lượng cao
+chất lượng trung bình
+chất lượng thấp
+Thư mục đầu ra không tồn tại, vui lòng đổi thư mục.
+Không thể tạo thư mục đầu ra, vui lòng chỉ định thư mục khác.
+Không thể ghi vào thư mục đầu ra, vui lòng đổi thư mục.
+Mẫu tên tệp không hợp lệ: các ký tự # phải đứng liền nhau và tên không được để trống.
+Không thể chụp màn hình.
+Không thể khởi động trình quay (bộ mã hóa video không khả dụng): %s
+Không thể mở micrô; video được quay không có tiếng.
+Không thể lưu tệp: %s
+Vùng đã chọn quá nhỏ.
+Phím tắt %s đã được chương trình khác sử dụng.
+Đang có một bản quay đang diễn ra.
+Trình chỉnh sửa Click2Screen
+Hình chữ nhật
+Phóng to
+Thu nhỏ
+Hoàn tác
+Lưu
+Lưu thành...
+Ảnh
+Kéo để chọn vùng. Nhấn Esc để hủy.
+Trỏ vào một cửa sổ rồi nhấp. Nhấn Esc để hủy.
+Xuất cài đặt...
+Nhập cài đặt...
+Tệp cài đặt (*.ini)
+Không thể ghi tệp cài đặt: %s
+Không thể đọc tệp cài đặt: %s
+Trình quay màn hình và công cụ chụp ảnh màn hình
+Chưa cài đặt
+Đã cài đặt: phiên bản %s, %s
+Lối tắt trên màn hình nền
+Lối tắt trong menu Start
+Khởi động cùng Windows (ở khay hệ thống)
+Cài đặt
+Cập nhật
+Gỡ bỏ
+Chạy
+Đóng
+Ngôn ngữ:
+— Đang cài đặt Click2Screen —
+— Đang gỡ bỏ Click2Screen —
+Đang đóng Click2Screen đang chạy…
+Đang sao chép tệp vào %s
+Lỗi: không thể sao chép %s (lỗi %lu).
+Đang đăng ký chương trình trong Ứng dụng và tính năng.
+Đang tạo lối tắt.
+Đang xóa lối tắt.
+Click2Screen sẽ khởi động cùng Windows.
+Click2Screen sẽ không khởi động cùng Windows.
+Xong.
+Thất bại.
+Cài đặt của bạn cùng ảnh chụp màn hình và video đã tạo được giữ lại.
+Lỗi: không tìm thấy Click2Screen.exe cạnh trình cài đặt.
+Lỗi: không tìm thấy thư mục Program Files.
+Gỡ bỏ Click2Screen khỏi máy tính này?\n\nCài đặt của bạn cùng ảnh chụp màn hình và video đã tạo sẽ được giữ lại.

@@ -1,0 +1,125 @@
+Click2Screen
+Enregistrer le bureau
+Enregistrer une région
+Enregistrer une fenêtre
+Capturer le bureau\n(Ctrl+Impr écran)
+Capturer une région\n(Alt+Maj+4)
+Capturer une fenêtre\n(Alt+Maj+5)
+Options
+Enregistrer une vidéo
+Prendre une capture d’écran
+F11 arrête l’enregistrement
+Prêt
+Enregistreur Click2Screen
+Durée
+Taille
+Démarrer
+Pause
+Reprendre
+Arrêter
+Masquer
+Afficher le panneau
+Quitter
+F11 : Arrêter
+Cliquez pour démarrer l’enregistrement vidéo, cliquez de nouveau pour mettre en pause
+Cliquez pour reprendre l’enregistrement
+Cliquez pour arrêter l’enregistrement vidéo
+Masquer le panneau de commande ?\nVous contrôlerez l’enregistrement depuis la zone de notification.
+L’enregistrement démarre dans %d...
+Enregistrement en cours
+En pause
+Enregistré : %s
+Click2Screen enregistre. Cliquez sur l’icône de la zone de notification pour mettre en pause, clic droit pour plus d’options.
+Options de Click2Screen
+Général
+Vidéo et audio
+Fichiers
+Langue
+OK
+Annuler
+Rétablir les valeurs par défaut
+Lancer l’application au démarrage de l’ordinateur
+Inclure le pointeur de la souris dans la capture
+Mettre en évidence le pointeur de la souris
+Ouvrir le dossier de sortie après la capture
+Ouvrir l’éditeur après une capture d’écran
+Activer les sons
+Enregistrer le son du microphone
+Délai avant la capture :
+secondes
+Codec vidéo :
+Codec audio :
+Qualité vidéo :
+Qualité audio :
+Images par seconde :
+Arrêter l’enregistrement après (0 = sans limite) :
+heures
+minutes
+Dossier des vidéos :
+Dossier des images :
+Format d’image :
+Modèle de nom de fichier :
+Conseils : # – un chiffre du numéro d’ordre, $Y année, $M mois, $D jour, $H heure, $N minute, $S seconde, %USERNAME% – nom d’utilisateur. Exemple : $Y-$M-$D at $H-$N-$S ou Img####
+Parcourir...
+Langue du système
+H.264, meilleure qualité (plus lent)
+H.264, rapide
+AAC (plus lent)
+MP3 (plus rapide)
+haute qualité
+qualité moyenne
+basse qualité
+Le dossier de sortie n’existe pas, veuillez le changer.
+Impossible de créer le dossier de sortie, veuillez en indiquer un autre.
+Impossible d’écrire dans le dossier de sortie, veuillez le changer.
+Le modèle de nom de fichier n’est pas valide : les caractères # doivent se suivre et le nom ne doit pas être vide.
+Impossible de capturer l’écran.
+Impossible de démarrer l’enregistreur (l’encodeur vidéo n’est pas disponible) : %s
+Le microphone n’a pas pu être ouvert ; la vidéo est enregistrée sans son.
+Impossible d’enregistrer le fichier : %s
+La zone sélectionnée est trop petite.
+Le raccourci %s est déjà utilisé par un autre programme.
+Un enregistrement est en cours.
+Éditeur Click2Screen
+Rectangle
+Agrandir
+Réduire
+Annuler
+Enregistrer
+Enregistrer sous...
+Images
+Faites glisser pour sélectionner la zone. Échap annule.
+Pointez une fenêtre et cliquez. Échap annule.
+Exporter les paramètres...
+Importer les paramètres...
+Fichiers de paramètres (*.ini)
+Impossible d’écrire le fichier de paramètres : %s
+Impossible de lire le fichier de paramètres : %s
+Enregistreur d’écran et outil de capture d’écran
+Non installé
+Installé : version %s, %s
+Raccourci sur le bureau
+Raccourci dans le menu Démarrer
+Démarrer avec Windows (dans la zone de notification)
+Installer
+Mettre à jour
+Supprimer
+Lancer
+Fermer
+Langue :
+— Installation de Click2Screen —
+— Suppression de Click2Screen —
+Fermeture de Click2Screen en cours d’exécution…
+Copie des fichiers vers %s
+Erreur : impossible de copier %s (erreur %lu).
+Enregistrement du programme dans Applications et fonctionnalités.
+Création des raccourcis.
+Suppression des raccourcis.
+Click2Screen démarrera avec Windows.
+Click2Screen ne démarrera pas avec Windows.
+Terminé.
+Échec.
+Vos paramètres ainsi que les captures et vidéos réalisées sont conservés.
+Erreur : Click2Screen.exe est introuvable à côté du programme d’installation.
+Erreur : le dossier Program Files est introuvable.
+Supprimer Click2Screen de cet ordinateur ?\n\nVos paramètres ainsi que les captures et vidéos réalisées sont conservés.

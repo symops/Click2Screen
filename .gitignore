@@ -1,0 +1,18 @@
+# Build output
+build/
+dist/
+maps/
+*.exe
+*.o
+*.a
+*.res
+*.map
+__pycache__/
+
+# Reverse-engineering workspace: the unpacked third-party installer, its strings and the decompilation evidence stay local
+# (analysis/FINDINGS.md - the written findings - is kept).
+analysis/fsvr-extracted/
+analysis/evidence/
+
+# Windows test VM (docker): disk image and shared folder stay local
+.winvm/

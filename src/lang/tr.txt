@@ -1,0 +1,125 @@
+Click2Screen
+Masaüstünü kaydet
+Bölgeyi kaydet
+Pencereyi kaydet
+Masaüstünü yakala\n(Ctrl+PrintScreen)
+Bölgeyi yakala\n(Alt+Shift+4)
+Pencereyi yakala\n(Alt+Shift+5)
+Seçenekler
+Video kaydet
+Ekran görüntüsü al
+F11 kaydı durdurur
+Hazır
+Click2Screen kaydedici
+Süre
+Boyut
+Başlat
+Duraklat
+Sürdür
+Durdur
+Gizle
+Paneli göster
+Çıkış
+F11: Durdur
+Video kaydını başlatmak için tıklayın, duraklatmak için yeniden tıklayın
+Kaydı sürdürmek için tıklayın
+Video kaydını durdurmak için tıklayın
+Denetim paneli gizlensin mi?\nKaydı bildirim alanından yöneteceksiniz.
+Kayıt %d saniye sonra başlayacak...
+Kayıt sürüyor
+Duraklatıldı
+Kaydedildi: %s
+Click2Screen kaydediyor. Duraklatmak için bildirim alanındaki simgeye tıklayın, daha fazlası için sağ tıklayın.
+Click2Screen seçenekleri
+Genel
+Video ve ses
+Dosyalar
+Dil
+Tamam
+İptal
+Varsayılanlara dön
+Bilgisayar açıldığında uygulamayı başlat
+Fare imlecini yakalamaya dahil et
+Fare imlecini vurgula
+Yakalamadan sonra çıkış klasörünü aç
+Ekran görüntüsünden sonra düzenleyiciyi aç
+Sesleri etkinleştir
+Mikrofondan ses kaydet
+Yakalamadan önce gecikme:
+saniye
+Video codec bileşeni:
+Ses codec bileşeni:
+Video kalitesi:
+Ses kalitesi:
+Saniyedeki kare sayısı:
+Kaydı şu süre sonra durdur (0 = sınırsız):
+saat
+dakika
+Video klasörü:
+Resim klasörü:
+Resim biçimi:
+Dosya adı şablonu:
+İpuçları: # – sıra numarasının bir basamağı, $Y yıl, $M ay, $D gün, $H saat, $N dakika, $S saniye, %USERNAME% – kullanıcı adı. Örnek: $Y-$M-$D at $H-$N-$S veya Img####
+Gözat...
+Sistem dili
+H.264, en iyi kalite (daha yavaş)
+H.264, hızlı
+AAC (daha yavaş)
+MP3 (daha hızlı)
+yüksek kalite
+orta kalite
+düşük kalite
+Çıkış klasörü yok, lütfen klasörü değiştirin.
+Çıkış klasörü oluşturulamıyor, lütfen başka bir klasör belirtin.
+Çıkış klasörüne yazılamıyor, lütfen klasörü değiştirin.
+Dosya adı şablonu geçerli değil: # karakterleri bitişik olmalı ve ad boş olmamalıdır.
+Ekran yakalanamıyor.
+Kaydedici başlatılamıyor (video kodlayıcı kullanılamıyor): %s
+Mikrofon açılamadı; video sessiz kaydediliyor.
+Dosya kaydedilemiyor: %s
+Seçilen alan çok küçük.
+%s kısayolu başka bir program tarafından kullanılıyor.
+Bir kayıt zaten sürüyor.
+Click2Screen düzenleyici
+Dikdörtgen
+Yakınlaştır
+Uzaklaştır
+Geri al
+Kaydet
+Farklı kaydet...
+Resimler
+Alanı seçmek için sürükleyin. Esc iptal eder.
+Bir pencereyi gösterip tıklayın. Esc iptal eder.
+Ayarları dışa aktar...
+Ayarları içe aktar...
+Ayar dosyaları (*.ini)
+Ayar dosyası yazılamıyor: %s
+Ayar dosyası okunamıyor: %s
+Ekran kaydedici ve ekran görüntüsü aracı
+Yüklü değil
+Yüklü: sürüm %s, %s
+Masaüstü kısayolu
+Başlat menüsü kısayolu
+Windows ile başlat (bildirim alanında)
+Yükle
+Güncelle
+Kaldır
+Başlat
+Kapat
+Dil:
+— Click2Screen yükleniyor —
+— Click2Screen kaldırılıyor —
+Çalışan Click2Screen kapatılıyor…
+Dosyalar %s konumuna kopyalanıyor
+Hata: %s kopyalanamıyor (hata %lu).
+Program Uygulamalar ve özellikler’e kaydediliyor.
+Kısayollar oluşturuluyor.
+Kısayollar kaldırılıyor.
+Click2Screen, Windows ile başlayacak.
+Click2Screen, Windows ile başlamayacak.
+Bitti.
+Başarısız.
+Ayarlarınız ile aldığınız ekran görüntüleri ve videolar korunur.
+Hata: Click2Screen.exe yükleyicinin yanında bulunamadı.
+Hata: Program Files klasörü bulunamadı.
+Click2Screen bu bilgisayardan kaldırılsın mı?\n\nAyarlarınız ile aldığınız ekran görüntüleri ve videolar korunur.
