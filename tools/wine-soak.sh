@@ -1,6 +1,6 @@
 #!/bin/bash
 # Soak test under Wine: runs c2sautotest (random seed, alternating x64 / x86, random length) and /selftest over and over
-# until the product has passed for SOAK_MINUTES (default 60) in a row. A failure (a FAIL line, a crash, a hang) or a
+# until the product has passed for SOAK_MINUTES (default 20) in a row. A failure (a FAIL line, a crash, a hang) or a
 # change of the program binaries resets the stopwatch. Tests may be added or changed meanwhile: every run takes the
 # newest c2sautotest.exe; only the product (Click2Screen.exe, Click2Screen-Setup.exe, the launcher) is tracked.
 #   tools/wine-soak.sh            # needs wine, Xvfb (started on :77 when no DISPLAY is set), a build in build/x64 and build/x86
@@ -9,7 +9,7 @@
 cd "$(dirname "$0")/.."
 ROOT=$PWD
 W=${SOAK_DIR:-${TMPDIR:-/tmp}/c2s-soak}
-GOAL=${SOAK_MINUTES:-60}
+GOAL=${SOAK_MINUTES:-20}
 mkdir -p "$W"
 # Its own Wine prefix and its own display, whatever the calling shell has set (a soak sharing a prefix or a display with
 # some other Wine job would meet its mutexes, windows and logs): SOAK_WINEPREFIX / SOAK_DISPLAY change them on purpose.

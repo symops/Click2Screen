@@ -50,6 +50,7 @@ const wchar_t* ImageFormatName(int fmt);              // "PNG", "JPG", ...
 const wchar_t* ImageFormatExt(int fmt);               // "png", "jpg", ...
 bool ImageFormatAvailable(int fmt);                   // an encoder for it is installed (WebP / JPEG XR may be missing)
 int  ImageFormatFromPath(const wchar_t* path);        // by the extension; -1 when it is none of ours
+void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h);   // FitSize, and the smaller frame a GIF gets
 const wchar_t* VideoFormatName(int vc);               // "H.264 (MP4, slower)" ...
 const wchar_t* VideoFormatExt(int vc);                // "mp4", "wmv", "avi", "gif"
 bool VideoFormatAvailable(int vc);                    // the encoder exists on this Windows (HEVC needs the Microsoft extension)
@@ -119,6 +120,18 @@ bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format);
 // ---- pickers (picker.cpp) --------------------------------------------------------------------------------------
 bool PickRegion(HWND owner, RECT* out);
 bool PickWindow(HWND owner, HWND* hw, RECT* out);
+
+// ---- frame sinks (sinks.cpp): the video formats that are not written by Media Foundation -----------------------
+class FrameSink {
+public:
+    virtual ~FrameSink() {}
+    virtual bool Video(const uint8_t* dib, LONGLONG ts100ns) = 0;     // one w x h BGRA frame, bottom-up (as the Grabber holds it)
+    virtual bool Audio(const void* pcm, uint32_t bytes) = 0;          // 16-bit mono 44.1 kHz
+    virtual bool Full() const { return false; }                       // the file cannot grow any more: the recording ends
+    virtual bool Close(bool ok) = 0;                                  // finishes the file; false: it is unusable
+};
+FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality, bool audio, wchar_t* why, int whyLen);   // Motion-JPEG + PCM
+FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, wchar_t* why, int whyLen);                            // animated, no sound
 
 // ---- recorder (recorder.cpp) -----------------------------------------------------------------------------------
 struct RecParams {

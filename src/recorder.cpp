@@ -17,6 +17,11 @@ namespace {
 const GUID kQualityVsSpeed  = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
 const GUID kRateControlMode = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 
+// Format GUIDs spelled out (not in every header set): the FOURCC / wave-format tag + the Media Foundation base GUID.
+const GUID kVideoHevc = { 0x43564548, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };   // 'HEVC'
+const GUID kVideoWmv3 = { 0x33564d57, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };   // 'WMV3'
+const GUID kAudioWma8 = { 0x00000161, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };   // Windows Media Audio 8
+
 const int  kAudioRate = 44100;
 const int  kAudioBufs = 8;
 const int  kAudioBufMs = 50;
@@ -52,6 +57,8 @@ struct Recorder::Impl {
     HANDLE aEvent = nullptr;
     bool timePeriod = false;
     bool nullSink = false;               // self-test only (C2S_NULLSINK): frames are counted, nothing is encoded
+    FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
+    int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
 
     Impl() { InitializeCriticalSection(&cs); QueryPerformanceFrequency(&freq); memset(hdr, 0, sizeof(hdr)); memset(abuf, 0, sizeof(abuf)); }
@@ -69,6 +76,13 @@ struct Recorder::Impl {
     bool WriteSample(DWORD stream, const void* data, DWORD bytes, LONGLONG ts, LONGLONG dur)
     {
         if (nullSink) { if (stream == vStream) InterlockedIncrement(&vFrames); return true; }
+        if (alt) {
+            EnterCriticalSection(&cs);
+            bool r = stream == vStream ? alt->Video((const uint8_t*)data, ts) : alt->Audio(data, bytes);
+            LeaveCriticalSection(&cs);
+            if (r && stream == vStream) InterlockedIncrement(&vFrames);
+            return r;
+        }
         IMFMediaBuffer* b = nullptr; IMFSample* s = nullptr;
         bool ok = false;
         if (SUCCEEDED(MFCreateMemoryBuffer(bytes, &b))) {
@@ -102,6 +116,7 @@ struct Recorder::Impl {
             LONGLONG mt = MediaTime();
             mediaNow = mt;
             if (limit100 && mt >= limit100) { limit = 1; break; }
+            if (alt && alt->Full()) { limit = 1; break; }       // a file that cannot grow: finish it properly
             if (mt < n * interval) {
                 LONGLONG waitMs = (n * interval - mt) / 10000;
                 Sleep(waitMs > 1 ? (DWORD)(waitMs - 1) : 1);
@@ -144,7 +159,13 @@ struct Recorder::Impl {
         }
     }
 
-    static DWORD WINAPI VThread(LPVOID a) { ((Impl*)a)->VideoLoop(); return 0; }
+    static DWORD WINAPI VThread(LPVOID a)
+    {
+        HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);       // WIC (AVI / GIF) wants COM on the thread
+        ((Impl*)a)->VideoLoop();
+        if (SUCCEEDED(hr)) CoUninitialize();
+        return 0;
+    }
     static DWORD WINAPI AThread(LPVOID a) { ((Impl*)a)->AudioLoop(); return 0; }
 
     void CloseAudio()
@@ -192,7 +213,7 @@ static IMFMediaType* VideoType(const GUID& sub, int w, int h, int fps, int bitra
     MFSetAttributeSize(t, MF_MT_FRAME_SIZE, w, h);
     MFSetAttributeRatio(t, MF_MT_FRAME_RATE, fps, 1);
     MFSetAttributeRatio(t, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-    if (bitrate) { t->SetUINT32(MF_MT_AVG_BITRATE, bitrate); t->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main); }
+    if (bitrate) { t->SetUINT32(MF_MT_AVG_BITRATE, bitrate); if (sub == MFVideoFormat_H264) t->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main); }
     return t;
 }
 
@@ -214,6 +235,34 @@ static IMFMediaType* AudioType(const GUID& sub, int bytesPerSec, bool compressed
     return t;
 }
 
+// A Windows Media Audio output type for 44.1 kHz mono, the available bit rate closest to the wanted one.
+static IMFMediaType* WmaType(int wantBytesPerSec)
+{
+    IMFCollection* col = nullptr;
+    if (FAILED(MFTranscodeGetAudioOutputAvailableTypes(kAudioWma8, MFT_ENUM_FLAG_ALL, nullptr, &col)) || !col) return nullptr;
+    DWORD n = 0; col->GetElementCount(&n);
+    IMFMediaType* best = nullptr; int bestDiff = 0x7fffffff;
+    for (DWORD i = 0; i < n; ++i) {
+        IUnknown* u = nullptr;
+        if (FAILED(col->GetElement(i, &u)) || !u) continue;
+        IMFMediaType* t = nullptr;
+        if (SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+            UINT32 rate = 0, ch = 0, bps = 0, bits = 16;
+            t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
+            t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps); t->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bits);
+            int diff = (int)bps - wantBytesPerSec; if (diff < 0) diff = -diff;
+            if (rate == (UINT32)kAudioRate && ch == 1 && bits == 16 && diff < bestDiff) {
+                if (best) best->Release();
+                best = t; t->AddRef(); bestDiff = diff;
+            }
+            t->Release();
+        }
+        u->Release();
+    }
+    col->Release();
+    return best;
+}
+
 // ---- Recorder --------------------------------------------------------------------------------------------------
 Recorder::Recorder() : m(new Impl) {}
 Recorder::~Recorder() { if (m->started && !m->finalized) Stop(); delete m; }
@@ -227,8 +276,11 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     int sw0 = p.rc.right - p.rc.left, sh0 = p.rc.bottom - p.rc.top;
     if (p.hwnd) { RECT r; if (WindowVisibleRect(p.hwnd, &r)) { sw0 = r.right - r.left; sh0 = r.bottom - r.top; d.p.rc = r; } }
     if (sw0 < 2 || sh0 < 2) { if (err) wcsncpy(err, T(S_ERR_REGION_SMALL), errLen - 1); return false; }
-    FitSize(sw0, sh0, d.w, d.h);
+    int fmt = p.cfg.videoCodec < 0 || p.cfg.videoCodec >= VC_COUNT ? VC_H264_BEST : p.cfg.videoCodec;
+    d.fmt = fmt;
+    FitSizeForVideo(fmt, sw0, sh0, d.w, d.h);
     d.fps = p.cfg.fps < 5 ? 5 : p.cfg.fps > 60 ? 60 : p.cfg.fps;
+    if (fmt == VC_GIF && d.fps > 15) d.fps = 15;       // a GIF is for slow pictures: 15 frames a second at most
     if (!d.grab.Init(d.w, d.h)) { if (err) wcsncpy(err, T(S_ERR_CAPTURE), errLen - 1); return false; }
     int total = p.cfg.durH * 3600 + p.cfg.durM * 60 + p.cfg.durS;
     d.limit100 = (LONGLONG)total * 10000000LL;
@@ -245,6 +297,32 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
 
     HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     d.comInit = SUCCEEDED(hr);
+
+    if (fmt == VC_AVI || fmt == VC_GIF) {             // our own sinks: no Media Foundation involved
+        wchar_t why[160] = L"", warn[200] = L"";
+        bool wantAudio = fmt == VC_AVI && p.cfg.mic;
+        if (wantAudio && !d.OpenAudio()) { _snwprintf(warn, 200, L"%s", T(S_ERR_AUDIO)); wantAudio = false; }
+        d.hasAudio = wantAudio;
+        d.vStream = 0; d.aStream = 1;
+        d.alt = fmt == VC_AVI ? CreateAviSink(p.path, d.w, d.h, d.fps, p.cfg.videoQuality, wantAudio, why, 160)
+                              : CreateGifSink(p.path, d.w, d.h, d.fps, why, 160);
+        if (!d.alt) {
+            d.CloseAudio();
+            if (err) _snwprintf(err, errLen, T(S_ERR_RECORDER), why[0] ? why : L"file");
+            Log(L"recorder start failed (%s): %s", VideoFormatName(fmt), why);
+            if (d.comInit) { CoUninitialize(); d.comInit = false; }
+            return false;
+        }
+        timeBeginPeriod(1); d.timePeriod = true;
+        d.wall0 = Qpc100ns(d.freq);
+        d.stopFlag = d.paused = d.failed = d.limit = 0;
+        d.started = true;
+        if (d.hasAudio) { waveInStart(d.hwi); d.aThread = CreateThread(nullptr, 0, Impl::AThread, &d, 0, nullptr); }
+        d.vThread = CreateThread(nullptr, 0, Impl::VThread, &d, 0, nullptr);
+        if (err && warn[0]) { wcsncpy(err, warn, errLen - 1); err[errLen - 1] = 0; }
+        return true;
+    }
+
     hr = MFStartup(MF_VERSION, MFSTARTUP_FULL);
     if (FAILED(hr)) { if (err) _snwprintf(err, errLen, T(S_ERR_RECORDER), L"MFStartup"); Log(L"MFStartup failed 0x%08lX", (unsigned long)hr); return false; }
     d.mfStarted = true;
@@ -270,7 +348,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
         attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
         if (enc) {
-            enc->SetUINT32(kQualityVsSpeed, p.cfg.videoCodec == 0 ? 85 : 25);
+            enc->SetUINT32(kQualityVsSpeed, fmt == VC_H264_FAST ? 25 : 85);
             enc->SetUINT32(kRateControlMode, eAVEncCommonRateControlMode_UnconstrainedVBR);
             attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
         }
@@ -286,13 +364,14 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     int bitrate = (int)(AutoBitrate(d.w, d.h) * qk * fk);
     if (bitrate < 200000) bitrate = 200000;
     if (bitrate > 20000000) bitrate = 20000000;
-    IMFMediaType* vo = VideoType(MFVideoFormat_H264, d.w, d.h, d.fps, bitrate);
+    const GUID& vsub = fmt == VC_H265 ? kVideoHevc : fmt == VC_WMV ? kVideoWmv3 : MFVideoFormat_H264;
+    IMFMediaType* vo = VideoType(vsub, d.w, d.h, d.fps, bitrate);
     IMFMediaType* vi = VideoType(MFVideoFormat_RGB32, d.w, d.h, d.fps, 0);
     if (!vo || !vi) { if (vo) vo->Release(); if (vi) vi->Release(); return fail(L"media type"); }
     hr = d.sw->AddStream(vo, &d.vStream);
     if (SUCCEEDED(hr)) hr = d.sw->SetInputMediaType(d.vStream, vi, nullptr);
     vo->Release(); vi->Release();
-    if (FAILED(hr)) return fail(L"H.264", hr);
+    if (FAILED(hr)) return fail(fmt == VC_H265 ? L"H.265" : fmt == VC_WMV ? L"WMV" : L"H.264", hr);
 
     // Audio (optional): AAC or MP3 from a 16-bit mono microphone stream.
     wchar_t warn[200] = L"";
@@ -301,7 +380,14 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         static const int aacBps[3] = { 24000, 16000, 12000 };
         static const int mp3Bps[3] = { 16000, 12000, 8000 };
         int q = p.cfg.audioQuality < 0 ? 0 : p.cfg.audioQuality > 2 ? 2 : p.cfg.audioQuality;
-        for (int attempt = 0; attempt < 2 && !ok; ++attempt) {
+        if (fmt == VC_WMV) {                                         // Windows Media container: Windows Media Audio
+            IMFMediaType* ao = WmaType(aacBps[q]);
+            IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
+            if (ao && ai && SUCCEEDED(d.sw->AddStream(ao, &d.aStream)) && SUCCEEDED(d.sw->SetInputMediaType(d.aStream, ai, nullptr))) ok = true;
+            if (ao) ao->Release();
+            if (ai) ai->Release();
+        }
+        for (int attempt = 0; attempt < 2 && !ok && fmt != VC_WMV; ++attempt) {
             bool mp3 = attempt == 0 ? p.cfg.audioCodec == 1 : p.cfg.audioCodec != 1;   // second try: the other codec
             IMFMediaType* ao = AudioType(mp3 ? MFAudioFormat_MP3 : MFAudioFormat_AAC, mp3 ? mp3Bps[q] : aacBps[q], true);
             IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
@@ -379,6 +465,7 @@ bool Recorder::Stop()
     if (d.aThread) { WaitForSingleObject(d.aThread, 10000); CloseHandle(d.aThread); d.aThread = nullptr; }
     d.CloseAudio();
     bool ok = !d.failed;
+    if (d.alt) { ok = d.alt->Close(ok) && ok; delete d.alt; d.alt = nullptr; }
     if (d.sw) {
         HRESULT hr = d.sw->Finalize();
         ok = ok && SUCCEEDED(hr);
@@ -390,4 +477,67 @@ bool Recorder::Stop()
     d.finalized = true;
     if (!ok) DeleteFileW(d.p.path);
     return ok;
+}
+
+// ---- the video formats -----------------------------------------------------------------------------------------------
+const wchar_t* VideoFormatName(int vc)
+{
+    switch (vc) {
+    case VC_H264_BEST: return T(S_VC_BEST);
+    case VC_H264_FAST: return T(S_VC_FAST);
+    case VC_H265: return L"H.265 / HEVC (MP4)";
+    case VC_WMV: return L"WMV (Windows Media)";
+    case VC_AVI: return L"AVI (Motion-JPEG)";
+    case VC_GIF: return L"GIF (animated)";
+    }
+    return T(S_VC_BEST);
+}
+
+const wchar_t* VideoFormatExt(int vc)
+{
+    switch (vc) {
+    case VC_WMV: return L"wmv";
+    case VC_AVI: return L"avi";
+    case VC_GIF: return L"gif";
+    }
+    return L"mp4";
+}
+
+// Is there a video encoder MFT for this output format (HEVC needs the Microsoft extension or a hardware encoder).
+static bool HasVideoEncoder(const GUID& sub)
+{
+    HRESULT hrc = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    bool started = SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_FULL));
+    bool found = false;
+    if (started) {
+        MFT_REGISTER_TYPE_INFO out = { MFMediaType_Video, sub };
+        IMFActivate** act = nullptr; UINT32 n = 0;
+        if (SUCCEEDED(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER,
+                                nullptr, &out, &act, &n)) && act) {
+            found = n > 0;
+            for (UINT32 i = 0; i < n; ++i) act[i]->Release();
+            CoTaskMemFree(act);
+        }
+        MFShutdown();
+    }
+    if (SUCCEEDED(hrc)) CoUninitialize();
+    return found;
+}
+
+bool VideoFormatAvailable(int vc)
+{
+    static int cache[VC_COUNT];                                      // 0 unknown, 1 yes, 2 no
+    if (vc < 0 || vc >= VC_COUNT) return false;
+    if (cache[vc] == 0) {
+        bool ok = true;
+        switch (vc) {
+        case VC_H264_BEST: case VC_H264_FAST: ok = true; break;      // always offered (the encoder is part of Windows)
+        case VC_H265: ok = HasVideoEncoder(kVideoHevc); break;
+        case VC_WMV: ok = HasVideoEncoder(kVideoWmv3); break;
+        case VC_AVI: ok = ImageFormatAvailable(IMG_JPG); break;
+        case VC_GIF: ok = ImageFormatAvailable(IMG_GIF); break;
+        }
+        cache[vc] = ok ? 1 : 2;
+    }
+    return cache[vc] == 1;
 }

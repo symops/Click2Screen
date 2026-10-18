@@ -154,6 +154,28 @@ static void RandomText(wchar_t* out, int maxLen)
     if (!len) wcscpy(out, L"x");
 }
 
+// Picture / video formats: the ones this Windows can write; lossy ones are compared with a tolerance.
+static bool LossyFmt(int f) { return f == IMG_JPG || f == IMG_WEBP || f == IMG_JXR; }
+static int FmtTol(int f, int exact) { return LossyFmt(f) ? 28 : f == IMG_GIF ? 40 : exact; }
+static int RandomImageFormat()
+{
+    int ok[IMG_COUNT], n = 0;
+    for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ok[n++] = i;
+    return n ? ok[R(0, n - 1)] : IMG_PNG;
+}
+static int RandomVideoFormat()
+{
+    int ok[VC_COUNT], n = 0;
+    for (int i = 0; i < VC_COUNT; ++i) if (VideoFormatAvailable(i)) ok[n++] = i;
+    return n ? ok[R(0, n - 1)] : VC_H264_BEST;
+}
+static void SelData(HWND cb, int data)       // a format combo lists only the formats this Windows can write; the item data is the format
+{
+    int n = (int)SendMessageW(cb, CB_GETCOUNT, 0, 0), pick = 0;
+    for (int i = 0; i < n; ++i) if ((int)SendMessageW(cb, CB_GETITEMDATA, i, 0) == data) pick = i;
+    SendMessageW(cb, CB_SETCURSEL, pick, 0);
+}
+
 static void RandomSettings(Settings& s)
 {
     SettingsDefaults(s);
@@ -167,10 +189,10 @@ static void RandomSettings(Settings& s)
         case 2: _snwprintf(s.fileName, 128, L"%s_#_$D", name); break;
         default: _snwprintf(s.fileName, 128, L"%%USERNAME%% %s ##", name); break;
     }
-    s.imageFormat = R(0, 2); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.mic = Chance(50);
+    s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.mic = Chance(50);
     s.openFolder = Chance(50); s.openEditor = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
     s.delaySec = R(0, 60); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
-    s.videoCodec = R(0, 1); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
+    s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
     s.fps = f[R(0, 7)];
     s.language = R(0, LangCount());
@@ -326,7 +348,7 @@ static void T_Settings()
         RegSetValueExW(k, L"ImageFormat", 0, REG_DWORD, (BYTE*)&bad, 4);
         RegCloseKey(k);
         Settings c; SettingsLoad(c);
-        Check(c.fps >= 5 && c.fps <= 60 && c.delaySec <= 60 && c.imageFormat <= 2, L"settings: out-of-range registry values are clamped");
+        Check(c.fps >= 5 && c.fps <= 60 && c.delaySec <= 60 && c.imageFormat <= IMG_COUNT - 1, L"settings: out-of-range registry values are clamped");
     }
 }
 
@@ -516,24 +538,24 @@ static void T_Capture()
     int checked = 0, bad = CheckColors(bmp, ox, oy, cw, ch, 6, 14, &checked);
     Check(bw == cw && bh == ch && bad == 0 && checked > 0, name, bad ? L"colours or orientation wrong" : L"");
     // saving in every format decodes again, with the same size and colours
-    static const wchar_t* ext[] = { L"png", L"jpg", L"bmp" };
-    for (int f = 0; f < 3; ++f) {
-        wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\cap%d.%s", g_dir, R(0, 99999), ext[f]);
+    for (int f = 0; f < IMG_COUNT; ++f) {
+        if (!ImageFormatAvailable(f)) { SKIP(L"save %s: this Windows has no encoder for it", ImageFormatName(f)); continue; }
+        wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\cap%d.%s", g_dir, R(0, 99999), ImageFormatExt(f));
         bool s = SaveBitmap(bmp, path, f);
         int dw = 0, dh = 0; uint8_t* px = nullptr;
         bool d = s && DecodePixels(path, &dw, &dh, &px);
-        int tol = f == IMG_JPG ? 28 : 3, badp = 0, n = 0;
+        int tol = FmtTol(f, 3), badp = 0, n = 0;
         if (d && dw == cw && dh == ch) {
             for (int i = 0; i < 60 && n < 12; ++i) {
                 int x = R(0, dw - 1), y = R(0, dh - 1), lx = ox + x, ly = oy + y;
                 if (!SafePoint(lx, ly, g_fx.w, g_fx.h)) continue;
-                if (f == IMG_JPG && (abs(lx - g_fx.w / 2) < 20 || abs(ly - g_fx.h / 2) < 20)) continue;   // ringing at edges
+                if (LossyFmt(f) && (abs(lx - g_fx.w / 2) < 20 || abs(ly - g_fx.h / 2) < 20)) continue;   // ringing at edges
                 const uint8_t* p = px + ((size_t)y * dw + x) * 4;
                 COLORREF e = Expected(lx, ly, g_fx.w, g_fx.h);
                 ++n; if (!Near(e, p[2], p[1], p[0], tol)) ++badp;
             }
         }
-        wchar_t nm[120]; _snwprintf(nm, 120, L"save %s: file decodes, %dx%d, colours (%d points)", ext[f], cw, ch, n);
+        wchar_t nm[120]; _snwprintf(nm, 120, L"save %s: file decodes, %dx%d, colours (%d points)", ImageFormatName(f), cw, ch, n);
         Check(s && d && dw == cw && dh == ch && badp == 0, nm);
         delete[] px;
     }
@@ -665,9 +687,8 @@ static void T_Editor()
     RECT fr = FxScreenRect();
     HBITMAP bmp = CaptureRect(fr, false, false);
     if (!bmp) { FAIL(L"editor: no picture to edit"); return; }
-    int f = R(0, 2);
-    static const wchar_t* ext[] = { L"png", L"jpg", L"bmp" };
-    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\edit%d.%s", g_dir, R(0, 99999), ext[f]);
+    int f = RandomImageFormat();
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\edit%d.%s", g_dir, R(0, 99999), ImageFormatExt(f));
     SaveBitmap(bmp, path, f);
     HBITMAP copy = (HBITMAP)CopyImage(bmp, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
     DeleteObject(bmp);
@@ -707,14 +728,14 @@ static void T_Editor()
     Pump(50);
     int dw = 0, dh = 0; uint8_t* px = nullptr;
     bool d = saved && DecodePixels(path, &dw, &dh, &px);
-    int tol = f == IMG_JPG ? 60 : 12, red = 0, tested = 0;
+    int tol = LossyFmt(f) ? 60 : f == IMG_GIF ? 60 : 12, red = 0, tested = 0;
     if (d) for (int i = 0; i < added; ++i) {
         // the left edge of each rectangle (the pen is 3 px wide, centred on the edge)
         for (int k = 0; k < 4; ++k) {
             int y = rects[i].top + 4 + (rects[i].bottom - rects[i].top - 8) * k / 3, x = rects[i].left;
             if (x < 1 || x >= dw - 1 || y < 0 || y >= dh) continue;
             bool isRed;
-            if (f == IMG_JPG) {          // a 3 px line is blurred by JPEG: look for the reddest pixel around the edge
+            if (LossyFmt(f)) {           // a 3 px line is blurred by JPEG: look for the reddest pixel around the edge
                 int best = -999;
                 for (int dx = -2; dx <= 2; ++dx) {
                     if (x + dx < 0 || x + dx >= dw) continue;
@@ -730,7 +751,7 @@ static void T_Editor()
             ++tested; if (isRed) ++red;
         }
     }
-    wchar_t nm[140]; _snwprintf(nm, 140, L"editor: %d rectangle(s) are in the saved .%s file (%d/%d edge points red)", added, ext[f], red, tested);
+    wchar_t nm[140]; _snwprintf(nm, 140, L"editor: %d rectangle(s) are in the saved .%s file (%d/%d edge points red)", added, ImageFormatExt(f), red, tested);
     Check(saved && d && added > 0 && tested > 0 && red * 10 >= tested * 8, nm);
     delete[] px;
 }
@@ -742,7 +763,9 @@ static bool MfAvailable()
     return true;
 }
 
-struct VideoInfo { bool ok; int w, h; double dur; int frames; bool h264; bool audio; double adur; };
+struct VideoInfo { bool ok; int w, h; double dur; int frames; bool h264; bool hevc; bool wmv; bool audio; double adur; };
+static const GUID kTestHevc = { 0x43564548, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };
+static const GUID kTestWmv3 = { 0x33564d57, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };
 
 // Opens the MP4 with a source reader: stream types, duration, and a count of decoded video frames; with `check`, the
 // colours of one decoded frame are tested against the fixture (static fixture only).
@@ -759,7 +782,7 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
         IMFMediaType* nt = nullptr;
         if (SUCCEEDED(rd->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, 0, &nt))) {
             GUID sub; UINT32 w = 0, h = 0;
-            if (SUCCEEDED(nt->GetGUID(MF_MT_SUBTYPE, &sub))) v.h264 = sub == MFVideoFormat_H264;
+            if (SUCCEEDED(nt->GetGUID(MF_MT_SUBTYPE, &sub))) { v.h264 = sub == MFVideoFormat_H264; v.hevc = sub == kTestHevc; v.wmv = sub == kTestWmv3; }
             MFGetAttributeSize(nt, MF_MT_FRAME_SIZE, &w, &h);
             v.w = (int)w; v.h = (int)h; v.ok = true;
             nt->Release();
@@ -830,6 +853,154 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
     return v;
 }
 
+// ---- AVI: a parser of our own (the file is checked as a player would read it) --------------------------------------
+struct AviInfo { bool ok; int w, h; unsigned total, fps, vChunks, emptyV, aChunks, idxCount; unsigned long long aBytes; size_t pickOff; unsigned pickSize; bool riffOk; };
+
+static unsigned Rd32(const uint8_t* p) { unsigned v; memcpy(&v, p, 4); return v; }
+
+static AviInfo ReadAvi(const wchar_t* path, int pickN, uint8_t** keep)
+{
+    AviInfo a; memset(&a, 0, sizeof(a));
+    *keep = nullptr;
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return a;
+    LARGE_INTEGER sz; GetFileSizeEx(h, &sz);
+    if (sz.QuadPart < 64 || sz.QuadPart > 400000000LL) { CloseHandle(h); return a; }
+    size_t n = (size_t)sz.QuadPart;
+    uint8_t* d = new uint8_t[n];
+    DWORD got = 0; ReadFile(h, d, (DWORD)n, &got, nullptr); CloseHandle(h);
+    if (got != n || memcmp(d, "RIFF", 4) || memcmp(d + 8, "AVI ", 4)) { delete[] d; return a; }
+    a.riffOk = Rd32(d + 4) == n - 8;
+    size_t pos = 12; int nonEmpty = 0;
+    while (pos + 8 <= n) {
+        unsigned id = Rd32(d + pos), size = Rd32(d + pos + 4);
+        size_t end = pos + 8 + size;
+        if (end > n) break;
+        if (!memcmp(&id, "LIST", 4)) {
+            if (!memcmp(d + pos + 8, "hdrl", 4)) {
+                size_t q = pos + 12;
+                while (q + 8 <= end) {
+                    unsigned cs = Rd32(d + q + 4);
+                    if (!memcmp(d + q, "avih", 4) && cs >= 56) { a.total = Rd32(d + q + 8 + 16); a.w = (int)Rd32(d + q + 8 + 32); a.h = (int)Rd32(d + q + 8 + 36); a.ok = true; }
+                    if (!memcmp(d + q, "LIST", 4) && !memcmp(d + q + 8, "strl", 4)) {
+                        size_t r = q + 12;
+                        while (r + 8 <= q + 8 + cs) {
+                            unsigned rs = Rd32(d + r + 4);
+                            if (!memcmp(d + r, "strh", 4) && !memcmp(d + r + 8, "vids", 4)) { unsigned scale = Rd32(d + r + 8 + 20), rate = Rd32(d + r + 8 + 24); a.fps = scale ? rate / scale : 0; }
+                            r += 8 + rs + (rs & 1);
+                        }
+                    }
+                    q += 8 + cs + (cs & 1);
+                }
+            } else if (!memcmp(d + pos + 8, "movi", 4)) {
+                size_t q = pos + 12;
+                while (q + 8 <= end) {
+                    unsigned cs = Rd32(d + q + 4);
+                    if (!memcmp(d + q, "00dc", 4)) {
+                        ++a.vChunks;
+                        if (cs == 0) ++a.emptyV;
+                        else { if (++nonEmpty == pickN) { a.pickOff = q + 8; a.pickSize = cs; } }
+                    } else if (!memcmp(d + q, "01wb", 4)) { ++a.aChunks; a.aBytes += cs; }
+                    q += 8 + cs + (cs & 1);
+                }
+            }
+        } else if (!memcmp(&id, "idx1", 4)) a.idxCount = size / 16;
+        pos = end + (size & 1);
+    }
+    *keep = d;
+    return a;
+}
+
+// Compares a decoded picture (top-down BGRA) with the fixture shown on the screen (the whole fixture was recorded).
+static bool PictureMatchesFixture(const uint8_t* px, int w, int h, int tol, int* checked)
+{
+    int bad = 0, n = 0;
+    for (int i = 0; i < 300 && n < 16; ++i) {
+        int x = R(0, w - 1), y = R(0, h - 1);
+        int lx = (int)((x + 0.5) * g_fx.w / w), ly = (int)((y + 0.5) * g_fx.h / h);
+        if (!SafePoint(lx, ly, g_fx.w, g_fx.h) || abs(lx - g_fx.w / 2) < 20 || abs(ly - g_fx.h / 2) < 20) continue;
+        const uint8_t* q = px + ((size_t)y * w + x) * 4;
+        COLORREF e = Expected(lx, ly, g_fx.w, g_fx.h);
+        ++n; if (!Near(e, q[2], q[1], q[0], tol)) { ++bad; if (bad < 4) INFO(L"  picture (%d,%d) of %dx%d = %d,%d,%d, expected %d,%d,%d", x, y, w, h, q[2], q[1], q[0], GetRValue(e), GetGValue(e), GetBValue(e)); }
+    }
+    *checked = n;
+    return n > 0 && bad == 0;
+}
+
+static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc)
+{
+    uint8_t* d = nullptr;
+    AviInfo a = ReadAvi(path, 3, &d);
+    wchar_t dd[260];
+    _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks, idx1 %u, fps %u", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, a.idxCount, a.fps);
+    Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
+    Check(a.idxCount == a.vChunks + a.aChunks && a.total == a.vChunks, L"recorder: AVI index lists every chunk, the frame count is the video chunk count", dd);
+    Check(a.fps == (unsigned)fps && fabs((double)a.total / (fps ? fps : 1) - el) < 1.2, L"recorder: AVI duration matches the recorded time", dd);
+    Check(a.vChunks > a.emptyV * 1 && (double)(a.vChunks - a.emptyV) > el * fps * 0.2, L"recorder: AVI holds real pictures at about the frame rate", dd);
+    if (wantAudio) {
+        if (a.aChunks > 0) Check(fabs((double)a.aBytes / 88200.0 - el) < 1.5, L"recorder: AVI sound is as long as the picture", dd);
+        else WARN(L"recorder: no audio in the AVI (no microphone in this session?)");
+    }
+    if (wantPicture && a.pickSize > 0 && d) {
+        wchar_t jp[MAX_PATH]; _snwprintf(jp, MAX_PATH, L"%s\\frame%d.jpg", g_dir, R(0, 999999));
+        HANDLE h = CreateFileW(jp, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+        if (h != INVALID_HANDLE_VALUE) { DWORD wr; WriteFile(h, d + a.pickOff, a.pickSize, &wr, nullptr); CloseHandle(h); }
+        int dw = 0, dh = 0; uint8_t* px = nullptr; int checked = 0;
+        bool ok = DecodePixels(jp, &dw, &dh, &px) && dw == ew && dh == eh && PictureMatchesFixture(px, dw, dh, 40, &checked);
+        Check(ok, L"recorder: a JPEG frame of the AVI has the colours of the screen in the right places", checked ? L"" : L"(no points)");
+        delete[] px;
+        DeleteFileW(jp);
+    }
+    (void)desc;
+    delete[] d;
+}
+
+// ---- GIF: frame count, size, the delays and the colours of one frame -------------------------------------------------
+static void VerifyGif(const wchar_t* path, int ew, int eh, double el, int fps, bool wantPicture)
+{
+    HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    IWICImagingFactory* f = nullptr; IWICBitmapDecoder* dec = nullptr;
+    UINT frames = 0; double delaySum = 0; bool decoded = false, pictureOk = false; int checked = 0, fw = 0, fh = 0;
+    if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f)) &&
+        SUCCEEDED(f->CreateDecoderFromFilename(path, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &dec)) && SUCCEEDED(dec->GetFrameCount(&frames)) && frames > 0) {
+        decoded = true;
+        for (UINT i = 0; i < frames; ++i) {
+            IWICBitmapFrameDecode* fr = nullptr;
+            if (FAILED(dec->GetFrame(i, &fr))) continue;
+            IWICMetadataQueryReader* mq = nullptr;
+            if (SUCCEEDED(fr->GetMetadataQueryReader(&mq)) && mq) {
+                PROPVARIANT pv; PropVariantInit(&pv);
+                if (SUCCEEDED(mq->GetMetadataByName(L"/grctlext/Delay", &pv)) && pv.vt == VT_UI2) delaySum += pv.uiVal / 100.0;
+                PropVariantClear(&pv);
+                mq->Release();
+            }
+            if (i == (frames > 2 ? 2 : 0) && wantPicture) {
+                IWICFormatConverter* cv = nullptr;
+                if (SUCCEEDED(f->CreateFormatConverter(&cv)) && SUCCEEDED(cv->Initialize(fr, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom))) {
+                    UINT uw = 0, uh = 0; cv->GetSize(&uw, &uh); fw = (int)uw; fh = (int)uh;
+                    uint8_t* px = new uint8_t[(size_t)uw * uh * 4];
+                    if (SUCCEEDED(cv->CopyPixels(nullptr, uw * 4, uw * uh * 4, px))) pictureOk = PictureMatchesFixture(px, (int)uw, (int)uh, 60, &checked);
+                    delete[] px;
+                }
+                if (cv) cv->Release();
+            }
+            fr->Release();
+        }
+    }
+    if (dec) dec->Release(); if (f) f->Release();
+    if (SUCCEEDED(hrInit)) CoUninitialize();
+    wchar_t dd[200];
+    _snwprintf(dd, 200, L"%u frames, delays %.2fs, recorded %.2fs, at most %d fps", frames, delaySum, el, fps);
+    Check(decoded, L"recorder: the GIF decodes", dd);
+    if (!decoded) return;
+    Check(frames >= 2 && (double)frames > el * fps * 0.1 && (double)frames < el * fps * 1.5 + 4, L"recorder: the GIF has about as many frames as the frame rate gives", dd);
+    if (delaySum > 0) Check(fabs(delaySum - el) < 1.5, L"recorder: the GIF frame delays add up to the recorded time", dd);
+    if (wantPicture) {
+        Check(fw == ew && fh == eh, L"recorder: the GIF has the expected size", dd);
+        Check(pictureOk, L"recorder: a GIF frame has the colours of the screen in the right places", checked ? L"" : L"(no points)");
+    }
+}
+
 static DWORD WINAPI PauseSpam(LPVOID p)
 {
     Recorder* rec = (Recorder*)p;
@@ -838,7 +1009,7 @@ static DWORD WINAPI PauseSpam(LPVOID p)
     return 0;
 }
 
-static void RecordOnce(bool useNull)
+static void RecordOnce(bool useNull, bool sched = false)
 {
     // The recorded area: the whole fixture (region), a random part of it, or the window itself.
     int mode = R(0, 2);             // 0 region = whole fixture, 1 region = part of it, 2 window
@@ -853,17 +1024,21 @@ static void RecordOnce(bool useNull)
     RandomSettings(p.cfg);
     static const int fps[] = { 10, 15, 20, 25, 30, 45, 60 };
     p.cfg.fps = fps[R(0, 6)];
+    const int fmt = p.cfg.videoCodec;
+    const bool own = fmt == VC_AVI || fmt == VC_GIF;            // written by our own sinks: no Media Foundation, runs under Wine too
+    if (own && !sched && VideoFormatAvailable(fmt)) useNull = false;
+    const int effFps = fmt == VC_GIF && p.cfg.fps > 15 ? 15 : p.cfg.fps;
     p.cfg.capMouse = Chance(40); p.cfg.highlight = Chance(30);
     p.cfg.mic = !useNull && Chance(40);
     int limit = 0;
     p.cfg.durH = p.cfg.durM = p.cfg.durS = 0;
     if (Chance(30)) { limit = R(2, 3); p.cfg.durS = limit; }
     bool pause = Chance(40), spam = Chance(25), move = mode == 2 && Chance(40);
-    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\rec%d.mp4", g_dir, R(0, 999999));
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\rec%d.%s", g_dir, R(0, 999999), VideoFormatExt(fmt));
     wcscpy(p.path, path);
     if (useNull) SetEnvironmentVariableW(L"C2S_NULLSINK", L"1"); else SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr);
     wchar_t desc[300];
-    _snwprintf(desc, 300, L"record (%s) %s %dx%d fps=%d codec=%d q=%d mic=%d limit=%d pause=%d spam=%d move=%d", useNull ? L"no encoder" : L"MF",
+    _snwprintf(desc, 300, L"record (%s) %s %dx%d fps=%d codec=%d q=%d mic=%d limit=%d pause=%d spam=%d move=%d", useNull ? L"no encoder" : own ? L"own sink" : L"MF",
                mode == 2 ? L"window" : mode == 1 ? L"part" : L"region", pw, ph, p.cfg.fps, p.cfg.videoCodec, p.cfg.videoQuality, p.cfg.mic, limit, pause, spam, move);
     INFO(L"%s", desc);
     Recorder rec;
@@ -872,7 +1047,7 @@ static void RecordOnce(bool useNull)
     if (err[0]) WARN(L"%s: %s", desc, err);
     int ew, eh; int srcw = pw, srch = ph;
     if (mode == 2) { RECT vis; WindowVisibleRect(g_fx.hw, &vis); srcw = vis.right - vis.left; srch = vis.bottom - vis.top; }
-    FitSize(srcw, srch, ew, eh);
+    FitSizeForVideo(fmt, srcw, srch, ew, eh);
     Check(rec.Width() == ew && rec.Height() == eh, L"recorder: output size follows FitSize", desc);
     DWORD t0 = GetTickCount();
     int total = limit ? limit + 2 : R(3, 5);
@@ -907,25 +1082,28 @@ static void RecordOnce(bool useNull)
     }
     if (useNull) {
         // frames at the requested rate while running (spam / pauses make the expected count a range)
-        double lo = (limit ? limit : el) * p.cfg.fps * 0.4, hi = (el + 0.3) * p.cfg.fps * 1.15 + 3;
-        wchar_t d2[140]; _snwprintf(d2, 140, L"%llu frames in %.2fs at %d fps", frames, el, p.cfg.fps);
+        double lo = (limit ? limit : el) * effFps * 0.4, hi = (el + 0.3) * effFps * 1.15 + 3;
+        wchar_t d2[140]; _snwprintf(d2, 140, L"%llu frames in %.2fs at %d fps", frames, el, effFps);
         Check((double)frames <= hi && (double)frames >= (spam ? 1.0 : lo * 0.7), L"recorder: frame count follows the frame rate (no frames while paused)", d2);
         SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr);
         return;
     }
-    // the MP4 itself
+    // the file itself
     unsigned long long sz = FileSz(path);
-    Check(sz > 1500, L"recorder: the MP4 file exists and is not empty", desc);
+    Check(sz > 1500, L"recorder: the video file exists and is not empty", desc);
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     bool wantPicture = !move && p.cfg.capMouse == false;
+    if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic, wantPicture && mode != 1, desc); return; }
+    if (fmt == VC_GIF) { VerifyGif(path, ew, eh, el, effFps, wantPicture && mode != 1); return; }
     VideoInfo v = Inspect(path, wantPicture, &pictureOk, &pictureChecked, &decoderMissing);
     wchar_t d3[200];
-    _snwprintf(d3, 200, L"file %dx%d, %.2fs, %d frames, h264=%d audio=%d", v.w, v.h, v.dur, v.frames, v.h264, v.audio);
-    Check(v.ok && v.h264 && v.w == ew && v.h == eh, L"recorder: MP4 is H.264 at the expected size", d3);
-    Check(fabs(v.dur - el) < 0.9, L"recorder: MP4 duration matches the recorded time", d3);
+    _snwprintf(d3, 200, L"file %dx%d, %.2fs, %d frames, h264=%d hevc=%d wmv=%d audio=%d", v.w, v.h, v.dur, v.frames, v.h264, v.hevc, v.wmv, v.audio);
+    bool codecOk = fmt == VC_H265 ? v.hevc : fmt == VC_WMV ? v.wmv : v.h264;
+    Check(v.ok && codecOk && v.w == ew && v.h == eh, L"recorder: the video has the chosen codec at the expected size", d3);
+    Check(fabs(v.dur - el) < (fmt == VC_WMV ? 1.6 : 0.9), L"recorder: the video duration matches the recorded time", d3);
     if (decoderMissing) WARN(L"recorder: no H.264 decoder here (Windows N edition?) - frames and picture not checked");
     else {
-        double expect = el * p.cfg.fps;
+        double expect = el * effFps;
         Check(v.frames > expect * 0.25 && v.frames < expect * 1.3 + 4, L"recorder: number of video frames is plausible for the frame rate", d3);
         if (wantPicture) {
             if (mode == 1) SKIP(L"recorder: picture check is for the whole fixture only");
@@ -933,7 +1111,7 @@ static void RecordOnce(bool useNull)
         }
     }
     if (p.cfg.mic) {
-        if (v.audio) Check(true, L"recorder: the MP4 has the microphone track");
+        if (v.audio) Check(true, L"recorder: the video has the microphone track");
         else WARN(L"recorder: no audio track (no microphone in this session?)");
     }
 }
@@ -945,7 +1123,7 @@ static void T_Recorder()
 
 static void T_RecorderSched()
 {
-    RecordOnce(true);                  // schedule / pauses / limit, no encoder: works everywhere
+    RecordOnce(true, true);            // schedule / pauses / limit, no encoder: works everywhere
 }
 
 static void T_RecorderLifecycle()
@@ -1096,9 +1274,9 @@ static void T_Installer()
 static bool ValidSettings(const Settings& s, wchar_t* why)
 {
 #define NEED(c) if (!(c)) { _snwprintf(why, 100, L"%s", L"" #c); return false; }
-    NEED(s.imageFormat >= 0 && s.imageFormat <= 2) NEED(s.fps >= 5 && s.fps <= 60) NEED(s.delaySec >= 0 && s.delaySec <= 60)
+    NEED(s.imageFormat >= 0 && s.imageFormat < IMG_COUNT) NEED(s.fps >= 5 && s.fps <= 60) NEED(s.delaySec >= 0 && s.delaySec <= 60)
     NEED(s.durH >= 0 && s.durH <= 99) NEED(s.durM >= 0 && s.durM <= 59) NEED(s.durS >= 0 && s.durS <= 59)
-    NEED(s.videoCodec >= 0 && s.videoCodec <= 1) NEED(s.audioCodec >= 0 && s.audioCodec <= 1)
+    NEED(s.videoCodec >= 0 && s.videoCodec < VC_COUNT) NEED(s.audioCodec >= 0 && s.audioCodec <= 1)
     NEED(s.videoQuality >= 0 && s.videoQuality <= 2) NEED(s.audioQuality >= 0 && s.audioQuality <= 2)
     NEED(s.language >= 0 && s.language <= LangCount()) NEED(TemplateValid(s.fileName))
     NEED(wcslen(s.vidFolder) < MAX_PATH && wcslen(s.imgFolder) < MAX_PATH)
@@ -1475,9 +1653,9 @@ static void T_App()
         Check(d && dw == vs.right - vs.left && dh == vs.bottom - vs.top && AppAlive(a), L"program: the desktop hotkey saves a picture of the whole screen", dd);
         delete[] px;
         // the sequence number / template of the name is the program's own: the extension follows the format
-        static const wchar_t* ext[] = { L".png", L".jpg", L".bmp" };
-        size_t fl = wcslen(file), el = wcslen(ext[s.imageFormat]);
-        Check(fl > el && !_wcsicmp(file + fl - el, ext[s.imageFormat]), L"program: the file has the extension of the chosen format");
+        wchar_t want[16]; _snwprintf(want, 16, L".%s", ImageFormatExt(s.imageFormat));
+        size_t fl = wcslen(file), el = wcslen(want);
+        Check(fl > el && !_wcsicmp(file + fl - el, want), L"program: the file has the extension of the chosen format");
     }
 
     // a recording through the panel
@@ -1545,14 +1723,14 @@ static void T_App()
             chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_OPENEDITOR, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
             SetText(GetDlgItem(o, O_DELAY), L""); wchar_t n[16];
             _snwprintf(n, 16, L"%d", w.delaySec); SetText(GetDlgItem(o, O_DELAY), n);
-            SendMessageW(GetDlgItem(o, O_VCODEC), CB_SETCURSEL, w.videoCodec, 0); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
+            SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
             int fi = 0; for (int i = 0; i < 7; ++i) if (fpsv[i] == w.fps) fi = i;
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, fi, 0);
             _snwprintf(n, 16, L"%d", w.durH); SetText(GetDlgItem(o, O_DH), n);
             _snwprintf(n, 16, L"%d", w.durM); SetText(GetDlgItem(o, O_DM), n);
             _snwprintf(n, 16, L"%d", w.durS); SetText(GetDlgItem(o, O_DS), n);
-            SendMessageW(GetDlgItem(o, O_IMGFMT), CB_SETCURSEL, w.imageFormat, 0);
+            SelData(GetDlgItem(o, O_IMGFMT), w.imageFormat);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
             bool bad = Chance(30);
             SetText(GetDlgItem(o, O_TPL), bad ? L"a#b#" : w.fileName);
@@ -1702,13 +1880,13 @@ static void T_AppPicks()
             if (got) for (int i = 0; i < 400 && n < 10; ++i) {
                 int x = R(0, dw - 1), y = R(0, dh - 1);
                 if (!SafePoint(x, y, g_fx.w, g_fx.h)) continue;
-                if (s.imageFormat == IMG_JPG && (abs(x - g_fx.w / 2) < 20 || abs(y - g_fx.h / 2) < 20)) continue;     // JPEG rings at edges
+                if (LossyFmt(s.imageFormat) && (abs(x - g_fx.w / 2) < 20 || abs(y - g_fx.h / 2) < 20)) continue;     // JPEG rings at edges
                 const uint8_t* q = px + ((size_t)y * dw + x) * 4;
                 COLORREF ex = Expected(x, y, g_fx.w, g_fx.h);
                 // Under Wine / Xvfb a part of the window may not be repainted yet when the dimmed picker has just gone: a
                 // pure black pixel is then not counted (on Windows the desktop is composed and every pixel counts).
                 if (g_wine && ((q[0] < 30 && q[1] < 30 && q[2] < 30) || (q[0] > 235 && q[1] > 235 && q[2] > 235))) continue;   // black / white: not repainted yet
-                ++n; if (!Near(ex, q[2], q[1], q[0], s.imageFormat == IMG_JPG ? 90 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
+                ++n; if (!Near(ex, q[2], q[1], q[0], LossyFmt(s.imageFormat) ? 90 : s.imageFormat == IMG_GIF ? 60 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
             }
             Check(got && n >= 5 && bad == 0, L"program picks: the window screenshot shows that window's colours in the right places");
             delete[] px;

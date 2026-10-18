@@ -1,7 +1,7 @@
 # Click2Screen — screen recorder and screenshot tool for Windows 10/11
 
-Click2Screen records the desktop, a region or a window to MP4 (H.264 video, AAC or MP3 sound from the microphone) and takes
-screenshots of the desktop, a region or a window, with global hotkeys, a tray icon and a small editor. It is a plain Win32
+Click2Screen records the desktop, a region or a window to MP4 (H.264 or H.265), WMV, AVI or an animated GIF (sound from the
+microphone where the format has sound) and takes screenshots of the desktop, a region or a window, with global hotkeys, a tray icon and a small editor. It is a plain Win32
 program (no frameworks, no codec packs: the encoder is the one Windows ships with). A sister project of
 [Speak2Mic](https://github.com/symops/Speak2Mic) and [Show2Cam](https://github.com/symops/Show2Cam); the installer works the
 same way. **It never touches the network**: no update check, no telemetry, no downloads (a test checks that).
@@ -15,16 +15,18 @@ watermarks and online components are deliberately not reproduced.
 | | |
 |---|---|
 | **Record desktop / region / window** | The region is dragged over a dimmed picture of the desktop, a window is pointed at. A small panel (excluded from the recording) has Start / Pause / Stop and shows the time and the file size; **F11** stops. The recorded window may move and be resized while recording. |
-| **Screenshots** | `Ctrl+PrintScreen` — desktop (all monitors), `Alt+Shift+4` — region, `Alt+Shift+5` — window. PNG, JPEG or BMP. |
+| **Screenshots** | `Ctrl+PrintScreen` — desktop (**each monitor in its own file**, not one merged picture), `Alt+Shift+4` — region, `Alt+Shift+5` — window. PNG, JPEG, BMP, GIF, TIFF, WebP or JPEG XR (the list shows the ones this Windows can write). |
 | **Editor** | After a screenshot (optional): red rectangles, undo, zoom, Save / Save as. |
 | **Delay and countdown** | 0–60 s before a recording or a screenshot, with a tick each second (sounds can be switched off). |
 | **Time limit** | Stop a recording after hours / minutes / seconds. |
 | **Microphone** | The default microphone, mono 16-bit, 44.1 kHz → AAC or MP3 in the MP4; muted while paused. If it cannot be opened the video is recorded without sound (a message says so). |
 | **Pointer** | Drawn into recordings and screenshots, optionally with a translucent halo. |
-| **Quality** | H.264 "best" or "fast"; video quality high / medium / low (bit rate follows the frame size and the frame rate), 10–60 fps, audio quality high / medium / low. The frame is at most 1920×1080 (the aspect is kept), both sides even. |
+| **Video formats** | MP4 with H.264 ("best" or "fast"), MP4 with H.265 / HEVC (when Windows has the encoder), WMV (Windows Media Video + Windows Media Audio), AVI (Motion-JPEG + PCM sound, written by the program itself) and animated GIF (no sound, at most 960 × 540 and 15 frames a second). Every format ships with Windows: no codec packs. |
+| **Quality** | Video quality high / medium / low (bit rate follows the frame size and the frame rate), 10–60 fps, audio quality high / medium / low. The frame is at most 1920×1080 (the aspect is kept), both sides even. |
 | **Files** | Name template `$Y-$M-$D at $H-$N-$S`, `Img####` (the `#` run is a sequence number), `%USERNAME%`; never overwrites; "open the folder and select the file" after capture. |
 | **Tray** | Closing the window keeps the program (and the hotkeys) in the tray; click = start / pause, right click = menu. Starts with Windows in the tray if you want (`/tray`, also `/t`, `-t`, `--tray`). |
-| **Settings** | Options window (General, Video and audio, Files, Language); export / import to an `.ini` (UTF-16; the language is not part of it); "Restore default". |
+| **Look** | As small and flat as the original: one 206 × 62 window (a dark caption and a row of six icons — three screenshots, three recordings — and a menu), a dark 230 × 29 strip with the time, the size, "F11: Stop", Start / Pause and Stop while recording, a red frame around the recorded area. No advertising, no watermark, no premium offers, no network. |
+| **Settings** | Options window (General, Video and audio, Images, File name, Language); export / import to an `.ini` (UTF-16; the language is not part of it); "Restore default". |
 | **Languages** | 17: English, Русский, Українська, Беларуская, Deutsch, Français, Español, Italiano, Português (Brasil), Polski, Nederlands, Türkçe, Bahasa Indonesia, Tiếng Việt, 中文(简体), 日本語, 한국어 — the Windows language by default. |
 | **DPI** | Per-monitor high DPI; the windows rescale when they move to another monitor. |
 
@@ -37,16 +39,18 @@ picture; older systems show it).
 ## Installation
 
 Run `Click2Screen-Setup.exe` (administrator rights). It picks the 64- or 32-bit installer, which copies the program to
-`C:\Program Files\Click2Screen`, registers it in *Apps & features*, creates the shortcuts you tick and optionally starts
+`C:\Program Files\Click2Screen` (or the folder you choose in the window: "Install to" + "Browse..."), registers it in *Apps & features*, creates the shortcuts you tick and optionally starts
 the program with Windows (in the tray). "Remove" in the same window (or `uninstall.cmd`) takes it all away; your settings and
 the screenshots / videos you made are kept. For scripts:
 
 ```
-Click2Screen-Setup.exe /install /silent [/autostart] [/desktop-] [/startmenu-]
+Click2Screen-Setup.exe /install /silent [/dir "D:\Tools\Click2Screen"] [/autostart] [/desktop-] [/startmenu-]
 Click2Screen-Setup.exe /remove /silent
 ```
 
-(the exit code is 0 on success). See `docs/INSTALL.en.txt` / `docs/INSTALL.txt`.
+(the exit code is 0 on success). Installing the same version again offers "Reinstall" (a newer one: "Update"); changing the folder
+moves the program there and removes the old copy. Versions are numbered as in Speak2Mic / Show2Cam:
+`1.0.<day of the year>.<minute of the day>` of the build. See `docs/INSTALL.en.txt` / `docs/INSTALL.txt`.
 
 ## Building (Linux)
 
@@ -87,8 +91,10 @@ The interface strings live in `src/lang/<code>.txt` (one line per string of `enu
   * *pickers and editor*: the region and window pickers driven by messages (any drag direction, a stray click first, Esc), the
     editor (rectangles drawn and saved, 40 random zoom / scroll / resize messages);
   * *recorder*: start / stop cycles and refusals, the frame schedule with pauses, pause spam from another thread, the time
-    limit, a long recording without drift, a window that moves while recorded and — with Media Foundation — the MP4 itself:
-    H.264, the size, the duration, the frame count, a decoded frame's colours and the microphone track;
+    limit, a long recording without drift, a window that moves while recorded and the video file itself in a random format: with
+    Media Foundation the MP4 / WMV (codec, size, duration, frame count, a decoded frame's colours, the microphone track); the
+    AVI is parsed by the test (RIFF sizes, index, frame count, a JPEG frame decoded) and the GIF decoded frame by frame (size,
+    delays, colours) — those two also run under Wine; every picture format is saved and read back;
   * *installer*: with `--installer` (administrator) a random install / update / remove cycle, silently and through the
     installer window (boxes, log, autostart / shortcut boxes, Remove asks first); the installer window in every language;
   * *no network*: the binaries import no networking library and contain no address (the program never talks to the network).
@@ -98,7 +104,7 @@ The interface strings live in `src/lang/<code>.txt` (one line per string of `enu
   Foundation encoder does not exist, so the encoder checks are skipped and the schedule is tested without it; waits are
   multiplied (`--slow N` sets the factor by hand).
 * **`tools/wine-soak.sh`** — a soak test under Wine at the lowest priority (`nice -n 19`, idle I/O): random seeds, x64 and
-  x86 in turn, the self-test and the package test (below) in between, until the program has passed for 60 minutes in a row.
+  x86 in turn, the self-test and the package test (below) in between, until the program has passed for 20 minutes in a row.
   A failure, or a change of the program binaries, resets the stopwatch. Builds are reproducible
   (`--no-insert-timestamp`), and `ONLY=autotest ./build.sh` relinks only the autotest, so tests can grow during the soak.
 * **`tools/test-package-wine.sh`** (after `./package.sh`) — the finished package under Wine: the single `Click2Screen-Setup.exe`

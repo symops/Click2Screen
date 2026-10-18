@@ -276,10 +276,11 @@ void BeginRecord()
 {
     Log(L"record: starting");
     wchar_t err[300] = L"";
-    if (!BuildOutputPath(g_cfg.vidFolder, g_cfg.fileName, L"mp4", L"VidCounter", g_outPath, MAX_PATH, err, 300)) {
+    g_target.cfg = g_cfg;
+    if (!VideoFormatAvailable(g_cfg.videoCodec)) g_target.cfg.videoCodec = VC_H264_BEST;   // e.g. HEVC chosen on another computer
+    if (!BuildOutputPath(g_cfg.vidFolder, g_cfg.fileName, VideoFormatExt(g_target.cfg.videoCodec), L"VidCounter", g_outPath, MAX_PATH, err, 300)) {
         Warn(err); g_state = ST_ARMED; UpdatePanel(); return;
     }
-    g_target.cfg = g_cfg;
     wcscpy(g_target.path, g_outPath);
     if (!g_rec) g_rec = new Recorder;
     err[0] = 0;
@@ -504,7 +505,7 @@ void ShowPanel()
         reg = true;
     }
     int w = Sc(kStripW), h = Sc(kStripH);
-    g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP,
+    g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP | WS_CLIPCHILDREN,
                               0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
     ExcludeFromCapture(g_panel);
     RoundWindow(g_panel, w, h, Sc(8));
@@ -572,6 +573,28 @@ void PumpFor(int ms)
     }
 }
 
+struct MonList { RECT r[16]; int n; };
+BOOL CALLBACK MonEnum(HMONITOR, HDC, LPRECT r, LPARAM p)
+{
+    MonList* m = (MonList*)p;
+    if (m->n < 16) m->r[m->n++] = *r;
+    return TRUE;
+}
+
+// The monitors' rectangles, left to right, then top to bottom.
+int MonitorRects(RECT* out, int cap)
+{
+    MonList m; m.n = 0;
+    EnumDisplayMonitors(nullptr, nullptr, MonEnum, (LPARAM)&m);
+    for (int i = 1; i < m.n; ++i)
+        for (int j = i; j > 0 && (m.r[j].left < m.r[j - 1].left || (m.r[j].left == m.r[j - 1].left && m.r[j].top < m.r[j - 1].top)); --j) {
+            RECT t = m.r[j]; m.r[j] = m.r[j - 1]; m.r[j - 1] = t;
+        }
+    int n = m.n < cap ? m.n : cap;
+    for (int i = 0; i < n; ++i) out[i] = m.r[i];
+    return n;
+}
+
 void Shot(Mode mode)
 {
     Log(L"shot: mode %d, busy %d, state %d", (int)mode, (int)g_busyShot, (int)g_state);
@@ -579,32 +602,46 @@ void Shot(Mode mode)
     if (g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_COUNTDOWN) return;   // hotkeys during a recording are ignored
     g_busyShot = true;
     bool wasVisible = g_main && IsWindowVisible(g_main);
-    RECT rc; HWND hw = nullptr;
+    RECT rects[16]; int count = 1; HWND hw = nullptr;
     wchar_t err[300];
     if (!EnsureFolder(g_cfg.imgFolder, err, 300)) { Warn(err); g_busyShot = false; return; }
-    if (mode == M_DESKTOP) { rc = VirtualScreen(); if (wasVisible) { ShowMain(false); PumpFor(250); } }
-    else if (!ChooseTarget(mode, &rc, &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
+    if (mode == M_DESKTOP) {
+        // One picture per monitor (not one merged picture of the whole desktop).
+        count = MonitorRects(rects, 16);
+        if (count < 1) { rects[0] = VirtualScreen(); count = 1; }
+        if (wasVisible) { ShowMain(false); PumpFor(250); }
+    }
+    else if (!ChooseTarget(mode, &rects[0], &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
     else if (wasVisible) ShowMain(false);
     for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); PumpFor(1000); }
-    if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rc)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
+    if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
     if (mode != M_DESKTOP) PumpFor(300);          // let the screen show the desktop again, not the dimmed picker
-    HBITMAP bmp = CaptureRect(rc, g_cfg.capMouse, g_cfg.highlight);
+    HBITMAP bmps[16];                             // all the monitors are captured at the same moment, then saved one by one
+    int got = 0;
+    for (int i = 0; i < count; ++i) { bmps[i] = CaptureRect(rects[i], g_cfg.capMouse, g_cfg.highlight); if (bmps[i]) ++got; }
     if (wasVisible) ShowMain(true);
-    if (!bmp) { Warn(T(S_ERR_CAPTURE)); g_busyShot = false; return; }
-    wchar_t path[MAX_PATH];
-    if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
-        Warn(err); DeleteObject(bmp); g_busyShot = false; return;
+    if (got == 0) { Warn(T(S_ERR_CAPTURE)); g_busyShot = false; return; }
+    wchar_t path[MAX_PATH] = L"", last[MAX_PATH] = L"";
+    bool saved = false;
+    for (int i = 0; i < count; ++i) {
+        if (!bmps[i]) continue;
+        if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
+            Warn(err); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
+        }
+        if (!SaveBitmap(bmps[i], path, g_cfg.imageFormat)) {
+            wchar_t msg[MAX_PATH + 100]; _snwprintf(msg, MAX_PATH + 100, T(S_ERR_SAVE), path);
+            Warn(msg); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
+        }
+        saved = true;
+        wcscpy(last, path);
+        wchar_t msg[MAX_PATH + 40]; _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), path);
+        SetStatus(msg);
+        if (g_cfg.openEditor) OpenEditor(g_main, bmps[i], path, g_cfg.imageFormat);   // takes the bitmap
+        else DeleteObject(bmps[i]);
+        bmps[i] = nullptr;
     }
-    if (!SaveBitmap(bmp, path, g_cfg.imageFormat)) {
-        wchar_t msg[MAX_PATH + 100]; _snwprintf(msg, MAX_PATH + 100, T(S_ERR_SAVE), path);
-        Warn(msg); DeleteObject(bmp); g_busyShot = false; return;
-    }
-    Beep(false);
-    wchar_t msg[MAX_PATH + 40]; _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), path);
-    SetStatus(msg);
-    if (g_cfg.openEditor) OpenEditor(g_main, bmp, path, g_cfg.imageFormat);   // takes the bitmap
-    else DeleteObject(bmp);
-    if (g_cfg.openFolder) ShowInExplorer(path);
+    if (saved) Beep(false);
+    if (saved && g_cfg.openFolder) ShowInExplorer(last);
     g_busyShot = false;
 }
 
@@ -839,7 +876,7 @@ bool OptionsDialog()
     RECT r = { 0, 0, W, H };
     AdjustWindowRect(&r, WS_CAPTION | WS_SYSMENU, FALSE);
     HWND owner = g_main && IsWindowVisible(g_main) ? g_main : nullptr;
-    o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", T(S_OPT_TITLE), WS_CAPTION | WS_SYSMENU,
+    o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", T(S_OPT_TITLE), WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
                             CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, owner, nullptr, g_inst, &o);
     HWND d = o.dlg;
     {   // the tab rectangles: the text width + 16 units, 21 units high
@@ -885,7 +922,7 @@ bool OptionsDialog()
     for (const wchar_t* f : fpsText) ComboAdd(fp, f);
     label(1, S_OPT_VIDFOLDER, 35, 193, 400);
     edit(1, O_VIDFOLDER, 34, 211, 417);
-    add(1, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, 459, 210, 33, 22, O_BRVID);
+    add(1, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 210, 33, 22, O_BRVID);
     label(1, S_OPT_DURATION, 35, 240, 450);
     edit(1, O_DH, 35, 258, 38, ES_NUMBER);  label(1, S_OPT_HOURS, 78, 260, 70);
     edit(1, O_DM, 160, 258, 38, ES_NUMBER); label(1, S_OPT_MINUTES, 203, 260, 70);
@@ -897,7 +934,7 @@ bool OptionsDialog()
     for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ComboAdd(fm, ImageFormatName(i), i);
     label(2, S_OPT_IMGFOLDER, 35, 113, 400);
     edit(2, O_IMGFOLDER, 134, 111, 316);
-    add(2, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, 459, 110, 33, 22, O_BRIMG);
+    add(2, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 110, 33, 22, O_BRIMG);
 
     // page 3: file name
     label(3, S_OPT_TEMPLATE, 34, 61, 120);
@@ -1242,7 +1279,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     // A window of its own look: no system caption (the program draws the 28-unit one), 206 x 62 units, rounded corners.
     RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int ww = Sc(kMainW), wh = Sc(kMainH);
-    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
+    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
     RoundMain();
