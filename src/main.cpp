@@ -671,7 +671,9 @@ void Shot(Mode mode)
     if (mode != M_DESKTOP) PumpFor(300);          // let the screen show the desktop again, not the dimmed picker
     HBITMAP bmps[16];                             // all the monitors are captured at the same moment, then saved one by one
     int got = 0;
+    Log(L"shot: capturing %d area(s)", count);
     for (int i = 0; i < count; ++i) { bmps[i] = CaptureRect(rects[i], g_cfg.capMouse, g_cfg.highlight); if (bmps[i]) ++got; }
+    Log(L"shot: captured %d of %d", got, count);
     if (wasVisible) ShowMain(true);
     if (got == 0) { Warn(T(S_ERR_CAPTURE)); g_busyShot = false; return; }
     wchar_t path[MAX_PATH] = L"", last[MAX_PATH] = L"";
@@ -681,6 +683,7 @@ void Shot(Mode mode)
         if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
             Warn(err); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
         }
+        Log(L"shot: saving picture %d as %s", i + 1, ImageFormatName(g_cfg.imageFormat));
         DWORD t0 = GetTickCount();
         bool wrote = SaveBitmap(bmps[i], path, g_cfg.imageFormat);
         Log(L"shot: saved %s as %s in %lu ms (%d)", path, ImageFormatName(g_cfg.imageFormat), (unsigned long)(GetTickCount() - t0), (int)wrote);
