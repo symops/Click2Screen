@@ -35,6 +35,7 @@ enum Str {
     S_SU_LOG_DONE, S_SU_LOG_FAIL, S_SU_LOG_KEPT, S_SU_LOG_NOSRC, S_SU_LOG_NODIR, S_SU_ASK_REMOVE,
     S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
     S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
+    S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -66,7 +67,7 @@ struct Settings {
     bool openFolder;                // show the finished file in Explorer
     bool openEditor;                // open the editor after a screenshot
     bool runAtStartup;
-    int  delaySec;                  // delay before capture (0..60)
+    int  delaySec;                  // delay before capture (0..10)
     int  durH, durM, durS;          // stop after (all 0 = no limit)
     int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF
     int  audioCodec;                // 0 = AAC, 1 = MP3

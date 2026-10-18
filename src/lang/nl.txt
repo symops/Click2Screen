@@ -97,7 +97,7 @@ Het instellingenbestand kan niet worden geschreven: %s
 Het instellingenbestand kan niet worden gelezen: %s
 Schermrecorder en hulpmiddel voor schermafbeeldingen
 Niet geïnstalleerd
-Geïnstalleerd: versie %s, %s
+Geïnstalleerde versie: %s
 Snelkoppeling op het bureaublad
 Snelkoppeling in het startmenu
 Starten met Windows (in het systeemvak)
@@ -123,7 +123,7 @@ Uw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven
 Fout: Click2Screen.exe is niet gevonden naast het installatieprogramma.
 Fout: de map Program Files is niet gevonden.
 Click2Screen van deze computer verwijderen?\n\nUw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven behouden.
-Installeren in:
+Installatiemap:
 Bladeren…
 Kies de map waarin Click2Screen wordt geïnstalleerd
 Fout: de installatiemap is ongeldig (een volledig pad zoals C:\Programs\Click2Screen is nodig).
@@ -134,3 +134,6 @@ Afbeeldingen
 Bestandsnaam
 Video-opties
 Audio-opties
+Versie %s
+Status
+Click2Screen starten na de installatie

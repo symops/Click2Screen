@@ -97,7 +97,7 @@ Não foi possível gravar o arquivo de configurações: %s
 Não foi possível ler o arquivo de configurações: %s
 Gravador de tela e ferramenta de capturas de tela
 Não instalado
-Instalado: versão %s, %s
+Versão instalada: %s
 Atalho na área de trabalho
 Atalho no menu Iniciar
 Iniciar com o Windows (na área de notificação)
@@ -123,7 +123,7 @@ Suas configurações e as capturas e vídeos que você fez foram mantidos.
 Erro: o Click2Screen.exe não foi encontrado ao lado do instalador.
 Erro: a pasta Arquivos de Programas não foi encontrada.
 Remover o Click2Screen deste computador?\n\nSuas configurações e as capturas e vídeos que você fez serão mantidos.
-Instalar em:
+Pasta de instalação:
 Procurar…
 Escolha a pasta onde instalar o Click2Screen
 Erro: a pasta de instalação não é válida (é preciso um caminho completo, como C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Imagens
 Nome do arquivo
 Opções de vídeo
 Opções de áudio
+Versão %s
+Estado
+Iniciar o Click2Screen após a instalação

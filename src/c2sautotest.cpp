@@ -191,7 +191,7 @@ static void RandomSettings(Settings& s)
     }
     s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.mic = Chance(50);
     s.openFolder = Chance(50); s.openEditor = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
-    s.delaySec = R(0, 60); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
+    s.delaySec = R(0, 10); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
     s.fps = f[R(0, 7)];
@@ -348,7 +348,7 @@ static void T_Settings()
         RegSetValueExW(k, L"ImageFormat", 0, REG_DWORD, (BYTE*)&bad, 4);
         RegCloseKey(k);
         Settings c; SettingsLoad(c);
-        Check(c.fps >= 5 && c.fps <= 60 && c.delaySec <= 60 && c.imageFormat <= IMG_COUNT - 1, L"settings: out-of-range registry values are clamped");
+        Check(c.fps >= 5 && c.fps <= 60 && c.delaySec <= 10 && c.imageFormat <= IMG_COUNT - 1, L"settings: out-of-range registry values are clamped");
     }
 }
 
@@ -651,10 +651,29 @@ static void T_Pickers()
     MakeFixture(R(400, 800), R(300, 500));
     RECT fr = FxScreenRect();
     RECT vs = VirtualScreen();
-    int mode = R(0, 2);
-    PickJob job; memset(&job, 0, sizeof(job)); job.mode = mode;
+    int mode = R(0, 3);
+    PickJob job; memset(&job, 0, sizeof(job)); job.mode = mode == 3 ? 1 : mode;
     RECT got = {0, 0, 0, 0}; HWND gotw = nullptr; bool ok;
-    if (mode == 0) {
+    if (mode == 3) {
+        // the desktop is a window too: pointing at a place no window covers returns the work area of that monitor (no taskbar)
+        bool found = false; POINT pt = { 0, 0 }; RECT work = { 0, 0, 0, 0 };
+        for (int i = 0; i < 60 && !found; ++i) {
+            POINT q = { vs.left + R(0, vs.right - vs.left - 1), vs.top + R(0, vs.bottom - vs.top - 1) };
+            if (PtInRect(&fr, q)) continue;
+            MONITORINFO mi; mi.cbSize = sizeof(mi);
+            if (!GetMonitorInfoW(MonitorFromPoint(q, MONITOR_DEFAULTTONEAREST), &mi) || !PtInRect(&mi.rcWork, q)) continue;
+            HWND under = WindowFromPoint(q), root = under ? GetAncestor(under, GA_ROOT) : nullptr;
+            wchar_t cls[64] = L""; if (root) GetClassNameW(root, cls, 64);
+            if (under == GetDesktopWindow() || root == GetDesktopWindow() || !wcscmp(cls, L"Progman") || !wcscmp(cls, L"WorkerW")) { pt = q; work = mi.rcWork; found = true; }
+        }
+        if (!found) { SKIP(L"picker: no free desktop spot on this screen"); return; }
+        job.a = pt;
+        HANDLE th = CreateThread(nullptr, 0, PickDriver, &job, 0, nullptr);
+        ok = PickWindow(nullptr, &gotw, &got);
+        WaitForSingleObject(th, 5000); CloseHandle(th);
+        Check(ok && gotw == nullptr && EqualRect(&got, &work), L"picker: pointing at the bare desktop returns its work area (the desktop is a window)");
+        if (ok && !EqualRect(&got, &work)) Rep(L"INFO", L"  wanted %d,%d,%d,%d got %d,%d,%d,%d", work.left, work.top, work.right, work.bottom, got.left, got.top, got.right, got.bottom);
+    } else if (mode == 0) {
         RECT want; want.left = vs.left + R(0, (vs.right - vs.left) - 60); want.top = vs.top + R(0, (vs.bottom - vs.top) - 60);
         want.right = want.left + R(20, vs.right - want.left > 500 ? 500 : vs.right - want.left); want.bottom = want.top + R(20, vs.bottom - want.top > 400 ? 400 : vs.bottom - want.top);
         bool flip = Chance(50);             // drag from the bottom-right corner back
@@ -1274,7 +1293,7 @@ static void T_Installer()
 static bool ValidSettings(const Settings& s, wchar_t* why)
 {
 #define NEED(c) if (!(c)) { _snwprintf(why, 100, L"%s", L"" #c); return false; }
-    NEED(s.imageFormat >= 0 && s.imageFormat < IMG_COUNT) NEED(s.fps >= 5 && s.fps <= 60) NEED(s.delaySec >= 0 && s.delaySec <= 60)
+    NEED(s.imageFormat >= 0 && s.imageFormat < IMG_COUNT) NEED(s.fps >= 5 && s.fps <= 60) NEED(s.delaySec >= 0 && s.delaySec <= 10)
     NEED(s.durH >= 0 && s.durH <= 99) NEED(s.durM >= 0 && s.durM <= 59) NEED(s.durS >= 0 && s.durS <= 59)
     NEED(s.videoCodec >= 0 && s.videoCodec < VC_COUNT) NEED(s.audioCodec >= 0 && s.audioCodec <= 1)
     NEED(s.videoQuality >= 0 && s.videoQuality <= 2) NEED(s.audioQuality >= 0 && s.audioQuality <= 2)
@@ -1721,8 +1740,8 @@ static void T_App()
             w.language = R(0, LangCount());
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
             chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_OPENEDITOR, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
-            SetText(GetDlgItem(o, O_DELAY), L""); wchar_t n[16];
-            _snwprintf(n, 16, L"%d", w.delaySec); SetText(GetDlgItem(o, O_DELAY), n);
+            wchar_t n[16];
+            SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
             int fi = 0; for (int i = 0; i < 7; ++i) if (fpsv[i] == w.fps) fi = i;
@@ -2217,7 +2236,7 @@ static void T_NoNetwork()
 }
 
 // ---- the installer window --------------------------------------------------------------------------------------------
-enum { SU_TITLE = 100, SU_SUB, SU_STATE, SU_DESKTOP, SU_START, SU_AUTO, SU_LOG, SU_INSTALL, SU_REMOVE, SU_LAUNCH, SU_CLOSE, SU_LANGLBL, SU_LANG };
+enum { SU_TITLE = 100, SU_SUB, SU_STATE, SU_DESKTOP, SU_START, SU_AUTO, SU_LOG, SU_INSTALL, SU_REMOVE, SU_LAUNCH, SU_CLOSE, SU_LANGLBL, SU_LANG, SU_PATHLBL, SU_PATH, SU_BROWSE, SU_VERSION, SU_GROUP, SU_RUNAFTER };
 
 static bool LaunchSetupGui(PROCESS_INFORMATION& pi, HWND& wnd)
 {
@@ -2254,11 +2273,13 @@ static void T_SetupGui()
         SendMessageW(w, WM_COMMAND, MAKEWPARAM(SU_LANG, CBN_SELCHANGE), (LPARAM)combo);
         LangSelect(lng + 1);
         wchar_t got[500], want[500];
-        struct { int id; Str s; } t[] = { {SU_DESKTOP, S_SU_DESKTOP}, {SU_START, S_SU_STARTMENU}, {SU_AUTO, S_SU_AUTOSTART}, {SU_REMOVE, S_SU_REMOVE}, {SU_LAUNCH, S_SU_LAUNCH}, {SU_CLOSE, S_SU_CLOSE}, {SU_LANGLBL, S_SU_LANG} };
+        struct { int id; Str s; } t[] = { {SU_DESKTOP, S_SU_DESKTOP}, {SU_START, S_SU_STARTMENU}, {SU_AUTO, S_SU_AUTOSTART}, {SU_REMOVE, S_SU_REMOVE}, {SU_LAUNCH, S_SU_LAUNCH}, {SU_CLOSE, S_SU_CLOSE}, {SU_LANGLBL, S_SU_LANG}, {SU_PATHLBL, S_SU_PATH}, {SU_RUNAFTER, S_SU_RUNAFTER}, {SU_GROUP, S_SU_STATUS} };
         for (auto& i : t) { WinText(GetDlgItem(w, i.id), got, 500); if (wcscmp(got, T(i.s))) { ++bad; Rep(L"INFO", L"  language %d control %d: [%s] expected [%s]", lng, i.id, got, T(i.s)); } }
         WinText(GetDlgItem(w, SU_TITLE), got, 500); if (wcscmp(got, T(S_APP))) ++bad;
-        _snwprintf(want, 500, L"%s \x2014 %s", ver, T(S_SU_SUB));
-        WinText(GetDlgItem(w, SU_SUB), got, 500); if (wcscmp(got, want)) { ++bad; Rep(L"INFO", L"  subtitle [%s] expected [%s]", got, want); }
+        WinText(GetDlgItem(w, SU_SUB), got, 500); if (wcscmp(got, T(S_SU_SUB))) { ++bad; Rep(L"INFO", L"  subtitle [%s] expected [%s]", got, T(S_SU_SUB)); }
+        wchar_t vn[100]; _snwprintf(vn, 100, T(S_SU_VERSION), ver);
+        _snwprintf(want, 500, L"%s   \x00B7   %s, %s", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);       // version · author, e-mail (as the references)
+        WinText(GetDlgItem(w, SU_VERSION), got, 500); if (wcscmp(got, want)) { ++bad; Rep(L"INFO", L"  version line [%s] expected [%s]", got, want); }
         WinText(GetDlgItem(w, SU_INSTALL), got, 500);
         if (wcscmp(got, T(S_SU_INSTALL)) && wcscmp(got, T(S_SU_UPDATE))) { ++bad; Rep(L"INFO", L"  install button [%s]", got); }
     }
@@ -2268,7 +2289,8 @@ static void T_SetupGui()
     wchar_t st[300]; WinText(GetDlgItem(w, SU_STATE), st, 300);
     bool installed = wcsstr(st, L"1.0") != nullptr;
     LangSelect(R(1, LangCount())); SendMessageW(combo, CB_SETCURSEL, 0, 0); SendMessageW(w, WM_COMMAND, MAKEWPARAM(SU_LANG, CBN_SELCHANGE), (LPARAM)combo); LangSelect(1);
-    if (!installed) Check(!IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && !IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)), L"installer window: with nothing installed Remove and Launch are disabled");
+    if (!installed) Check(!IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && !IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)) && IsWindowEnabled(GetDlgItem(w, SU_BROWSE)), L"installer window: with nothing installed Remove and Launch are disabled and the folder can be chosen");
+    else Check(!IsWindowEnabled(GetDlgItem(w, SU_BROWSE)), L"installer window: an installed copy stays where it is (Browse is off)");
     // a DPI change moves the controls; a window message storm must not break it
     for (int i = 0; i < 20; ++i) { SendMessageW(w, WM_NULL, 0, 0); Pump(5); }
     PostMessageW(w, WM_COMMAND, SU_CLOSE, 0);
@@ -2292,11 +2314,12 @@ static void T_SetupGuiInstall()
     SendMessageW(GetDlgItem(w, SU_DESKTOP), BM_SETCHECK, wantDesk ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(w, SU_START), BM_SETCHECK, wantMenu ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(w, SU_AUTO), BM_SETCHECK, wantAuto ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(w, SU_RUNAFTER), BM_SETCHECK, BST_UNCHECKED, 0);          // do not start the program from the test
     PostMessageW(w, WM_COMMAND, SU_INSTALL, 0);
     DWORD end = GetTickCount() + WMS(60000);
     while (!IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && (int)(end - GetTickCount()) > 0) Pump(100);
     Pump(500);
-    Check(IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)), L"installer window: Install finishes and enables Remove / Launch");
+    Check(IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)) && !IsWindowEnabled(GetDlgItem(w, SU_BROWSE)), L"installer window: Install finishes, enables Remove / Launch and fixes the folder");
     Check(GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES, L"installer window: the program is in Program Files");
     wchar_t log[3000]; WinText(GetDlgItem(w, SU_LOG), log, 3000);
     Check(wcslen(log) > 20, L"installer window: the log tells what was done", log);

@@ -20,7 +20,7 @@ namespace {
 int g_lang = 0;          // language chosen in the window: index in the table
 
 // ---- state -----------------------------------------------------------------------------------------------------
-enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE };
+enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE, IDC_VERSION, IDC_GROUP, IDC_RUNAFTER };
 enum { ACT_INSTALL = 1, ACT_REMOVE };
 #define WM_APP_LOG  (WM_APP + 1)
 #define WM_APP_DONE (WM_APP + 2)
@@ -32,11 +32,13 @@ const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 HINSTANCE g_inst;
 HWND g_wnd;
 HFONT g_font, g_fontTitle;
-HICON g_icon;
+HICON g_icon, g_big;       // g_big: the 64-unit icon of the white header
+const int kHeadH = 94;     // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
 HANDLE g_worker;
 int g_action;
 bool g_ok, g_silent, g_selfDelete;
-bool g_wantDesktop = true, g_wantStart = true, g_wantAuto = false;
+bool g_wantDesktop = true, g_wantStart = true, g_wantAuto = false, g_wantRun = true;
+COLORREF g_stateColor = RGB(90, 90, 100);   // not installed: grey; this version: green; another version: amber (as Speak2Mic / Show2Cam)
 wchar_t g_dir[MAX_PATH];      // the folder to install to (the window's box, /dir, or what is installed already)
 
 HWND Ctl(int id) { return GetDlgItem(g_wnd, id); }
@@ -185,11 +187,10 @@ void RemoveFilesIn(const wchar_t* dir, const wchar_t* keepSelf)
 bool DoInstall()
 {
     Say(T(S_SU_LOG_INSTALL));
-    wchar_t dir[MAX_PATH], oldDir[MAX_PATH];
-    wcscpy(dir, g_dir);
+    wchar_t dir[MAX_PATH];
+    if (!GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", dir, MAX_PATH) || !dir[0]) wcscpy(dir, g_dir);   // an installed copy stays where it is
     if (!dir[0] && !ProgramDir(dir)) { Say(T(S_SU_LOG_NODIR)); return false; }
     if (!ValidDir(dir)) { Say(T(S_SU_LOG_BADDIR)); return false; }
-    bool hadOld = GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", oldDir, MAX_PATH) && oldDir[0] && _wcsicmp(oldDir, dir) != 0;
     wchar_t srcExe[MAX_PATH], srcSetup[MAX_PATH], srcUn[MAX_PATH];
     SiblingPath(L"Click2Screen.exe", srcExe);
     GetModuleFileNameW(nullptr, srcSetup, MAX_PATH);
@@ -218,6 +219,7 @@ bool DoInstall()
         SetRegStr(k, L"DisplayName", L"Click2Screen");
         SetRegStr(k, L"DisplayVersion", L"" C2S_VER_STR);
         SetRegStr(k, L"Publisher", L"" C2S_AUTHOR_STR);
+        SetRegStr(k, L"Contact", L"" C2S_EMAIL_STR);
         SetRegStr(k, L"InstallLocation", dir);
         SetRegStr(k, L"DisplayIcon", icon);
         SetRegStr(k, L"UninstallString", un);
@@ -250,7 +252,6 @@ bool DoInstall()
         }
         RegCloseKey(k);
     }
-    if (hadOld) RemoveFilesIn(oldDir, nullptr);            // the path was changed: the old copy goes
     Say(T(S_SU_LOG_DONE));
     return true;
 }
@@ -313,15 +314,19 @@ void Refresh()
 {
     wchar_t ver[64], loc[MAX_PATH], text[MAX_PATH + 100];
     bool inst = Installed(ver, loc);
-    if (inst) _snwprintf(text, MAX_PATH + 100, T(S_SU_STATE_INST), ver, loc); else wcscpy(text, T(S_SU_STATE_NONE));
+    if (inst) _snwprintf(text, MAX_PATH + 100, T(S_SU_STATE_INST), ver); else wcscpy(text, T(S_SU_STATE_NONE));
+    g_stateColor = !inst ? RGB(90, 90, 100) : wcscmp(ver, L"" C2S_VER_STR) == 0 ? RGB(0, 128, 60) : RGB(200, 140, 0);
     SetWindowTextW(Ctl(IDC_STATE), text);
     SetWindowTextW(Ctl(IDC_INSTALL), !inst ? T(S_SU_INSTALL) : wcscmp(ver, L"" C2S_VER_STR) == 0 ? T(S_SU_REINSTALL) : T(S_SU_UPDATE));   // same version: Reinstall
     EnableWindow(Ctl(IDC_REMOVE), inst);
     EnableWindow(Ctl(IDC_LAUNCH), inst);
     SetWindowTextW(Ctl(IDC_TITLE), T(S_APP));
-    wchar_t sub[200];
-    _snwprintf(sub, 200, L"%s — %s", L"" C2S_VER_STR, T(S_SU_SUB));
-    SetWindowTextW(Ctl(IDC_SUB), sub);
+    SetWindowTextW(Ctl(IDC_SUB), T(S_SU_SUB));
+    wchar_t vl[200], vn[100];
+    _snwprintf(vn, 100, T(S_SU_VERSION), L"" C2S_VER_STR);
+    _snwprintf(vl, 200, L"%s   ·   %s, %s", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);
+    SetWindowTextW(Ctl(IDC_VERSION), vl);
+    SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
     SetWindowTextW(Ctl(IDC_DESKTOP), T(S_SU_DESKTOP));
     SetWindowTextW(Ctl(IDC_START), T(S_SU_STARTMENU));
     SetWindowTextW(Ctl(IDC_AUTO), T(S_SU_AUTOSTART));
@@ -331,11 +336,15 @@ void Refresh()
     SetWindowTextW(Ctl(IDC_LANGLBL), T(S_SU_LANG));
     SetWindowTextW(Ctl(IDC_PATHLBL), T(S_SU_PATH));
     SetWindowTextW(Ctl(IDC_BROWSE), T(S_SU_BROWSE));
+    SetWindowTextW(Ctl(IDC_RUNAFTER), T(S_SU_RUNAFTER));
+    // The folder is chosen before the installation; an installed copy stays where it is (as Speak2Mic / Show2Cam).
+    if (inst && loc[0]) SetWindowTextW(Ctl(IDC_PATH), loc);
+    EnableWindow(Ctl(IDC_BROWSE), !inst && !g_worker);
 }
 
 void Busy(bool busy)
 {
-    int ids[] = { IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LANG, IDC_PATH, IDC_BROWSE };
+    int ids[] = { IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_RUNAFTER, IDC_LANG, IDC_BROWSE };
     for (int id : ids) EnableWindow(Ctl(id), !busy);
     if (!busy) Refresh();
 }
@@ -346,6 +355,7 @@ void Start(int action)
     g_wantDesktop = IsDlgButtonChecked(g_wnd, IDC_DESKTOP) == BST_CHECKED;
     g_wantStart = IsDlgButtonChecked(g_wnd, IDC_START) == BST_CHECKED;
     g_wantAuto = IsDlgButtonChecked(g_wnd, IDC_AUTO) == BST_CHECKED;
+    g_wantRun = IsDlgButtonChecked(g_wnd, IDC_RUNAFTER) == BST_CHECKED;
     if (action == ACT_INSTALL) GetWindowTextW(Ctl(IDC_PATH), g_dir, MAX_PATH);
     g_action = action;
     Busy(true);
@@ -404,32 +414,37 @@ void BuildControls()
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
     ncm.lfMessageFont.lfHeight = MulDiv(ncm.lfMessageFont.lfHeight, (int)g_dpi, Dpi96());
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
-    LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_SEMIBOLD; lf.lfHeight = lf.lfHeight * 2;
+    LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_BOLD; lf.lfHeight = lf.lfHeight * 2;
     g_fontTitle = CreateFontIndirectW(&lf);
-    Add(L"STATIC", L"", SS_LEFT, 20, 14, 400, 34, IDC_TITLE, g_fontTitle);
-    Add(L"STATIC", L"", SS_LEFT, 20, 50, 560, 20, IDC_SUB);
-    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 20, 78, 560, 20, IDC_STATE);
-    Add(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE, 20, 106, 110, 24, IDC_PATHLBL);
-    Add(L"EDIT", g_dir, WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 134, 106, 340, 24, IDC_PATH);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 482, 105, 98, 26, IDC_BROWSE);
+    // 600 x 490 units, laid out as Speak2Mic / Show2Cam: a white header (icon, name, subtitle, version · author, the language
+    // list in its right corner), a status group, the buttons, the log, the install folder, the boxes, Close.
+    Add(L"STATIC", L"", SS_LEFT, 100, 12, 340, 36, IDC_TITLE, g_fontTitle);
+    HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 450, 14, 138, 300, IDC_LANG);
+    for (int i = 0; i < LangCount(); ++i) SendMessageW(lg, CB_ADDSTRING, 0, (LPARAM)LangName(i));
+    SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
+    Add(L"STATIC", L"", SS_LEFT, 100, 50, 480, 20, IDC_SUB);
+    Add(L"STATIC", L"", SS_LEFT, 100, 71, 480, 19, IDC_VERSION);
+    Add(L"BUTTON", L"", BS_GROUPBOX, 12, 106, 576, 104, IDC_GROUP);
+    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 26, 130, 550, 20, IDC_STATE);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 322, 222, 144, 30, IDC_INSTALL);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 222, 116, 30, IDC_REMOVE);
+    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 12, 264, 576, 95, IDC_LOG);
+    Add(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE, 17, 367, 150, 20, IDC_PATHLBL);
+    Add(L"EDIT", g_dir, WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 169, 366, 320, 22, IDC_PATH);      // changed only with Browse
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 495, 364, 96, 26, IDC_BROWSE);
     SendMessageW(Ctl(IDC_PATH), EM_SETLIMITTEXT, 200, 0);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 142, 330, 22, IDC_DESKTOP);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 168, 330, 22, IDC_START);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 194, 330, 22, IDC_AUTO);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 404, 270, 22, IDC_DESKTOP);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 404, 280, 22, IDC_START);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 428, 270, 22, IDC_RUNAFTER);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 428, 280, 22, IDC_AUTO);
     CheckDlgButton(hw, IDC_DESKTOP, g_wantDesktop ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_START, g_wantStart ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_AUTO, g_wantAuto ? BST_CHECKED : BST_UNCHECKED);
-    Add(L"STATIC", L"", SS_RIGHT, 360, 146, 100, 20, IDC_LANGLBL);
-    HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 466, 142, 114, 300, IDC_LANG);
-    for (int i = 0; i < LangCount(); ++i) SendMessageW(lg, CB_ADDSTRING, 0, (LPARAM)LangName(i));
-    SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
-    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 20, 228, 560, 128, IDC_LOG);
-    // Four buttons in one row with gaps: 3 x 136 + 1 x 100 + 3 x 10 = 538 <= 560 (Close is flush right).
-    int bw = 136, gap = 10, y = 368;
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 20, y, bw, 32, IDC_INSTALL);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + bw + gap, y, bw, 32, IDC_REMOVE);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + 2 * (bw + gap), y, bw, 32, IDC_LAUNCH);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 580 - 100, y, 100, 32, IDC_CLOSE);
+    CheckDlgButton(hw, IDC_RUNAFTER, g_wantRun ? BST_CHECKED : BST_UNCHECKED);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 12, 449, 144, 30, IDC_LAUNCH);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 449, 116, 30, IDC_CLOSE);
+    // The list has no label in the window (the language is told by its own names); the label stays for screen readers and tests.
+    CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT, 0, 0, Sc(10), Sc(10), hw, (HMENU)(INT_PTR)IDC_LANGLBL, g_inst, nullptr);
     Refresh();
 }
 
@@ -443,6 +458,7 @@ void Rescale(UINT dpi, const RECT* suggested)
     g_wantDesktop = IsDlgButtonChecked(g_wnd, IDC_DESKTOP) == BST_CHECKED;
     g_wantStart = IsDlgButtonChecked(g_wnd, IDC_START) == BST_CHECKED;
     g_wantAuto = IsDlgButtonChecked(g_wnd, IDC_AUTO) == BST_CHECKED;
+    g_wantRun = IsDlgButtonChecked(g_wnd, IDC_RUNAFTER) == BST_CHECKED;
     GetWindowTextW(Ctl(IDC_PATH), g_dir, MAX_PATH);
     g_dpi = dpi;
     HWND c;
@@ -472,6 +488,33 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             break;
         }
         return 0;
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: {
+        PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
+        RECT cr; GetClientRect(hw, &cr);
+        RECT head = { 0, 0, cr.right, Sc(kHeadH) }, body = { 0, Sc(kHeadH), cr.right, cr.bottom };
+        FillRect(dc, &head, (HBRUSH)GetStockObject(WHITE_BRUSH));
+        FillRect(dc, &body, GetSysColorBrush(COLOR_BTNFACE));
+        HPEN pen = CreatePen(PS_SOLID, 1, RGB(160, 160, 160)); HGDIOBJ op = SelectObject(dc, pen);
+        MoveToEx(dc, 0, Sc(kHeadH), nullptr); LineTo(dc, cr.right, Sc(kHeadH));
+        SelectObject(dc, op); DeleteObject(pen);
+        if (g_big) DrawIconEx(dc, Sc(21), Sc(16), g_big, Sc(64), Sc(64), 0, nullptr, DI_NORMAL);
+        EndPaint(hw, &ps);
+        return 0; }
+    case WM_CTLCOLORSTATIC: {
+        int cid = GetDlgCtrlID((HWND)lp);
+        if (cid == IDC_TITLE || cid == IDC_SUB || cid == IDC_VERSION) {
+            SetTextColor((HDC)wp, cid == IDC_TITLE ? RGB(40, 40, 60) : cid == IDC_VERSION ? RGB(130, 130, 140) : RGB(90, 90, 100));
+            SetBkColor((HDC)wp, RGB(255, 255, 255));
+            return (LRESULT)GetStockObject(WHITE_BRUSH);
+        }
+        }
+        if (GetDlgCtrlID((HWND)lp) == IDC_STATE) {
+            SetTextColor((HDC)wp, g_stateColor);
+            SetBkColor((HDC)wp, GetSysColor(COLOR_BTNFACE));
+            return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
+        }
+        break;
     case WM_DPICHANGED: Rescale(HIWORD(wp), (const RECT*)lp); return 0;
     case WM_APP_LOG: {
         wchar_t* line = (wchar_t*)lp;
@@ -485,7 +528,7 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_APP_DONE:
         if (g_worker) { WaitForSingleObject(g_worker, 2000); CloseHandle(g_worker); g_worker = nullptr; }
         Busy(false);
-        if (g_ok && g_action == ACT_INSTALL) SetFocus(Ctl(IDC_LAUNCH));
+        if (g_ok && g_action == ACT_INSTALL) { SetFocus(Ctl(IDC_LAUNCH)); if (g_wantRun) Launch(); }
         return 0;
     case WM_CLOSE:
         if (g_worker) return 0;                // not in the middle of copying
@@ -534,11 +577,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     INITCOMMONCONTROLSEX ic = { sizeof(ic), ICC_STANDARD_CLASSES };
     InitCommonControlsEx(&ic);
     g_icon = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
+    g_big = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, 64, 64, 0);
     WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
     wc.lpfnWndProc = Proc; wc.hInstance = inst; wc.lpszClassName = L"Click2ScreenSetup";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    RECT r = { 0, 0, Sc(600), Sc(416) };
+    RECT r = { 0, 0, Sc(600), Sc(490) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     HWND w = CreateWindowExW(0, L"Click2ScreenSetup", L"Click2Screen", style, CW_USEDEFAULT, CW_USEDEFAULT,

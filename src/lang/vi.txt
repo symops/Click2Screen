@@ -97,7 +97,7 @@ Không thể ghi tệp cài đặt: %s
 Không thể đọc tệp cài đặt: %s
 Trình quay màn hình và công cụ chụp ảnh màn hình
 Chưa cài đặt
-Đã cài đặt: phiên bản %s, %s
+Phiên bản đã cài đặt: %s
 Lối tắt trên màn hình nền
 Lối tắt trong menu Start
 Khởi động cùng Windows (ở khay hệ thống)
@@ -123,7 +123,7 @@ Cài đặt của bạn cùng ảnh chụp màn hình và video đã tạo đư�
 Lỗi: không tìm thấy Click2Screen.exe cạnh trình cài đặt.
 Lỗi: không tìm thấy thư mục Program Files.
 Gỡ bỏ Click2Screen khỏi máy tính này?\n\nCài đặt của bạn cùng ảnh chụp màn hình và video đã tạo sẽ được giữ lại.
-Cài đặt vào:
+Thư mục cài đặt:
 Duyệt…
 Chọn thư mục để cài đặt Click2Screen
 Lỗi: thư mục cài đặt không hợp lệ (cần đường dẫn đầy đủ, ví dụ C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Hình ảnh
 Tên tệp
 Tùy chọn video
 Tùy chọn âm thanh
+Phiên bản %s
+Trạng thái
+Chạy Click2Screen sau khi cài đặt

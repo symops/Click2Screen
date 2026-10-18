@@ -25,6 +25,14 @@ struct WinEntry { HWND hw; RECT rc; };
 WinEntry g_wins[512];
 int g_nwins = 0;
 HWND g_skip = nullptr;
+HWND g_desktop = nullptr;       // marks the desktop entries: the work area of a monitor (no taskbar / Start), below every window
+
+BOOL CALLBACK DesktopProc(HMONITOR mon, HDC, LPRECT, LPARAM)
+{
+    MONITORINFO mi; mi.cbSize = sizeof(mi);
+    if (g_nwins < 512 && GetMonitorInfoW(mon, &mi)) { g_wins[g_nwins].hw = g_desktop; g_wins[g_nwins].rc = mi.rcWork; ++g_nwins; }
+    return TRUE;
+}
 
 BOOL CALLBACK EnumProc(HWND hw, LPARAM)
 {
@@ -179,7 +187,8 @@ LRESULT CALLBACK PickProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             p->result = r; OffsetRect(&p->result, p->vs.left, p->vs.top);
             Finish(p, true);
         } else if (!p->region && p->cur) {
-            p->hwnd = p->cur; p->result = p->curRc;
+            p->hwnd = p->cur == g_desktop ? nullptr : p->cur;      // the desktop is a fixed rectangle, not a window to follow
+            p->result = p->curRc;
             Finish(p, true);
         }
         return 0;
@@ -218,7 +227,11 @@ bool Run(HWND owner, bool region, RECT* out, HWND* hw)
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
     ncm.lfMessageFont.lfHeight = ncm.lfMessageFont.lfHeight * 5 / 4;
     p.font = CreateFontIndirectW(&ncm.lfMessageFont);
-    if (!region) { g_nwins = 0; g_skip = nullptr; EnumWindows(EnumProc, 0); }
+    if (!region) {
+        g_nwins = 0; g_skip = nullptr; g_desktop = GetDesktopWindow();
+        EnumWindows(EnumProc, 0);
+        EnumDisplayMonitors(nullptr, nullptr, DesktopProc, 0);       // the desktop is a window too (what is left when no window is under the pointer)
+    }
     HWND ov = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"Click2ScreenPicker", L"", WS_POPUP,
                               p.vs.left, p.vs.top, w, h, nullptr, nullptr, GetModuleHandleW(nullptr), &p);
     p.self = ov;

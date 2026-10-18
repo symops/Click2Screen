@@ -97,7 +97,7 @@ Tidak dapat menulis berkas pengaturan: %s
 Tidak dapat membaca berkas pengaturan: %s
 Perekam layar dan alat tangkapan layar
 Belum terpasang
-Terpasang: versi %s, %s
+Versi terpasang: %s
 Pintasan desktop
 Pintasan menu Start
 Mulai bersama Windows (di area notifikasi)
@@ -123,7 +123,7 @@ Pengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.
 Kesalahan: Click2Screen.exe tidak ditemukan di samping pemasang.
 Kesalahan: folder Program Files tidak ditemukan.
 Hapus Click2Screen dari komputer ini?\n\nPengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.
-Pasang di:
+Folder pemasangan:
 Telusuri…
 Pilih folder untuk memasang Click2Screen
 Kesalahan: folder pemasangan tidak valid (diperlukan path lengkap seperti C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Gambar
 Nama berkas
 Opsi video
 Opsi audio
+Versi %s
+Status
+Jalankan Click2Screen setelah pemasangan

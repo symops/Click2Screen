@@ -97,7 +97,7 @@ Cannot write the settings file: %s
 Cannot read the settings file: %s
 Screen recorder and screenshot tool
 Not installed
-Installed: version %s, %s
+Installed version %s
 Desktop shortcut
 Start menu shortcut
 Start with Windows (in the tray)
@@ -123,7 +123,7 @@ Your settings and the screenshots / videos you made are kept.
 Error: Click2Screen.exe was not found next to the installer.
 Error: cannot find the Program Files folder.
 Remove Click2Screen from this computer?\n\nYour settings and the screenshots / videos you made are kept.
-Install to:
+Install folder:
 Browse…
 Select the folder to install Click2Screen to
 Error: the installation folder is not valid (a full path such as C:\Programs\Click2Screen is needed).
@@ -134,3 +134,6 @@ Images
 File name
 Video options
 Audio options
+Version %s
+Status
+Start Click2Screen after installation

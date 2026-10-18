@@ -97,7 +97,7 @@ Nie można zapisać pliku ustawień: %s
 Nie można odczytać pliku ustawień: %s
 Rejestrator ekranu i narzędzie do zrzutów ekranu
 Nie zainstalowano
-Zainstalowano: wersja %s, %s
+Zainstalowana wersja: %s
 Skrót na pulpicie
 Skrót w menu Start
 Uruchamiaj z systemem Windows (w obszarze powiadomień)
@@ -123,7 +123,7 @@ Twoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostały zachowane.
 Błąd: nie znaleziono pliku Click2Screen.exe obok instalatora.
 Błąd: nie znaleziono folderu Program Files.
 Usunąć Click2Screen z tego komputera?\n\nTwoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostaną zachowane.
-Zainstaluj w:
+Folder instalacji:
 Przeglądaj…
 Wybierz folder, w którym zainstalować Click2Screen
 Błąd: folder instalacji jest nieprawidłowy (potrzebna pełna ścieżka, np. C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Obrazy
 Nazwa pliku
 Opcje wideo
 Opcje dźwięku
+Wersja %s
+Stan
+Uruchom Click2Screen po instalacji

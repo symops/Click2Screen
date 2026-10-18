@@ -82,7 +82,7 @@ void SettingsLoad(Settings& s)
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
     s.openEditor   = GetDw(k, L"OpenEditor", d.openEditor) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
-    s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 60);
+    s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
     s.durH         = Clamp((int)GetDw(k, L"RecDurationHour", 0), 0, 99);
     s.durM         = Clamp((int)GetDw(k, L"RecDurationMin", 0), 0, 59);
     s.durS         = Clamp((int)GetDw(k, L"RecDurationSec", 0), 0, 59);
@@ -360,7 +360,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"OpenEditor", 0, 1, &v)) s.openEditor = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
-    if (IniGetInt(path, L"Delay", 0, 60, &v)) s.delaySec = v;
+    if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
     if (IniGetInt(path, L"RecDurationHour", 0, 99, &v)) s.durH = v;
     if (IniGetInt(path, L"RecDurationMin", 0, 59, &v)) s.durM = v;
     if (IniGetInt(path, L"RecDurationSec", 0, 59, &v)) s.durS = v;

@@ -97,7 +97,7 @@ Click2Screen 编辑器
 无法读取设置文件：%s
 屏幕录制和截图工具
 未安装
-已安装：版本 %s，%s
+已安装版本 %s
 桌面快捷方式
 开始菜单快捷方式
 随 Windows 启动（在托盘中）
@@ -123,7 +123,7 @@ Click2Screen 不会随 Windows 启动。
 错误：在安装程序旁边找不到 Click2Screen.exe。
 错误：找不到 Program Files 文件夹。
 要从此计算机卸载 Click2Screen 吗？\n\n您的设置以及已创建的截图和视频将被保留。
-安装到：
+安装文件夹：
 浏览…
 选择安装 Click2Screen 的文件夹
 错误：安装文件夹无效（需要完整路径，例如 C:\Programs\Click2Screen）。
@@ -134,3 +134,6 @@ Click2Screen 不会随 Windows 启动。
 文件名
 视频选项
 音频选项
+版本 %s
+状态
+安装后启动 Click2Screen

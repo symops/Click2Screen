@@ -97,7 +97,7 @@ Impossibile scrivere il file di impostazioni: %s
 Impossibile leggere il file di impostazioni: %s
 Registratore dello schermo e strumento per schermate
 Non installato
-Installato: versione %s, %s
+Versione installata: %s
 Collegamento sul desktop
 Collegamento nel menu Start
 Avvia con Windows (nell’area di notifica)
@@ -123,7 +123,7 @@ Le impostazioni e le schermate e i video creati vengono conservati.
 Errore: Click2Screen.exe non trovato accanto al programma di installazione.
 Errore: cartella Program Files non trovata.
 Rimuovere Click2Screen da questo computer?\n\nLe impostazioni e le schermate e i video creati vengono conservati.
-Installa in:
+Cartella di installazione:
 Sfoglia…
 Scegli la cartella in cui installare Click2Screen
 Errore: la cartella di installazione non è valida (serve un percorso completo, ad esempio C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Immagini
 Nome file
 Opzioni video
 Opzioni audio
+Versione %s
+Stato
+Avvia Click2Screen dopo l'installazione

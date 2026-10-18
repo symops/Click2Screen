@@ -112,7 +112,7 @@ void ShowMain(bool show)
 const COLORREF kCapTop = RGB(70, 80, 101), kCapBot = RGB(39, 45, 56), kBody = RGB(238, 250, 255), kBlue = RGB(8, 115, 197),
                kGlyph = RGB(54, 62, 78), kStripTop = RGB(40, 45, 57), kStripBot = RGB(71, 80, 101), kStripSep = RGB(82, 91, 108),
                kStripInk = RGB(177, 180, 187), kRecRed = RGB(203, 62, 58);
-const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3;
+const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3, kCountW = 64;
 
 void Box(HDC dc, int x, int y, int w, int h, COLORREF c)       // a rectangle in 96-dpi units at the pixel origin (ox, oy) set by the caller
 {
@@ -253,7 +253,8 @@ void UpdatePanel()
     if (!g_panel) return;
     double sec = g_rec ? g_rec->ElapsedSec() : 0.0;
     wchar_t buf[96];
-    if (g_state == ST_COUNTDOWN) TimeText(g_countdown, true, buf); else TimeText((int)sec, false, buf);
+    if (g_state == ST_COUNTDOWN) _snwprintf(buf, 96, L"%d", g_countdown);          // 3 - 2 - 1, a tick every second
+    else TimeText((int)sec, false, buf);
     SetCell(g_panel, IDC_P_TIME, buf);
     double mb = g_rec && g_state != ST_ARMED && g_state != ST_COUNTDOWN ? g_rec->FileBytes() / 1048576.0 : 0.0;
     _snwprintf(buf, 96, L"%d Mb", (int)mb);
@@ -573,6 +574,57 @@ void PumpFor(int ms)
     }
 }
 
+// The countdown before a screenshot: a small dark strip with the number (3, 2, 1) at the bottom of the main screen,
+// like the recording strip; it is excluded from the picture and gone before the picture is taken.
+HWND g_count;
+LRESULT CALLBACK CountProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    if (m == WM_NCCREATE) return DefWindowProcW(hw, m, wp, lp);
+    if (m == WM_ERASEBKGND) return 1;
+    if (m == WM_PAINT) {
+        PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
+        FillStrip(dc, 0, Sc(kCountW));
+        wchar_t t[16]; GetWindowTextW(hw, t, 16);
+        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(253, 253, 253));
+        HGDIOBJ of = SelectObject(dc, g_fontBold);
+        RECT r = { 0, 0, Sc(kCountW), Sc(kStripH) };
+        DrawTextW(dc, t, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        SelectObject(dc, of);
+        EndPaint(hw, &ps);
+        return 0;
+    }
+    return DefWindowProcW(hw, m, wp, lp);
+}
+
+void CountdownShow(int n)
+{
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
+        wc.lpfnWndProc = CountProc; wc.hInstance = g_inst; wc.lpszClassName = L"Click2ScreenCount"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        RegisterClassW(&wc); reg = true;
+    }
+    wchar_t t[16]; _snwprintf(t, 16, L"%d", n);
+    if (!g_count) {
+        int w = Sc(kCountW), h = Sc(kStripH);
+        POINT origin = { 0, 0 };
+        MONITORINFO pm; pm.cbSize = sizeof(pm); GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);
+        g_count = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenCount", t, WS_POPUP,
+                                  (pm.rcWork.left + pm.rcWork.right - w) / 2, pm.rcWork.bottom - h - Sc(20), w, h, nullptr, nullptr, g_inst, nullptr);
+        if (!g_count) return;
+        ExcludeFromCapture(g_count);
+        RoundWindow(g_count, w, h, Sc(8));
+        ShowWindow(g_count, SW_SHOWNA);
+    } else SetWindowTextW(g_count, t);
+    InvalidateRect(g_count, nullptr, FALSE);
+    UpdateWindow(g_count);
+}
+
+void CountdownHide()
+{
+    if (g_count) { DestroyWindow(g_count); g_count = nullptr; PumpFor(60); }
+}
+
 struct MonList { RECT r[16]; int n; };
 BOOL CALLBACK MonEnum(HMONITOR, HDC, LPRECT r, LPARAM p)
 {
@@ -613,7 +665,8 @@ void Shot(Mode mode)
     }
     else if (!ChooseTarget(mode, &rects[0], &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
     else if (wasVisible) ShowMain(false);
-    for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); PumpFor(1000); }
+    for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i); PumpFor(1000); }
+    CountdownHide();
     if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
     if (mode != M_DESKTOP) PumpFor(300);          // let the screen show the desktop again, not the dimmed picker
     HBITMAP bmps[16];                             // all the monitors are captured at the same moment, then saved one by one
@@ -686,7 +739,7 @@ void OptLoad(OptState* o)
     auto chk = [&](int id, bool v) { CheckDlgButton(d, id, v ? BST_CHECKED : BST_UNCHECKED); };
     chk(O_AUTOSTART, s.runAtStartup); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
     chk(O_OPENEDITOR, s.openEditor); chk(O_SOUNDS, s.sounds); chk(O_MIC, s.mic);
-    SetDlgItemInt(d, O_DELAY, s.delaySec, FALSE);
+    SendDlgItemMessageW(d, O_DELAY, CB_SETCURSEL, s.delaySec < 0 ? 0 : s.delaySec > 10 ? 10 : s.delaySec, 0);
     ComboSelectData(d, O_VCODEC, s.videoCodec);
     SendDlgItemMessageW(d, O_ACODEC, CB_SETCURSEL, s.audioCodec, 0);
     SendDlgItemMessageW(d, O_VQ, CB_SETCURSEL, s.videoQuality, 0);
@@ -709,7 +762,7 @@ void OptCollect(OptState* o, Settings& s)
     s.runAtStartup = chk(O_AUTOSTART); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.openFolder = chk(O_OPENFOLDER);
     s.openEditor = chk(O_OPENEDITOR); s.sounds = chk(O_SOUNDS); s.mic = chk(O_MIC);
     auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
-    s.delaySec = num(O_DELAY, 0, 60);
+    { int i = (int)SendDlgItemMessageW(d, O_DELAY, CB_GETCURSEL, 0, 0); s.delaySec = i < 0 ? 0 : i > 10 ? 10 : i; }
     s.videoCodec = ComboGetData(d, O_VCODEC, s.videoCodec);
     s.audioCodec = (int)SendDlgItemMessageW(d, O_ACODEC, CB_GETCURSEL, 0, 0);
     s.videoQuality = (int)SendDlgItemMessageW(d, O_VQ, CB_GETCURSEL, 0, 0);
@@ -900,7 +953,8 @@ bool OptionsDialog()
 
     // page 0: general (checkboxes at 28.5-unit steps from y 91; the delay on top)
     label(0, S_OPT_DELAY, 33, 61, 200);
-    edit(0, O_DELAY, 244, 59, 40, ES_NUMBER);
+    HWND dl = combo(0, O_DELAY, 244, 58, 40);
+    for (int i = 0; i <= 10; ++i) { wchar_t n[8]; _snwprintf(n, 8, L"%d", i); ComboAdd(dl, n); }
     label(0, S_OPT_SECONDS, 294, 61, 150);
     static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE},
         {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_OPEN_EDITOR, O_OPENEDITOR}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_MIC, O_MIC} };

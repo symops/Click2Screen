@@ -97,7 +97,7 @@ Impossible d’écrire le fichier de paramètres : %s
 Impossible de lire le fichier de paramètres : %s
 Enregistreur d’écran et outil de capture d’écran
 Non installé
-Installé : version %s, %s
+Version installée : %s
 Raccourci sur le bureau
 Raccourci dans le menu Démarrer
 Démarrer avec Windows (dans la zone de notification)
@@ -123,7 +123,7 @@ Vos paramètres ainsi que les captures et vidéos réalisées sont conservés.
 Erreur : Click2Screen.exe est introuvable à côté du programme d’installation.
 Erreur : le dossier Program Files est introuvable.
 Supprimer Click2Screen de cet ordinateur ?\n\nVos paramètres ainsi que les captures et vidéos réalisées sont conservés.
-Installer dans :
+Dossier d'installation :
 Parcourir…
 Choisissez le dossier d'installation de Click2Screen
 Erreur : le dossier d'installation n'est pas valide (un chemin complet comme C:\Programs\Click2Screen est requis).
@@ -134,3 +134,6 @@ Images
 Nom de fichier
 Options vidéo
 Options audio
+Version %s
+État
+Lancer Click2Screen après l'installation

@@ -97,7 +97,7 @@ Die Einstellungsdatei kann nicht geschrieben werden: %s
 Die Einstellungsdatei kann nicht gelesen werden: %s
 Bildschirmrekorder und Screenshot-Werkzeug
 Nicht installiert
-Installiert: Version %s, %s
+Installierte Version %s
 Desktopverknüpfung
 Startmenüverknüpfung
 Mit Windows starten (im Infobereich)
@@ -123,7 +123,7 @@ Ihre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.
 Fehler: Click2Screen.exe wurde neben dem Installationsprogramm nicht gefunden.
 Fehler: Der Ordner „Programme“ wurde nicht gefunden.
 Click2Screen von diesem Computer entfernen?\n\nIhre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.
-Installieren nach:
+Installationsordner:
 Durchsuchen…
 Ordner für die Installation von Click2Screen wählen
 Fehler: Der Installationsordner ist ungültig (ein vollständiger Pfad wie C:\Programs\Click2Screen ist nötig).
@@ -134,3 +134,6 @@ Bilder
 Dateiname
 Videooptionen
 Audiooptionen
+Version %s
+Status
+Click2Screen nach der Installation starten

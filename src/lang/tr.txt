@@ -97,7 +97,7 @@ Ayar dosyası yazılamıyor: %s
 Ayar dosyası okunamıyor: %s
 Ekran kaydedici ve ekran görüntüsü aracı
 Yüklü değil
-Yüklü: sürüm %s, %s
+Yüklü sürüm: %s
 Masaüstü kısayolu
 Başlat menüsü kısayolu
 Windows ile başlat (bildirim alanında)
@@ -134,3 +134,6 @@ Resimler
 Dosya adı
 Video seçenekleri
 Ses seçenekleri
+Sürüm %s
+Durum
+Kurulumdan sonra Click2Screen'i başlat

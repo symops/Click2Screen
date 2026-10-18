@@ -97,7 +97,7 @@ No se puede escribir el archivo de configuración: %s
 No se puede leer el archivo de configuración: %s
 Grabadora de pantalla y herramienta de capturas
 No instalado
-Instalado: versión %s, %s
+Versión instalada: %s
 Acceso directo en el escritorio
 Acceso directo en el menú Inicio
 Iniciar con Windows (en el área de notificación)
@@ -123,7 +123,7 @@ Se conservan su configuración y las capturas y vídeos que haya realizado.
 Error: no se encontró Click2Screen.exe junto al instalador.
 Error: no se encuentra la carpeta Archivos de programa.
 ¿Quitar Click2Screen de este equipo?\n\nSe conservan su configuración y las capturas y vídeos que haya realizado.
-Instalar en:
+Carpeta de instalación:
 Examinar…
 Elija la carpeta donde instalar Click2Screen
 Error: la carpeta de instalación no es válida (se necesita una ruta completa, como C:\Programs\Click2Screen).
@@ -134,3 +134,6 @@ Imágenes
 Nombre de archivo
 Opciones de vídeo
 Opciones de audio
+Versión %s
+Estado
+Iniciar Click2Screen tras la instalación
