@@ -779,8 +779,10 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
             else {
                 IMFMediaType* cur = nullptr; INT32 stride = 0;
                 if (SUCCEEDED(rd->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur))) {
-                    UINT32 s = 0;
+                    UINT32 s = 0, ow = 0, oh = 0;
                     if (SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &s))) stride = (INT32)s; else stride = v.w * 4;
+                    MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &ow, &oh);
+                    Rep(L"INFO", L"  decoder output %ux%u, stride %d (native %dx%d)", ow, oh, (int)stride, v.w, v.h);
                     cur->Release();
                 }
                 int target = R(2, 6);
@@ -794,6 +796,7 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                             IMFMediaBuffer* mb = nullptr; BYTE* data = nullptr; DWORD len = 0;
                             if (SUCCEEDED(sm->ConvertToContiguousBuffer(&mb)) && SUCCEEDED(mb->Lock(&data, nullptr, &len))) {
                                 int absStride = stride < 0 ? -stride : stride;
+                                if (v.h > 0 && (int)(len / v.h) > absStride) absStride = (int)(len / v.h);   // the decoder pads rows (to 16 px) beyond the type's stride
                                 int bad = 0, n = 0;
                                 for (int i = 0; i < 200 && n < 16; ++i) {
                                     int x = R(0, v.w - 1), y = R(0, v.h - 1);
@@ -802,7 +805,12 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                                     if (!SafePoint(lx, ly, g_fx.w, g_fx.h) || abs(lx - g_fx.w / 2) < 20 || abs(ly - g_fx.h / 2) < 20) continue;
                                     const BYTE* p = stride < 0 ? data + (size_t)(v.h - 1 - y) * absStride + x * 4 : data + (size_t)y * absStride + x * 4;
                                     COLORREF e = Expected(lx, ly, g_fx.w, g_fx.h);
-                                    ++n; if (!Near(e, p[2], p[1], p[0], 60)) ++bad;
+                                    ++n; if (!Near(e, p[2], p[1], p[0], 60)) { ++bad; if (bad < 5) Rep(L"INFO", L"  decoded frame (%d,%d) of %dx%d = %d,%d,%d, expected %d,%d,%d (stride %d)", x, y, v.w, v.h, p[2], p[1], p[0], GetRValue(e), GetGValue(e), GetBValue(e), (int)stride); }
+                                }
+                                if (bad) {
+                                    wchar_t row[300] = L""; int ym = v.h / 4;
+                                    for (int k = 0; k < 8; ++k) { const BYTE* q = data + (size_t)ym * absStride + (size_t)(k * v.w / 8) * 4; wsprintfW(row + lstrlenW(row), L" %d:%d,%d,%d", k * v.w / 8, q[2], q[1], q[0]); }
+                                    Rep(L"INFO", L"  row y=%d (len %u):%s", ym, (unsigned)len, row);
                                 }
                                 *pictureChecked = n; *pictureOk = n > 0 && bad == 0;
                                 mb->Unlock();
@@ -1321,6 +1329,9 @@ static HWND FindReady(DWORD pid, const wchar_t* cls, int waitMs)
     if (w) Pump(30);
     return w && IsWindowVisible(w) ? w : nullptr;
 }
+// SetWindowText does not change the text of a control that belongs to another process (the documentation says so; Wine
+// forwards it anyway): the message does.
+static void SetText(HWND w, const wchar_t* t) { DWORD_PTR r = 0; SendMessageTimeoutW(w, WM_SETTEXT, 0, (LPARAM)t, SMTO_ABORTIFHUNG, 5000, &r); }
 static void WinText(HWND w, wchar_t* out, int n) { out[0] = 0; SendMessageTimeoutW(w, WM_GETTEXT, n, (LPARAM)out, SMTO_ABORTIFHUNG, 3000, nullptr); }
 static bool WaitText(HWND parent, int id, const wchar_t* want, int waitMs)
 {
@@ -1532,19 +1543,19 @@ static void T_App()
             w.language = R(0, LangCount());
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
             chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_OPENEDITOR, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
-            SetWindowTextW(GetDlgItem(o, O_DELAY), L""); wchar_t n[16];
-            _snwprintf(n, 16, L"%d", w.delaySec); SetWindowTextW(GetDlgItem(o, O_DELAY), n);
+            SetText(GetDlgItem(o, O_DELAY), L""); wchar_t n[16];
+            _snwprintf(n, 16, L"%d", w.delaySec); SetText(GetDlgItem(o, O_DELAY), n);
             SendMessageW(GetDlgItem(o, O_VCODEC), CB_SETCURSEL, w.videoCodec, 0); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
             int fi = 0; for (int i = 0; i < 7; ++i) if (fpsv[i] == w.fps) fi = i;
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, fi, 0);
-            _snwprintf(n, 16, L"%d", w.durH); SetWindowTextW(GetDlgItem(o, O_DH), n);
-            _snwprintf(n, 16, L"%d", w.durM); SetWindowTextW(GetDlgItem(o, O_DM), n);
-            _snwprintf(n, 16, L"%d", w.durS); SetWindowTextW(GetDlgItem(o, O_DS), n);
+            _snwprintf(n, 16, L"%d", w.durH); SetText(GetDlgItem(o, O_DH), n);
+            _snwprintf(n, 16, L"%d", w.durM); SetText(GetDlgItem(o, O_DM), n);
+            _snwprintf(n, 16, L"%d", w.durS); SetText(GetDlgItem(o, O_DS), n);
             SendMessageW(GetDlgItem(o, O_IMGFMT), CB_SETCURSEL, w.imageFormat, 0);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
             bool bad = Chance(30);
-            SetWindowTextW(GetDlgItem(o, O_TPL), bad ? L"a#b#" : w.fileName);
+            SetText(GetDlgItem(o, O_TPL), bad ? L"a#b#" : w.fileName);
             PostMessageW(o, WM_COMMAND, IDOK, 0);
             if (bad) {
                 bool warned = DismissBox(a.pi.dwProcessId, IDOK, 5000);
