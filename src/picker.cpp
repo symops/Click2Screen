@@ -226,11 +226,17 @@ bool Run(HWND owner, bool region, RECT* out, HWND* hw)
     ShowWindow(ov, SW_SHOW);
     SetForegroundWindow(ov); SetFocus(ov);
     MSG msg;
-    while (!p.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    bool quit = false; int quitCode = 0;
+    while (!p.done) {
+        BOOL r = GetMessageW(&msg, nullptr, 0, 0);
+        if (r == 0) { quit = true; quitCode = (int)msg.wParam; p.ok = false; break; }
+        if (r < 0) break;
         TranslateMessage(&msg); DispatchMessageW(&msg);
     }
     DestroyWindow(ov);
     DeleteObject(p.shot); DeleteObject(p.dim); DeleteObject(p.font);
+    // WM_QUIT (the program is being closed) belongs to the main loop: hand it on, or the process would live on without windows
+    if (quit) { PostQuitMessage(quitCode); return false; }
     if (wasVisible) ShowWindow(owner, SW_SHOW);
     if (p.ok) { *out = p.result; if (hw) *hw = p.hwnd; }
     return p.ok;

@@ -328,7 +328,10 @@ void PumpFor(int ms)
     DWORD end = GetTickCount() + ms;
     while ((int)(end - GetTickCount()) > 0) {
         MSG msg;
-        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) { PostQuitMessage((int)msg.wParam); return; }   // not ours to swallow: the main loop must see it
+            TranslateMessage(&msg); DispatchMessageW(&msg);
+        }
         Sleep(10);
     }
 }
@@ -629,11 +632,16 @@ bool OptionsDialog()
     ShowWindow(d, SW_SHOW);
     if (owner) EnableWindow(owner, FALSE);
     MSG msg;
-    while (!o.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+    bool quit = false; int quitCode = 0;
+    while (!o.done) {
+        BOOL r = GetMessageW(&msg, nullptr, 0, 0);
+        if (r == 0) { quit = true; quitCode = (int)msg.wParam; o.ok = false; break; }    // the program is being closed: nothing is saved
+        if (r < 0) break;
         if (!IsDialogMessageW(d, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
     if (owner) EnableWindow(owner, TRUE);
     DestroyWindow(d);
+    if (quit) { PostQuitMessage(quitCode); return false; }                                // the main loop has to see WM_QUIT too
     if (owner) SetForegroundWindow(owner);
     if (o.ok) {
         g_cfg = o.s;

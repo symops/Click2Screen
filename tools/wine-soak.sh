@@ -23,6 +23,7 @@ now() { date +%s; }
 reset_clock() { echo "$(now) $(product_hash) $1" > "$STATE"; echo "CLOCK reset: $2"; }
 [ -f "$STATE" ] || reset_clock "" "first start"
 run=0
+PKGHASH=""
 while true; do
     read -r START HASH LAST < "$STATE"
     CUR=$(product_hash)
@@ -30,6 +31,15 @@ while true; do
     CLEAN=$(( ($(now) - START) / 60 ))
     if [ "$CLEAN" -ge "$GOAL" ]; then echo "SOAK_PASSED: $CLEAN minutes without a failure, product $HASH, $run runs"; exit 0; fi
     run=$((run + 1))
+    # the finished package follows the product: rebuilt (same bytes) when the binaries changed, then tested every 4th run
+    if [ "$CUR" != "$PKGHASH" ]; then
+        ./package.sh >"$W/package.log" 2>&1 && PKGHASH=$CUR || { echo "FAIL package.sh failed (see $W/package.log)"; reset_clock "$LAST" "package.sh failed"; exit 1; }
+    fi
+    if [ $((run % 4)) -eq 1 ]; then
+        PK=$(PKG_TEST_DIR="$W/pkg" tools/test-package-wine.sh 2>&1)
+        if echo "$PK" | grep -q '^FAIL'; then echo "FAIL the package test"; echo "$PK" | grep '^FAIL'; reset_clock "$LAST" "package test failed"; exit 1; fi
+        echo "OK package test: $(echo "$PK" | grep -c '^PASS') checks"
+    fi
     # a private copy of the newest build: rebuilding while a run is going does not disturb it
     RUN=$W/run; rm -rf "$RUN"; mkdir -p "$RUN"; cp build/x64/*.exe "$RUN/" 2>/dev/null; mkdir -p "$RUN/x86"; cp build/x86/*.exe "$RUN/x86/" 2>/dev/null
     if [ $((run % 2)) -eq 1 ]; then ARCH=x64; EXE=$RUN/c2sautotest.exe; APP=$RUN/Click2Screen.exe; else ARCH=x86; EXE=$RUN/x86/c2sautotest.exe; APP=$RUN/x86/Click2Screen.exe; fi

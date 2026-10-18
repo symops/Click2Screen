@@ -68,9 +68,48 @@ static void Rep(const wchar_t* level, const wchar_t* fmt, ...)
 #define WARN(...) do { ++g_warn; Rep(L"WARN", __VA_ARGS__); } while (0)
 #define SKIP(...) do { ++g_skip; Rep(L"SKIP", __VA_ARGS__); } while (0)
 #define INFO(...) Rep(L"INFO", __VA_ARGS__)
+// The program's own log (its last lines) goes into the report when a check about the real program fails.
+static void DumpProgramLog()
+{
+    static const GUID kProgramData = { 0x62ab5d82, 0xfdc1, 0x4dc3, { 0xa9, 0xdd, 0x07, 0x0d, 0x1d, 0x49, 0x5d, 0x97 } };
+    PWSTR pd = nullptr;
+    if (FAILED(SHGetKnownFolderPath(kProgramData, 0, nullptr, &pd)) || !pd) return;
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\Click2Screen\\logs\\panel.log", pd);
+    CoTaskMemFree(pd);
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return;
+    LARGE_INTEGER sz; GetFileSizeEx(h, &sz);
+    LONGLONG want = sz.QuadPart > 4000 ? 4000 : sz.QuadPart;
+    LARGE_INTEGER pos; pos.QuadPart = sz.QuadPart - want;
+    SetFilePointerEx(h, pos, nullptr, FILE_BEGIN);
+    char buf[4100]; DWORD got = 0;
+    ReadFile(h, buf, (DWORD)want, &got, nullptr);
+    CloseHandle(h);
+    buf[got] = 0;
+    wchar_t* wide = new wchar_t[got + 1];
+    int n = MultiByteToWideChar(CP_UTF8, 0, buf, got, wide, got);
+    wide[n > 0 ? n : 0] = 0;
+    // the last 14 lines
+    int lines = 0; wchar_t* start = wide + wcslen(wide);
+    while (start > wide && lines < 14) { --start; if (*start == L'\n') ++lines; }
+    if (*start == L'\n') ++start;
+    Rep(L"INFO", L"  --- the program's log (last lines of %s) ---", path);
+    for (wchar_t* line = start; *line;) {
+        wchar_t* e = wcschr(line, L'\n');
+        if (e) *e = 0;
+        int l = (int)wcslen(line); while (l > 0 && (line[l - 1] == L'\r')) line[--l] = 0;
+        if (*line) Rep(L"INFO", L"  | %s", line);
+        if (!e) break;
+        line = e + 1;
+    }
+    delete[] wide;
+}
+
 static void Check(bool ok, const wchar_t* name, const wchar_t* detail = L"")
 {
-    if (ok) { ++g_pass; Rep(L"PASS", L"%s %s", name, detail); } else { ++g_fail; Rep(L"FAIL", L"%s %s", name, detail); }
+    if (ok) { ++g_pass; Rep(L"PASS", L"%s %s", name, detail); return; }
+    ++g_fail; Rep(L"FAIL", L"%s %s", name, detail);
+    if (!wcsncmp(name, L"program", 7) || !wcsncmp(name, L"monkey", 6) || !wcsncmp(name, L"installer window", 16)) DumpProgramLog();
 }
 
 // ---- random numbers ----------------------------------------------------------------------------------------------
@@ -1273,6 +1312,15 @@ static HWND FindWin(DWORD pid, const wchar_t* cls, int waitMs)
     } while ((int)(end - GetTickCount()) > 0);
     return nullptr;
 }
+// A window found by class may still be under construction (its controls are created right after it): wait until it is shown.
+static HWND FindReady(DWORD pid, const wchar_t* cls, int waitMs)
+{
+    HWND w = FindWin(pid, cls, waitMs);
+    DWORD end = GetTickCount() + waitMs * g_scale;
+    while (w && !IsWindowVisible(w) && (int)(end - GetTickCount()) > 0) Pump(30);
+    if (w) Pump(30);
+    return w && IsWindowVisible(w) ? w : nullptr;
+}
 static void WinText(HWND w, wchar_t* out, int n) { out[0] = 0; SendMessageTimeoutW(w, WM_GETTEXT, n, (LPARAM)out, SMTO_ABORTIFHUNG, 3000, nullptr); }
 static bool WaitText(HWND parent, int id, const wchar_t* want, int waitMs)
 {
@@ -1473,7 +1521,7 @@ static void T_App()
     // the options window changes the settings the program keeps
     {
         PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
-        HWND o = FindWin(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
+        HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
         Check(o != nullptr, L"program: Options opens its window");
         if (o) {
             Settings w; RandomSettings(w);
@@ -1695,7 +1743,7 @@ static void T_AppPicks()
 static void T_AppOddities()
 {
     MakeFixture(R(300, 500), R(220, 360));
-    int which = R(0, 3);
+    int which = R(0, 6);
     Settings s; PrepareApp(s);
     if (which == 0) {                                  // the hotkeys are taken by somebody else: the program still starts and works
         static bool reg = false;
@@ -1752,6 +1800,32 @@ static void T_AppOddities()
             Check(!IsWindow(ed) && AppAlive(a), L"program oddities: the editor closes at once when nothing was changed");
         }
         StopApp(a);
+    } else if (which >= 4) {                           // the installer closes the program (WM_C2S_QUIT) in the middle of something
+        App a;
+        if (!StartApp(a, s)) { FAIL(L"program oddities: no window"); StopApp(a, false); return; }
+        const wchar_t* what = L"";
+        if (which == 4) {                              // while the region picker is on the screen
+            what = L"while the region picker is open";
+            PostMessageW(a.main, WM_COMMAND, IDC_REC_REGION, 0);
+            if (!FindReady(a.pi.dwProcessId, C2S_CLASS_PICKER, 10000)) FAIL(L"program oddities: the picker did not open");
+        } else if (which == 5) {                       // while the options window is open
+            what = L"while the options window is open";
+            PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
+            if (!FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000)) FAIL(L"program oddities: the options window did not open");
+        } else {                                       // while recording
+            what = L"while a recording runs";
+            PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+            HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+            if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); LangSelect(s.language); WaitText(panel, IDC_P_START, T(S_PAUSE), (s.delaySec + 6) * 1000); Pump(500); }
+            else FAIL(L"program oddities: the panel did not open");
+        }
+        PostMessageW(a.main, WM_C2S_QUIT, 0, 0);
+        DWORD code = 99;
+        bool exited = WaitForSingleObject(a.pi.hProcess, WMS(10000)) == WAIT_OBJECT_0;
+        bool ok = exited && GetExitCodeProcess(a.pi.hProcess, &code) && code == 0;
+        wchar_t nm[160]; _snwprintf(nm, 160, L"program oddities: the installer's close message ends the program %s", what);
+        Check(ok, nm, exited ? L"" : L"(it kept running)");
+        StopApp(a, false);
     } else {                                           // the autostart box: written for the current user and taken away again
         HKEY k; wchar_t old[MAX_PATH] = L""; DWORD n = sizeof(old), t = 0; bool had = false;
         if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS) {
@@ -1762,7 +1836,7 @@ static void T_AppOddities()
         for (int round = 0; round < 2; ++round) {
             bool want = round == 0;
             PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
-            HWND o = FindWin(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
+            HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
             if (!o) { FAIL(L"program oddities: no options window"); break; }
             SendMessageW(GetDlgItem(o, O_AUTOSTART), BM_SETCHECK, want ? BST_CHECKED : BST_UNCHECKED, 0);
             PostMessageW(o, WM_COMMAND, IDOK, 0);
@@ -1813,7 +1887,7 @@ static void T_Monkey()
             case 6: PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL, 0); Pump(200); break;
             case 7: {   // options: open, then OK or Cancel
                 PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
-                HWND o = FindWin(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 3000);
+                HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 3000);
                 if (o) { PostMessageW(o, WM_COMMAND, Chance(50) ? IDOK : IDCANCEL, 0); DWORD end = GetTickCount() + WMS(6000); while (IsWindow(o) && (int)(end - GetTickCount()) > 0) Sleep(50); }
                 break; }
             case 8: if (!panel) { PostMessageW(a.main, WM_COMMAND, IDC_REC_REGION, 0); POINT p1 = { fr.left + R(5, 50), fr.top + R(5, 50) }, p2 = { p1.x + R(60, 200), p1.y + R(60, 150) };
@@ -1951,6 +2025,106 @@ static void T_NoNetwork()
         Check(hits == 0, L"no network: the program source names no networking API");
     }
 }
+
+// ---- the installer window --------------------------------------------------------------------------------------------
+enum { SU_TITLE = 100, SU_SUB, SU_STATE, SU_DESKTOP, SU_START, SU_AUTO, SU_LOG, SU_INSTALL, SU_REMOVE, SU_LAUNCH, SU_CLOSE, SU_LANGLBL, SU_LANG };
+
+static bool LaunchSetupGui(PROCESS_INFORMATION& pi, HWND& wnd)
+{
+    wchar_t self[MAX_PATH]; GetModuleFileNameW(nullptr, self, MAX_PATH);
+    wchar_t* sl = wcsrchr(self, L'\\'); if (sl) *sl = 0;
+    wchar_t cmd[MAX_PATH + 40]; _snwprintf(cmd, MAX_PATH + 40, L"\"%s\\Click2Screen-Setup.exe\"", self);
+    STARTUPINFOW si = { sizeof(si) };
+    memset(&pi, 0, sizeof(pi));
+    if (!CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    wnd = FindWin(pi.dwProcessId, L"Click2ScreenSetup", 20000);
+    // the window can be found while it is still being created: wait until it is shown and its controls exist
+    DWORD end = GetTickCount() + WMS(20000);
+    while (wnd && (!IsWindowVisible(wnd) || !GetDlgItem(wnd, SU_LANG) || !GetDlgItem(wnd, SU_CLOSE)) && (int)(end - GetTickCount()) > 0) Pump(50);
+    return wnd != nullptr && GetDlgItem(wnd, SU_LANG) != nullptr;
+}
+
+static void T_SetupGui()
+{
+    PROCESS_INFORMATION pi; HWND w = nullptr;
+    if (!LaunchSetupGui(pi, w)) {
+        if (!g_wine && !g_installerAllowed) { SKIP(L"installer window: needs administrator rights (--installer)"); return; }
+        FAIL(L"installer window: it did not appear"); if (pi.hProcess) { TerminateProcess(pi.hProcess, 99); CloseHandle(pi.hProcess); CloseHandle(pi.hThread); } return;
+    }
+    // every language: switch the combo like a user and read the texts back
+    int order[32], n = LangCount();
+    for (int i = 0; i < n; ++i) order[i] = i;
+    for (int i = n - 1; i > 0; --i) { int j = R(0, i); int t = order[i]; order[i] = order[j]; order[j] = t; }
+    int bad = 0;
+    HWND combo = GetDlgItem(w, SU_LANG);
+    wchar_t ver[64]; _snwprintf(ver, 64, L"%s", C2S_VERSION_STR);
+    for (int k = 0; k < n && k < 8; ++k) {                     // eight random languages per run
+        int lng = order[k];
+        SendMessageW(combo, CB_SETCURSEL, lng, 0);
+        SendMessageW(w, WM_COMMAND, MAKEWPARAM(SU_LANG, CBN_SELCHANGE), (LPARAM)combo);
+        LangSelect(lng + 1);
+        wchar_t got[500], want[500];
+        struct { int id; Str s; } t[] = { {SU_DESKTOP, S_SU_DESKTOP}, {SU_START, S_SU_STARTMENU}, {SU_AUTO, S_SU_AUTOSTART}, {SU_REMOVE, S_SU_REMOVE}, {SU_LAUNCH, S_SU_LAUNCH}, {SU_CLOSE, S_SU_CLOSE}, {SU_LANGLBL, S_SU_LANG} };
+        for (auto& i : t) { WinText(GetDlgItem(w, i.id), got, 500); if (wcscmp(got, T(i.s))) { ++bad; Rep(L"INFO", L"  language %d control %d: [%s] expected [%s]", lng, i.id, got, T(i.s)); } }
+        WinText(GetDlgItem(w, SU_TITLE), got, 500); if (wcscmp(got, T(S_APP))) ++bad;
+        _snwprintf(want, 500, L"%s \x2014 %s", ver, T(S_SU_SUB));
+        WinText(GetDlgItem(w, SU_SUB), got, 500); if (wcscmp(got, want)) { ++bad; Rep(L"INFO", L"  subtitle [%s] expected [%s]", got, want); }
+        WinText(GetDlgItem(w, SU_INSTALL), got, 500);
+        if (wcscmp(got, T(S_SU_INSTALL)) && wcscmp(got, T(S_SU_UPDATE))) { ++bad; Rep(L"INFO", L"  install button [%s]", got); }
+    }
+    Check(bad == 0, L"installer window: every language switched in the combo shows that language everywhere (8 random)");
+    LangSelect(0);
+    // not installed -> Remove and Launch are disabled; the state line says so
+    wchar_t st[300]; WinText(GetDlgItem(w, SU_STATE), st, 300);
+    bool installed = wcsstr(st, L"1.0") != nullptr;
+    LangSelect(R(1, LangCount())); SendMessageW(combo, CB_SETCURSEL, 0, 0); SendMessageW(w, WM_COMMAND, MAKEWPARAM(SU_LANG, CBN_SELCHANGE), (LPARAM)combo); LangSelect(1);
+    if (!installed) Check(!IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && !IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)), L"installer window: with nothing installed Remove and Launch are disabled");
+    // a DPI change moves the controls; a window message storm must not break it
+    for (int i = 0; i < 20; ++i) { SendMessageW(w, WM_NULL, 0, 0); Pump(5); }
+    PostMessageW(w, WM_COMMAND, SU_CLOSE, 0);
+    DWORD code = 99;
+    bool ended = WaitForSingleObject(pi.hProcess, WMS(10000)) == WAIT_OBJECT_0 && GetExitCodeProcess(pi.hProcess, &code) && code == 0;
+    if (!ended) TerminateProcess(pi.hProcess, 99);
+    Check(ended, L"installer window: Close ends the installer with code 0");
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+}
+
+static void T_SetupGuiInstall()
+{
+    if (!g_installerAllowed) { SKIP(L"installer window: install through the window needs --installer"); return; }
+    wchar_t pf[MAX_PATH] = L""; PWSTR p = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &p)) && p) { wcsncpy(pf, p, MAX_PATH - 1); CoTaskMemFree(p); }
+    wchar_t exe[MAX_PATH]; _snwprintf(exe, MAX_PATH, L"%s\\Click2Screen\\Click2Screen.exe", pf);
+    if (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES) { SKIP(L"installer window: Click2Screen is already installed here; not touching it"); return; }
+    PROCESS_INFORMATION pi; HWND w = nullptr;
+    if (!LaunchSetupGui(pi, w)) { FAIL(L"installer window: it did not appear"); return; }
+    bool wantDesk = Chance(50), wantMenu = Chance(50), wantAuto = Chance(50);
+    SendMessageW(GetDlgItem(w, SU_DESKTOP), BM_SETCHECK, wantDesk ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(w, SU_START), BM_SETCHECK, wantMenu ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendMessageW(GetDlgItem(w, SU_AUTO), BM_SETCHECK, wantAuto ? BST_CHECKED : BST_UNCHECKED, 0);
+    PostMessageW(w, WM_COMMAND, SU_INSTALL, 0);
+    DWORD end = GetTickCount() + WMS(60000);
+    while (!IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && (int)(end - GetTickCount()) > 0) Pump(100);
+    Pump(500);
+    Check(IsWindowEnabled(GetDlgItem(w, SU_REMOVE)) && IsWindowEnabled(GetDlgItem(w, SU_LAUNCH)), L"installer window: Install finishes and enables Remove / Launch");
+    Check(GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES, L"installer window: the program is in Program Files");
+    wchar_t log[3000]; WinText(GetDlgItem(w, SU_LOG), log, 3000);
+    Check(wcslen(log) > 20, L"installer window: the log tells what was done", log);
+    HKEY k; bool autoOn = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS && RegQueryValueExW(k, L"Click2Screen", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+    if (k) RegCloseKey(k);
+    Check(autoOn == wantAuto, L"installer window: the autostart box is honoured");
+    // Remove: asks first
+    PostMessageW(w, WM_COMMAND, SU_REMOVE, 0);
+    bool asked = DismissBox(pi.dwProcessId, IDYES, 10000);
+    end = GetTickCount() + WMS(60000);
+    do { Pump(200); } while (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES && (int)(end - GetTickCount()) > 0);
+    Pump(1500);
+    Check(asked && GetFileAttributesW(exe) == INVALID_FILE_ATTRIBUTES, L"installer window: Remove asks first and then takes the program away");
+    PostMessageW(w, WM_COMMAND, SU_CLOSE, 0);
+    if (WaitForSingleObject(pi.hProcess, WMS(10000)) != WAIT_OBJECT_0) TerminateProcess(pi.hProcess, 99);
+    CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
+}
+
 // ==== main =====================================================================================================
 struct TestDef { const wchar_t* name; void (*fn)(); int weight; };
 
@@ -1990,7 +2164,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
@@ -2022,7 +2196,7 @@ int wmain(int argc, wchar_t** argv)
             for (int i = 0; i < nt; ++i) { x -= tests[i].weight; if (x <= 0) { idx = i; break; } }
         }
         ++round;
-        if (!wcscmp(tests[idx].name, L"installer") && round > n) continue;       // the installer cycle runs once
+        if ((!wcscmp(tests[idx].name, L"installer") || !wcscmp(tests[idx].name, L"setup-install-window")) && round > n) continue;       // the installer cycle runs once
         INFO(L"--- test %d: %s", runs + 1, tests[idx].name);
         tests[idx].fn();
         ++runs;

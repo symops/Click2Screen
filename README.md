@@ -4,7 +4,7 @@ Click2Screen records the desktop, a region or a window to MP4 (H.264 video, AAC 
 screenshots of the desktop, a region or a window, with global hotkeys, a tray icon and a small editor. It is a plain Win32
 program (no frameworks, no codec packs: the encoder is the one Windows ships with). A sister project of
 [Speak2Mic](https://github.com/symops/Speak2Mic) and [Show2Cam](https://github.com/symops/Show2Cam); the installer works the
-same way.
+same way. **It never touches the network**: no update check, no telemetry, no downloads (a test checks that).
 
 The functionality was worked out from a static analysis of a freeware screen recorder (see `analysis/FINDINGS.md`: what was
 found, with the evidence); the code is written from scratch and shares nothing with it. Its advertising, licensing,
@@ -66,20 +66,44 @@ The interface strings live in `src/lang/<code>.txt` (one line per string of `enu
 
 * `Click2Screen.exe /selftest <folder>` — a short check of sizes, bit rates, the name template, screenshots and the frame
   schedule; `selftest.log` in the folder.
-* **`c2sautotest.exe [minutes] [--seed N] [--keep] [--installer]`** — a randomized end-to-end test. Every test runs with random
-  parameters drawn from one seeded generator (the seed is printed first; the same seed repeats the same sequence of tests and
-  parameters). A window of four coloured quarters is shown on the screen and everything is checked as a user would see it:
-  screenshots and recordings of random parts of it (size, orientation, colours, with / without the pointer and the halo,
-  scaled, partly outside the screen), saving in every format and decoding it back, the settings through the registry and the
-  `.ini` export (including bad values and foreign files), random file name templates against an independent oracle and
-  numbering, `FitSize` / `AutoBitrate` properties, every language table (complete, same line breaks and placeholders), the
-  region and window pickers driven by messages, the editor (rectangles drawn and saved), global hotkeys with injected keys,
-  recorder start / stop cycles and refusals, the frame schedule with pauses, pause spam from another thread, the time limit,
-  a window that moves while recorded and — with Media Foundation — the MP4 itself: H.264, the size, the duration, the frame
-  count, a decoded frame's colours and the microphone track. `--installer` (administrator) adds a random
-  install / update / remove cycle of the installer. PASS / FAIL / WARN / SKIP go to the console and to
-  `C:\ProgramData\Click2Screen\logs\autotest.log`; exit code 1 if anything failed. Under Wine the Media Foundation encoder
-  does not exist, so the encoder checks are skipped and the schedule is tested without it.
+* **`c2sautotest.exe [minutes] [--seed N] [--only a,b] [--keep] [--installer] [--slow N]`** — a randomized end-to-end test.
+  Every test runs with random parameters drawn from one seeded generator (the seed is printed first; the same seed repeats
+  the same sequence of tests and parameters). A window of four coloured quarters is shown on the screen and everything is
+  checked as a user would see it:
+  * *capture and files*: screenshots and recordings of random parts of the window (size, orientation, colours, with / without
+    the pointer and the halo, scaled, partly outside the screen), saving in every format and decoding it back, parallel
+    captures from several threads, leaks of GDI / USER objects and handles over many captures and recordings;
+  * *settings*: registry round trip, `.ini` export / import (bad values, foreign files, UTF-16), garbage in the registry and
+    in `.ini` files (random bytes, wrong value types), random file name templates against an independent oracle, numbering,
+    very long paths with guard bytes after the buffer, `FitSize` / `AutoBitrate` properties, every language table
+    (complete, same line breaks and placeholders);
+  * *the real program*, started as a child with its own settings key and driven by messages: the language of every control,
+    a second copy handing over to the first, hotkey screenshots of the desktop / a dragged region / a pointed window (size
+    and colours of the file), recording through the panel (countdown, pause, resume, hide, tray command, F11, Stop, the time
+    limit), the options window (OK stores exactly what it showed, an invalid template is refused, Cancel changes nothing,
+    language switching, the autostart box writes and removes the `Run` entry), the editor opened from the program, hotkeys held
+    by another program, an unusable folder, and a "monkey" that does 25–50 random things in a row while the program must stay
+    alive and answering; Exit ends it with code 0;
+  * *pickers and editor*: the region and window pickers driven by messages (any drag direction, a stray click first, Esc), the
+    editor (rectangles drawn and saved, 40 random zoom / scroll / resize messages);
+  * *recorder*: start / stop cycles and refusals, the frame schedule with pauses, pause spam from another thread, the time
+    limit, a long recording without drift, a window that moves while recorded and — with Media Foundation — the MP4 itself:
+    H.264, the size, the duration, the frame count, a decoded frame's colours and the microphone track;
+  * *installer*: with `--installer` (administrator) a random install / update / remove cycle, silently and through the
+    installer window (boxes, log, autostart / shortcut boxes, Remove asks first); the installer window in every language;
+  * *no network*: the binaries import no networking library and contain no address (the program never talks to the network).
+
+  PASS / FAIL / WARN / SKIP go to the console and to `C:\ProgramData\Click2Screen\logs\autotest.log`; when a check about the
+  real program fails, the last lines of its own log are printed too; exit code 1 if anything failed. Under Wine the Media
+  Foundation encoder does not exist, so the encoder checks are skipped and the schedule is tested without it; waits are
+  multiplied (`--slow N` sets the factor by hand).
+* **`tools/wine-soak.sh`** — a soak test under Wine at the lowest priority (`nice -n 19`, idle I/O): random seeds, x64 and
+  x86 in turn, the self-test and the package test (below) in between, until the program has passed for 60 minutes in a row.
+  A failure, or a change of the program binaries, resets the stopwatch. Builds are reproducible
+  (`--no-insert-timestamp`), and `ONLY=autotest ./build.sh` relinks only the autotest, so tests can grow during the soak.
+* **`tools/test-package-wine.sh`** (after `./package.sh`) — the finished package under Wine: the single `Click2Screen-Setup.exe`
+  and the unpacked folder install the right files (byte for byte the x64 / x86 build), clean up their temporary folder and
+  remove cleanly.
 
 ## Logs
 
