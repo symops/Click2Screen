@@ -681,7 +681,10 @@ void Shot(Mode mode)
         if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
             Warn(err); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
         }
-        if (!SaveBitmap(bmps[i], path, g_cfg.imageFormat)) {
+        DWORD t0 = GetTickCount();
+        bool wrote = SaveBitmap(bmps[i], path, g_cfg.imageFormat);
+        Log(L"shot: saved %s as %s in %lu ms (%d)", path, ImageFormatName(g_cfg.imageFormat), (unsigned long)(GetTickCount() - t0), (int)wrote);
+        if (!wrote) {
             wchar_t msg[MAX_PATH + 100]; _snwprintf(msg, MAX_PATH + 100, T(S_ERR_SAVE), path);
             Warn(msg); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
         }

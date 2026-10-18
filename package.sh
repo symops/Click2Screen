@@ -10,7 +10,8 @@ set -e
 cd "$(dirname "$0")"
 [ -f tools/make_icon.py ] && python3 tools/make_icon.py
 # Every package gets a new version, as in Speak2Mic / Show2Cam: 1.0.<day of year>.<minute of day>.
-python3 - <<'PY'
+# (C2S_KEEP_VERSION=1: the version stays - the Wine soak rebuilds the package of the same program and wants the same bytes.)
+[ -n "$C2S_KEEP_VERSION" ] || python3 - <<'PY'
 import datetime, re
 now = datetime.datetime.now()
 major, minor, build, rev = 1, 0, now.timetuple().tm_yday, now.hour * 60 + now.minute

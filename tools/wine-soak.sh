@@ -34,7 +34,7 @@ while true; do
     run=$((run + 1))
     # the finished package follows the product: rebuilt (same bytes) when the binaries changed, then tested every 4th run
     if [ "$CUR" != "$PKGHASH" ]; then
-        ./package.sh >"$W/package.log" 2>&1 && PKGHASH=$CUR || { echo "FAIL package.sh failed (see $W/package.log)"; reset_clock "$LAST" "package.sh failed"; exit 1; }
+        C2S_KEEP_VERSION=1 ./package.sh >"$W/package.log" 2>&1 && PKGHASH=$CUR || { echo "FAIL package.sh failed (see $W/package.log)"; reset_clock "$LAST" "package.sh failed"; exit 1; }
     fi
     if [ $((run % 4)) -eq 1 ]; then
         PK=$(PKG_TEST_DIR="$W/pkg" tools/test-package-wine.sh 2>&1)

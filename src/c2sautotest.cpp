@@ -1540,7 +1540,7 @@ static bool WaitText(HWND parent, int id, const wchar_t* want, int waitMs)
 // A modal message box of the program (class #32770 of its process): confirm it.
 static bool DismissBox(DWORD pid, int button, int waitMs)
 {
-    HWND dlg = FindWin(pid, L"#32770", waitMs);
+    HWND dlg = FindWin(pid, L"#32770", WMS(waitMs));       // scaled under Wine (a recording in AVI / GIF keeps the CPU busy)
     if (!dlg) return false;
     PostMessageW(dlg, WM_COMMAND, button, 0);
     return true;

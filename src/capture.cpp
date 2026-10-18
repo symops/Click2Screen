@@ -250,6 +250,7 @@ static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const w
     IWICBitmapFrameEncode* fr = nullptr;
     IPropertyBag2* props = nullptr;
     IWICPalette* pal = nullptr;
+    IWICFormatConverter* conv = nullptr;
     HRESULT h = S_OK;
     if (format < 0 || format >= IMG_COUNT) format = IMG_PNG;
 #define STEP(name, expr) do { *step = L"" name; h = (expr); if (FAILED(h)) { *hr = h; goto done; } } while (0)
@@ -275,16 +276,27 @@ static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const w
         STEP("pixel format", fr->SetPixelFormat(&pf));
         if (format == IMG_GIF) {                                      // GIF has 256 colours: a palette made from the picture
             STEP("palette", f->CreatePalette(&pal));
-            STEP("palette from the picture", pal->InitializeFromBitmap(wb, 256, FALSE));
+            {   // counted on a copy a third of the size on each side (nine times fewer pixels, the same colours)
+                IWICBitmapScaler* sc = nullptr;
+                bool done = false;
+                if (w >= 90 && hh >= 90 && SUCCEEDED(f->CreateBitmapScaler(&sc)) &&
+                    SUCCEEDED(sc->Initialize(wb, w / 3, hh / 3, WICBitmapInterpolationModeNearestNeighbor)))
+                    done = SUCCEEDED(pal->InitializeFromBitmap(sc, 256, FALSE));
+                if (sc) sc->Release();
+                if (!done) STEP("palette from the picture", pal->InitializeFromBitmap(wb, 256, FALSE));
+            }
             STEP("set the palette", fr->SetPalette(pal));
+            STEP("converter", f->CreateFormatConverter(&conv));
+            STEP("convert to the palette", conv->Initialize(wb, GUID_WICPixelFormat8bppIndexed, WICBitmapDitherTypeNone, pal, 0.0, WICBitmapPaletteTypeCustom));
         }
     }
-    STEP("write the picture", fr->WriteSource(wb, nullptr));
+    STEP("write the picture", fr->WriteSource(conv ? (IWICBitmapSource*)conv : (IWICBitmapSource*)wb, nullptr));
     STEP("frame commit", fr->Commit());
     STEP("file commit", enc->Commit());
     ok = true;
 done:
 #undef STEP
+    if (conv) conv->Release();
     if (pal) pal->Release();
     if (props) props->Release();
     if (fr) fr->Release();
