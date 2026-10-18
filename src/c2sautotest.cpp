@@ -1367,7 +1367,7 @@ static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"")
     bool ok = CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &a.pi) != FALSE;
     SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr);
     if (!ok) return false;
-    a.main = FindWin(a.pi.dwProcessId, C2S_CLASS_MAIN, 15000);
+    a.main = FindReady(a.pi.dwProcessId, C2S_CLASS_MAIN, 15000);          // shown = hotkeys, tray and controls are all set up
     return a.main != nullptr;
 }
 static void StopApp(App& a, bool graceful = true)
@@ -1695,7 +1695,7 @@ static void T_AppPicks()
                 COLORREF ex = Expected(x, y, g_fx.w, g_fx.h);
                 // Under Wine / Xvfb a part of the window may not be repainted yet when the dimmed picker has just gone: a
                 // pure black pixel is then not counted (on Windows the desktop is composed and every pixel counts).
-                if (g_wine && q[0] == 0 && q[1] == 0 && q[2] == 0) continue;
+                if (g_wine && q[0] < 30 && q[1] < 30 && q[2] < 30) continue;       // near black (JPEG noise): not repainted yet
                 ++n; if (!Near(ex, q[2], q[1], q[0], s.imageFormat == IMG_JPG ? 40 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
             }
             Check(got && n >= 5 && bad == 0, L"program picks: the window screenshot shows that window's colours in the right places");
@@ -2125,6 +2125,114 @@ static void T_SetupGuiInstall()
     CloseHandle(pi.hProcess); CloseHandle(pi.hThread);
 }
 
+
+// ---- more about the real program ------------------------------------------------------------------------------------
+// "System language": with the automatic setting the program speaks the language of Windows (under Wine: of the locale the
+// whole test runs in - tools/wine-soak.sh picks LC_ALL at random for every run). Both processes see the same language.
+static void T_AppLocale()
+{
+    Settings s; PrepareApp(s); s.language = 0;
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"locale: the program did not start"); StopApp(a, false); return; }
+    wchar_t tag[80]; _snwprintf(tag, 80, L"automatic language, the system's is %s", LangName(LangAutoIndex()));
+    AppTexts(a, 0, tag);
+    StopApp(a);
+}
+
+// The program is killed in the middle of a recording (a crash, the task manager): the next start must be clean.
+static void T_AppCrashRestart()
+{
+    MakeFixture(R(300, 500), R(220, 360));
+    Settings s; PrepareApp(s);
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"crash: the program did not start"); StopApp(a, false); return; }
+    PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+    HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+    if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); LangSelect(s.language); WaitText(panel, IDC_P_START, T(S_PAUSE), (s.delaySec + 6) * 1000); Pump(R(200, 1200)); }
+    TerminateProcess(a.pi.hProcess, 66);                              // no chance to clean up
+    WaitForSingleObject(a.pi.hProcess, 10000);
+    CloseHandle(a.pi.hProcess); CloseHandle(a.pi.hThread); memset(&a.pi, 0, sizeof(a.pi));
+    Settings now; SettingsLoad(now);
+    wchar_t why[160] = L"";
+    Check(SettingsEqual(s, now, true, why), L"crash: the settings are intact after the program was killed", why);
+    App b;
+    bool ok = StartApp(b, s);                                         // the same single-instance name: the mutex is gone with the process
+    Check(ok && AppAlive(b), L"crash: the program starts again after being killed in a recording");
+    if (ok) {
+        int before = CountFiles(s.imgFolder);
+        PostMessageW(b.main, WM_HOTKEY, HK_DESKTOP, 0);
+        wchar_t f[MAX_PATH];
+        bool got = WaitNewFile(s.imgFolder, before, 20000, f);
+        wchar_t d[120]; _snwprintf(d, 120, L"files before %d, after %d, alive %d", before, CountFiles(s.imgFolder), (int)AppAlive(b));
+        Check(got, L"crash: and works (a screenshot after the restart)", d);
+    }
+    StopApp(b);
+}
+
+// A flood of hotkeys and commands: the program takes what it can, ignores the rest and stays up.
+static void T_AppFlood()
+{
+    MakeFixture(R(300, 500), R(220, 360));
+    Settings s; PrepareApp(s);
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"flood: the program did not start"); StopApp(a, false); return; }
+    int n = R(15, 40);
+    for (int i = 0; i < n; ++i) {
+        switch (R(0, 3)) {
+            case 0: PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0); break;
+            case 1: PostMessageW(a.main, WM_COMMAND, IDC_SHOT_DESKTOP, 0); break;
+            case 2: PostMessageW(a.main, WM_HOTKEY, HK_STOP, 0); break;
+            default: PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0); break;
+        }
+        if (Chance(30)) Pump(R(1, 30));
+    }
+    // answer whatever opened (options windows, boxes) until things are quiet
+    for (int round = 0; round < 40; ++round) {
+        Pump(300);
+        HWND o = FindWin(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 0);
+        if (o) PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
+        HWND box = FindWin(a.pi.dwProcessId, L"#32770", 0);
+        if (box) PostMessageW(box, WM_COMMAND, IDOK, 0);
+    }
+    DWORD_PTR res = 0;
+    bool answers = SendMessageTimeoutW(a.main, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, WMS(10000), &res) != 0;
+    int files = CountFiles(s.imgFolder);
+    wchar_t d[100]; _snwprintf(d, 100, L"%d messages sent, %d pictures saved", n, files);
+    Check(AppAlive(a) && answers, L"flood: the program is alive and answering after a burst of hotkeys and commands", d);
+    PostMessageW(a.main, WM_COMMAND, ID_TRAY_EXIT, 0);
+    DWORD code = 99;
+    bool ended = WaitForSingleObject(a.pi.hProcess, WMS(15000)) == WAIT_OBJECT_0 && GetExitCodeProcess(a.pi.hProcess, &code) && code == 0;
+    Check(ended, L"flood: and it still exits with code 0");
+    StopApp(a, false);
+}
+
+// The installer finds a running program, closes it and installs over it.
+static void T_InstallWhileRunning()
+{
+    if (!g_installerAllowed) { SKIP(L"install while running: needs --installer"); return; }
+    wchar_t pf[MAX_PATH] = L""; PWSTR p = nullptr;
+    if (SUCCEEDED(SHGetKnownFolderPath(FOLDERID_ProgramFiles, 0, nullptr, &p)) && p) { wcsncpy(pf, p, MAX_PATH - 1); CoTaskMemFree(p); }
+    wchar_t exe[MAX_PATH]; _snwprintf(exe, MAX_PATH, L"%s\\Click2Screen\\Click2Screen.exe", pf);
+    if (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES) { SKIP(L"install while running: Click2Screen is already installed here; not touching it"); return; }
+    Settings s; PrepareApp(s);
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"install while running: the program did not start"); StopApp(a, false); return; }
+    if (Chance(50)) {                                                 // also in the middle of a recording
+        PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+        HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+        if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); LangSelect(s.language); WaitText(panel, IDC_P_START, T(S_PAUSE), (s.delaySec + 6) * 1000); }
+    }
+    DWORD code = 99;
+    bool ran = RunSetup(L"/install /silent", &code);
+    Check(ran && code == 0, L"install while running: the installer returns 0 with the program running");
+    bool gone = WaitForSingleObject(a.pi.hProcess, WMS(10000)) == WAIT_OBJECT_0;
+    Check(gone, L"install while running: the running program was closed by the installer");
+    Check(GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES, L"install while running: the program is installed");
+    StopApp(a, false);
+    code = 99; RunSetup(L"/remove /silent", &code);
+    Sleep(3000);
+}
+
 // ==== main =====================================================================================================
 struct TestDef { const wchar_t* name; void (*fn)(); int weight; };
 
@@ -2164,7 +2272,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
@@ -2196,7 +2304,7 @@ int wmain(int argc, wchar_t** argv)
             for (int i = 0; i < nt; ++i) { x -= tests[i].weight; if (x <= 0) { idx = i; break; } }
         }
         ++round;
-        if ((!wcscmp(tests[idx].name, L"installer") || !wcscmp(tests[idx].name, L"setup-install-window")) && round > n) continue;       // the installer cycle runs once
+        if ((!wcscmp(tests[idx].name, L"installer") || !wcscmp(tests[idx].name, L"setup-install-window") || !wcscmp(tests[idx].name, L"install-while-running")) && round > n) continue;       // the installer cycle runs once
         INFO(L"--- test %d: %s", runs + 1, tests[idx].name);
         tests[idx].fn();
         ++runs;

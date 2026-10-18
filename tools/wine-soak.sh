@@ -41,13 +41,20 @@ while true; do
         echo "OK package test: $(echo "$PK" | grep -c '^PASS') checks"
     fi
     # a private copy of the newest build: rebuilding while a run is going does not disturb it
+    # (the program from build/, the autotest from $W/promoted: a new test is promoted only after it was tried on its own,
+    # see tools/promote-autotest.sh - an unproven test must not reset the stopwatch)
     RUN=$W/run; rm -rf "$RUN"; mkdir -p "$RUN"; cp build/x64/*.exe "$RUN/" 2>/dev/null; mkdir -p "$RUN/x86"; cp build/x86/*.exe "$RUN/x86/" 2>/dev/null
+    [ -f "$W/promoted/x64/c2sautotest.exe" ] && cp "$W/promoted/x64/c2sautotest.exe" "$RUN/c2sautotest.exe"
+    [ -f "$W/promoted/x86/c2sautotest.exe" ] && cp "$W/promoted/x86/c2sautotest.exe" "$RUN/x86/c2sautotest.exe"
     if [ $((run % 2)) -eq 1 ]; then ARCH=x64; EXE=$RUN/c2sautotest.exe; APP=$RUN/Click2Screen.exe; else ARCH=x86; EXE=$RUN/x86/c2sautotest.exe; APP=$RUN/x86/Click2Screen.exe; fi
     SEED=$(( (RANDOM << 30) ^ (RANDOM << 15) ^ RANDOM ^ $(now) ))
     MIN=$(( 2 + RANDOM % 4 ))
     OUT=$W/out-$run.txt
     ST=$W/st-$run; rm -rf "$ST"; mkdir -p "$ST"
     S0=$(now)
+    # the system language of the run (Wine takes it from the locale of the process): the automatic language must follow it
+    LOCALES=(en_US.UTF-8 ru_RU.UTF-8 ru_UA.UTF-8 en_GB.UTF-8)
+    export LC_ALL=${LOCALES[$((RANDOM % ${#LOCALES[@]}))]}
     timeout 120 $LOW wine "$APP" /selftest "Z:$ST" >/dev/null 2>&1
     STFAIL=$(grep -c '^FAIL' "$ST/selftest.log" 2>/dev/null)
     ARGS="$MIN --seed $SEED --installer"
@@ -58,12 +65,12 @@ while true; do
     CRASH=$(grep -c 'CRASH' "$OUT")
     SUM=$(grep 'test(s) run' "$OUT" | sed 's/^INFO *//')
     if [ "$RC" -ne 0 ] || [ "${STFAIL:-0}" -ne 0 ] || [ "$NFAIL" -ne 0 ] || [ "$CRASH" -ne 0 ] || [ -z "$SUM" ]; then
-        echo "FAIL run $run $ARCH seed $SEED rc=$RC selftest-fails=$STFAIL fails=$NFAIL crashes=$CRASH (output $OUT)"
+        echo "FAIL run $run $ARCH seed $SEED locale $LC_ALL rc=$RC selftest-fails=$STFAIL fails=$NFAIL crashes=$CRASH (output $OUT)"
         grep -E '^(FAIL|WARN)|CRASH' "$OUT" | head -20
         [ "${STFAIL:-0}" -ne 0 ] && grep '^FAIL' "$ST/selftest.log"
         reset_clock "$ARCH:$SEED" "failure in run $run"
         exit 1
     fi
-    echo "OK run $run $ARCH seed $SEED ${MIN}min: $SUM; warnings $NWARN; clean for $(( ($(now) - START) / 60 )) of $GOAL min"
+    echo "OK run $run $ARCH seed $SEED locale $LC_ALL ${MIN}min: $SUM; warnings $NWARN; clean for $(( ($(now) - START) / 60 )) of $GOAL min"
     [ "$NWARN" -gt 0 ] && grep '^WARN' "$OUT" | sort | uniq -c | head -5
 done
