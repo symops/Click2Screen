@@ -147,26 +147,31 @@ void SaveAs(Ed* e)
 {
     wchar_t file[MAX_PATH];
     wcsncpy(file, e->path, MAX_PATH - 1); file[MAX_PATH - 1] = 0;
-    wchar_t filter[200];
-    // "PNG\0*.png\0JPEG\0*.jpg\0BMP\0*.bmp\0\0"
-    const wchar_t* parts[] = { L"PNG (*.png)", L"*.png", L"JPEG (*.jpg)", L"*.jpg", L"BMP (*.bmp)", L"*.bmp" };
-    int n = 0;
-    for (auto p : parts) { size_t l = wcslen(p) + 1; memcpy(filter + n, p, l * sizeof(wchar_t)); n += (int)l; }
+    wchar_t filter[600];
+    // "PNG (*.png)\0*.png\0JPG (*.jpg)\0*.jpg\0...\0\0": the formats whose encoder is installed
+    int n = 0, idx = 1, cur = 1, map[IMG_COUNT], count = 0;
+    for (int i = 0; i < IMG_COUNT; ++i) {
+        if (!ImageFormatAvailable(i)) continue;
+        wchar_t a[40], b[24];
+        _snwprintf(a, 40, L"%s (*.%s)", ImageFormatName(i), ImageFormatExt(i));
+        _snwprintf(b, 24, L"*.%s", ImageFormatExt(i));
+        const wchar_t* parts[2] = { a, b };
+        for (const wchar_t* p : parts) { size_t l = wcslen(p) + 1; memcpy(filter + n, p, l * sizeof(wchar_t)); n += (int)l; }
+        map[count++] = i;
+        if (i == e->format) cur = idx;
+        ++idx;
+    }
     filter[n] = 0;
     OPENFILENAMEW ofn; memset(&ofn, 0, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = e->hwnd; ofn.lpstrFilter = filter; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH;
-    ofn.nFilterIndex = e->format == IMG_JPG ? 2 : e->format == IMG_BMP ? 3 : 1;
+    ofn.nFilterIndex = cur;
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
-    ofn.lpstrDefExt = L"png";
+    ofn.lpstrDefExt = ImageFormatExt(e->format);
     ofn.lpstrTitle = T(S_ED_SAVE_AS);
     if (!GetSaveFileNameW(&ofn)) return;
-    int fmt = ofn.nFilterIndex == 2 ? IMG_JPG : ofn.nFilterIndex == 3 ? IMG_BMP : IMG_PNG;
-    const wchar_t* dot = wcsrchr(file, L'.');
-    if (dot) {   // the extension typed wins over the filter
-        if (!_wcsicmp(dot, L".jpg") || !_wcsicmp(dot, L".jpeg")) fmt = IMG_JPG;
-        else if (!_wcsicmp(dot, L".bmp")) fmt = IMG_BMP;
-        else if (!_wcsicmp(dot, L".png")) fmt = IMG_PNG;
-    }
+    int fmt = count > 0 && ofn.nFilterIndex >= 1 && (int)ofn.nFilterIndex <= count ? map[ofn.nFilterIndex - 1] : IMG_PNG;
+    int typed = ImageFormatFromPath(file);                  // the extension typed wins over the filter
+    if (typed >= 0 && ImageFormatAvailable(typed)) fmt = typed;
     if (SaveTo(e, file, fmt)) { wcscpy(e->path, file); e->format = fmt; }
 }
 

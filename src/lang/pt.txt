@@ -123,3 +123,14 @@ Suas configurações e as capturas e vídeos que você fez foram mantidos.
 Erro: o Click2Screen.exe não foi encontrado ao lado do instalador.
 Erro: a pasta Arquivos de Programas não foi encontrada.
 Remover o Click2Screen deste computador?\n\nSuas configurações e as capturas e vídeos que você fez serão mantidos.
+Instalar em:
+Procurar…
+Escolha a pasta onde instalar o Click2Screen
+Erro: a pasta de instalação não é válida (é preciso um caminho completo, como C:\Programs\Click2Screen).
+Reinstalar
+Abrir a pasta de imagens
+Abrir a pasta de vídeos
+Imagens
+Nome do arquivo
+Opções de vídeo
+Opções de áudio

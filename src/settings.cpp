@@ -74,7 +74,7 @@ void SettingsLoad(Settings& s)
     GetStr(k, L"VidOutputFolder", s.vidFolder, MAX_PATH, d.vidFolder);
     GetStr(k, L"ImgOutputFolder", s.imgFolder, MAX_PATH, d.imgFolder);
     GetStr(k, L"FileName", s.fileName, 128, d.fileName);
-    s.imageFormat  = Clamp((int)GetDw(k, L"ImageFormat", d.imageFormat), 0, 2);
+    s.imageFormat  = Clamp((int)GetDw(k, L"ImageFormat", d.imageFormat), 0, IMG_COUNT - 1);
     s.capMouse     = GetDw(k, L"CapMouse", d.capMouse) != 0;
     s.highlight    = GetDw(k, L"Highlight", d.highlight) != 0;
     s.sounds       = GetDw(k, L"EnableSound", d.sounds) != 0;
@@ -86,7 +86,7 @@ void SettingsLoad(Settings& s)
     s.durH         = Clamp((int)GetDw(k, L"RecDurationHour", 0), 0, 99);
     s.durM         = Clamp((int)GetDw(k, L"RecDurationMin", 0), 0, 59);
     s.durS         = Clamp((int)GetDw(k, L"RecDurationSec", 0), 0, 59);
-    s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, 1);
+    s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, VC_COUNT - 1);
     s.audioCodec   = Clamp((int)GetDw(k, L"AudioCodec", d.audioCodec), 0, 1);
     s.videoQuality = Clamp((int)GetDw(k, L"VideoQuality", d.videoQuality), 0, 2);
     s.audioQuality = Clamp((int)GetDw(k, L"AudioQuality", d.audioQuality), 0, 2);
@@ -352,7 +352,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (GetPrivateProfileStringW(kSec, L"ImgOutputFolder", L"", str, MAX_PATH, path) > 0) { wcscpy(s.imgFolder, str); }
     if (GetPrivateProfileStringW(kSec, L"FileName", L"", str, 128, path) > 0 && TemplateValid(str)) wcscpy(s.fileName, str);
     int v;
-    if (IniGetInt(path, L"ImageFormat", 0, 2, &v)) s.imageFormat = v;
+    if (IniGetInt(path, L"ImageFormat", 0, IMG_COUNT - 1, &v)) s.imageFormat = v;
     if (IniGetInt(path, L"CapMouse", 0, 1, &v)) s.capMouse = v != 0;
     if (IniGetInt(path, L"Highlight", 0, 1, &v)) s.highlight = v != 0;
     if (IniGetInt(path, L"EnableSound", 0, 1, &v)) s.sounds = v != 0;
@@ -364,7 +364,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"RecDurationHour", 0, 99, &v)) s.durH = v;
     if (IniGetInt(path, L"RecDurationMin", 0, 59, &v)) s.durM = v;
     if (IniGetInt(path, L"RecDurationSec", 0, 59, &v)) s.durS = v;
-    if (IniGetInt(path, L"VideoCodec", 0, 1, &v)) s.videoCodec = v;
+    if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v;
     if (IniGetInt(path, L"AudioCodec", 0, 1, &v)) s.audioCodec = v;
     if (IniGetInt(path, L"VideoQuality", 0, 2, &v)) s.videoQuality = v;
     if (IniGetInt(path, L"AudioQuality", 0, 2, &v)) s.audioQuality = v;

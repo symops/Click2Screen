@@ -123,3 +123,14 @@ Le impostazioni e le schermate e i video creati vengono conservati.
 Errore: Click2Screen.exe non trovato accanto al programma di installazione.
 Errore: cartella Program Files non trovata.
 Rimuovere Click2Screen da questo computer?\n\nLe impostazioni e le schermate e i video creati vengono conservati.
+Installa in:
+Sfoglia…
+Scegli la cartella in cui installare Click2Screen
+Errore: la cartella di installazione non è valida (serve un percorso completo, ad esempio C:\Programs\Click2Screen).
+Reinstalla
+Apri la cartella delle immagini
+Apri la cartella dei video
+Immagini
+Nome file
+Opzioni video
+Opzioni audio

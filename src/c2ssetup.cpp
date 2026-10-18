@@ -12,6 +12,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <wchar.h>
+#include <wctype.h>
 
 namespace {
 
@@ -19,7 +20,7 @@ namespace {
 int g_lang = 0;          // language chosen in the window: index in the table
 
 // ---- state -----------------------------------------------------------------------------------------------------
-enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG };
+enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE };
 enum { ACT_INSTALL = 1, ACT_REMOVE };
 #define WM_APP_LOG  (WM_APP + 1)
 #define WM_APP_DONE (WM_APP + 2)
@@ -36,6 +37,7 @@ HANDLE g_worker;
 int g_action;
 bool g_ok, g_silent, g_selfDelete;
 bool g_wantDesktop = true, g_wantStart = true, g_wantAuto = false;
+wchar_t g_dir[MAX_PATH];      // the folder to install to (the window's box, /dir, or what is installed already)
 
 HWND Ctl(int id) { return GetDlgItem(g_wnd, id); }
 UINT g_dpi = 96;
@@ -67,6 +69,30 @@ bool ProgramDir(wchar_t* dir)
 }
 
 int Dpi96() { return 96; }
+
+bool GetRegStr(HKEY root, const wchar_t* key, const wchar_t* name, wchar_t* out, DWORD cap);
+
+// Where Click2Screen is installed now (the registry), else the default.
+bool InstalledDir(wchar_t* dir)
+{
+    if (GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", dir, MAX_PATH) && dir[0]) return true;
+    return ProgramDir(dir);
+}
+
+// A usable folder: a full path (drive letter or UNC), no wildcard / reserved characters, room for the file names.
+bool ValidDir(wchar_t* dir)
+{
+    size_t n = wcslen(dir);
+    while (n > 3 && (dir[n - 1] == L'\\' || dir[n - 1] == L' ')) dir[--n] = 0;
+    if (n < 4 || n > 200) return false;
+    bool drive = iswalpha(dir[0]) && dir[1] == L':' && dir[2] == L'\\';
+    bool unc = dir[0] == L'\\' && dir[1] == L'\\';
+    if (!drive && !unc) return false;
+    for (size_t i = drive ? 3 : 2; i < n; ++i)
+        if (dir[i] < 32 || wcschr(L"<>:\"|?*", dir[i])) return false;
+    if (drive && n == 3) return false;                       // a drive root: its files would mix with everything else
+    return true;
+}
 
 void SiblingPath(const wchar_t* name, wchar_t* out)
 {
@@ -143,11 +169,27 @@ void LinkPaths(wchar_t* desktop, wchar_t* menu)
     if (KnownFolder(FOLDERID_CommonPrograms, m)) _snwprintf(menu, MAX_PATH, L"%s\\Click2Screen.lnk", m);
 }
 
+// The program's files in a folder (an old location after the path was changed, or the removal); the folder goes if it is empty.
+void RemoveFilesIn(const wchar_t* dir, const wchar_t* keepSelf)
+{
+    static const wchar_t* names[] = { L"Click2Screen.exe", L"uninstall.cmd", L"Click2Screen-Setup.exe" };
+    for (const wchar_t* n : names) {
+        wchar_t f[MAX_PATH + 32];
+        _snwprintf(f, MAX_PATH + 32, L"%s\\%s", dir, n);
+        if (keepSelf && _wcsicmp(f, keepSelf) == 0) continue;
+        for (int i = 0; i < 20 && !DeleteFileW(f) && GetFileAttributesW(f) != INVALID_FILE_ATTRIBUTES; ++i) Sleep(250);
+    }
+    RemoveDirectoryW(dir);
+}
+
 bool DoInstall()
 {
     Say(T(S_SU_LOG_INSTALL));
-    wchar_t dir[MAX_PATH];
-    if (!ProgramDir(dir)) { Say(T(S_SU_LOG_NODIR)); return false; }
+    wchar_t dir[MAX_PATH], oldDir[MAX_PATH];
+    wcscpy(dir, g_dir);
+    if (!dir[0] && !ProgramDir(dir)) { Say(T(S_SU_LOG_NODIR)); return false; }
+    if (!ValidDir(dir)) { Say(T(S_SU_LOG_BADDIR)); return false; }
+    bool hadOld = GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", oldDir, MAX_PATH) && oldDir[0] && _wcsicmp(oldDir, dir) != 0;
     wchar_t srcExe[MAX_PATH], srcSetup[MAX_PATH], srcUn[MAX_PATH];
     SiblingPath(L"Click2Screen.exe", srcExe);
     GetModuleFileNameW(nullptr, srcSetup, MAX_PATH);
@@ -208,6 +250,7 @@ bool DoInstall()
         }
         RegCloseKey(k);
     }
+    if (hadOld) RemoveFilesIn(oldDir, nullptr);            // the path was changed: the old copy goes
     Say(T(S_SU_LOG_DONE));
     return true;
 }
@@ -225,7 +268,9 @@ bool DoRemove()
 {
     Say(T(S_SU_LOG_REMOVE));
     CloseRunningApp();
-    wchar_t desk[MAX_PATH], menu[MAX_PATH], dir[MAX_PATH];
+    wchar_t desk[MAX_PATH], menu[MAX_PATH], dir[MAX_PATH], g_regDir[MAX_PATH];
+    g_regDir[0] = 0;
+    GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", g_regDir, MAX_PATH);   // read before the key goes
     LinkPaths(desk, menu);
     Say(T(S_SU_LOG_LINKS_DEL));
     if (desk[0]) DeleteFileW(desk);
@@ -234,15 +279,12 @@ bool DoRemove()
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, kRunKey, 0, KEY_WRITE, &k) == ERROR_SUCCESS) { RegDeleteValueW(k, L"Click2Screen"); RegCloseKey(k); }
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_WRITE, &k) == ERROR_SUCCESS) { RegDeleteValueW(k, L"Click2Screen"); RegCloseKey(k); }
     RegDeleteKeyW(HKEY_LOCAL_MACHINE, kUninstallKey);
-    if (ProgramDir(dir)) {
-        wchar_t f[MAX_PATH];
-        _snwprintf(f, MAX_PATH, L"%s\\Click2Screen.exe", dir); for (int i = 0; i < 20 && !DeleteFileW(f) && GetFileAttributesW(f) != INVALID_FILE_ATTRIBUTES; ++i) Sleep(250);
-        _snwprintf(f, MAX_PATH, L"%s\\uninstall.cmd", dir); DeleteFileW(f);
+    if (g_regDir[0] ? (wcscpy(dir, g_regDir), true) : ProgramDir(dir)) {
         wchar_t self[MAX_PATH], want[MAX_PATH];
         GetModuleFileNameW(nullptr, self, MAX_PATH);
         _snwprintf(want, MAX_PATH, L"%s\\Click2Screen-Setup.exe", dir);
-        if (_wcsicmp(self, want) == 0) { g_selfDelete = true; ScheduleSelfDelete(dir); }
-        else { _snwprintf(f, MAX_PATH, L"%s\\Click2Screen-Setup.exe", dir); DeleteFileW(f); RemoveDirectoryW(dir); }
+        if (_wcsicmp(self, want) == 0) { g_selfDelete = true; RemoveFilesIn(dir, self); ScheduleSelfDelete(dir); }
+        else RemoveFilesIn(dir, nullptr);
     }
     Say(T(S_SU_LOG_KEPT));
     Say(T(S_SU_LOG_DONE));
@@ -273,7 +315,7 @@ void Refresh()
     bool inst = Installed(ver, loc);
     if (inst) _snwprintf(text, MAX_PATH + 100, T(S_SU_STATE_INST), ver, loc); else wcscpy(text, T(S_SU_STATE_NONE));
     SetWindowTextW(Ctl(IDC_STATE), text);
-    SetWindowTextW(Ctl(IDC_INSTALL), inst ? T(S_SU_UPDATE) : T(S_SU_INSTALL));
+    SetWindowTextW(Ctl(IDC_INSTALL), !inst ? T(S_SU_INSTALL) : wcscmp(ver, L"" C2S_VER_STR) == 0 ? T(S_SU_REINSTALL) : T(S_SU_UPDATE));   // same version: Reinstall
     EnableWindow(Ctl(IDC_REMOVE), inst);
     EnableWindow(Ctl(IDC_LAUNCH), inst);
     SetWindowTextW(Ctl(IDC_TITLE), T(S_APP));
@@ -287,11 +329,13 @@ void Refresh()
     SetWindowTextW(Ctl(IDC_LAUNCH), T(S_SU_LAUNCH));
     SetWindowTextW(Ctl(IDC_CLOSE), T(S_SU_CLOSE));
     SetWindowTextW(Ctl(IDC_LANGLBL), T(S_SU_LANG));
+    SetWindowTextW(Ctl(IDC_PATHLBL), T(S_SU_PATH));
+    SetWindowTextW(Ctl(IDC_BROWSE), T(S_SU_BROWSE));
 }
 
 void Busy(bool busy)
 {
-    int ids[] = { IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LANG };
+    int ids[] = { IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LANG, IDC_PATH, IDC_BROWSE };
     for (int id : ids) EnableWindow(Ctl(id), !busy);
     if (!busy) Refresh();
 }
@@ -302,6 +346,7 @@ void Start(int action)
     g_wantDesktop = IsDlgButtonChecked(g_wnd, IDC_DESKTOP) == BST_CHECKED;
     g_wantStart = IsDlgButtonChecked(g_wnd, IDC_START) == BST_CHECKED;
     g_wantAuto = IsDlgButtonChecked(g_wnd, IDC_AUTO) == BST_CHECKED;
+    if (action == ACT_INSTALL) GetWindowTextW(Ctl(IDC_PATH), g_dir, MAX_PATH);
     g_action = action;
     Busy(true);
     g_worker = CreateThread(nullptr, 0, Worker, nullptr, 0, nullptr);
@@ -314,10 +359,37 @@ HWND Add(const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int
     return c;
 }
 
+int CALLBACK BrowseInit(HWND h, UINT m, LPARAM, LPARAM data)
+{
+    if (m == BFFM_INITIALIZED && data) SendMessageW(h, BFFM_SETSELECTIONW, TRUE, data);
+    return 0;
+}
+
+void Browse()
+{
+    wchar_t cur[MAX_PATH], pick[MAX_PATH];
+    GetWindowTextW(Ctl(IDC_PATH), cur, MAX_PATH);
+    BROWSEINFOW bi; memset(&bi, 0, sizeof(bi));
+    bi.hwndOwner = g_wnd; bi.pszDisplayName = pick; bi.lpszTitle = T(S_SU_BROWSE_TITLE);
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    bi.lpfn = BrowseInit; bi.lParam = (LPARAM)cur;
+    PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return;
+    if (SHGetPathFromIDListW(pidl, pick)) {
+        size_t n = wcslen(pick);
+        // a folder that already holds other things gets its own sub-folder (the removal deletes only our files, but still)
+        bool isRoot = n <= 3, ours = n >= 12 && _wcsicmp(pick + n - 12, L"Click2Screen") == 0;
+        if (!ours && !isRoot) wcsncat(pick, L"\\Click2Screen", MAX_PATH - n - 1);
+        else if (isRoot) _snwprintf(pick, MAX_PATH, L"%sClick2Screen", pick);
+        SetWindowTextW(Ctl(IDC_PATH), pick);
+    }
+    CoTaskMemFree(pidl);
+}
+
 void Launch()
 {
     wchar_t dir[MAX_PATH], exe[MAX_PATH];
-    if (!ProgramDir(dir)) return;
+    if (!InstalledDir(dir)) return;
     _snwprintf(exe, MAX_PATH, L"%s\\Click2Screen.exe", dir);
     // The installer runs elevated; Explorer starts the program with the user's rights.
     ShellExecuteW(nullptr, L"open", L"explorer.exe", exe, nullptr, SW_SHOWNORMAL);
@@ -334,25 +406,30 @@ void BuildControls()
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
     LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_SEMIBOLD; lf.lfHeight = lf.lfHeight * 2;
     g_fontTitle = CreateFontIndirectW(&lf);
-    Add(L"STATIC", L"", SS_LEFT, 20, 14, 330, 34, IDC_TITLE, g_fontTitle);
-    Add(L"STATIC", L"", SS_LEFT, 20, 50, 400, 20, IDC_SUB);
-    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 20, 78, 520, 20, IDC_STATE);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 108, 340, 22, IDC_DESKTOP);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 134, 340, 22, IDC_START);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 160, 340, 22, IDC_AUTO);
+    Add(L"STATIC", L"", SS_LEFT, 20, 14, 400, 34, IDC_TITLE, g_fontTitle);
+    Add(L"STATIC", L"", SS_LEFT, 20, 50, 560, 20, IDC_SUB);
+    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 20, 78, 560, 20, IDC_STATE);
+    Add(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE, 20, 106, 110, 24, IDC_PATHLBL);
+    Add(L"EDIT", g_dir, WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, 134, 106, 340, 24, IDC_PATH);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 482, 105, 98, 26, IDC_BROWSE);
+    SendMessageW(Ctl(IDC_PATH), EM_SETLIMITTEXT, 200, 0);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 142, 330, 22, IDC_DESKTOP);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 168, 330, 22, IDC_START);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 20, 194, 330, 22, IDC_AUTO);
     CheckDlgButton(hw, IDC_DESKTOP, g_wantDesktop ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_START, g_wantStart ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_AUTO, g_wantAuto ? BST_CHECKED : BST_UNCHECKED);
-    Add(L"STATIC", L"", SS_RIGHT, 340, 110, 84, 20, IDC_LANGLBL);
-    HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 430, 106, 110, 300, IDC_LANG);
+    Add(L"STATIC", L"", SS_RIGHT, 360, 146, 100, 20, IDC_LANGLBL);
+    HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 466, 142, 114, 300, IDC_LANG);
     for (int i = 0; i < LangCount(); ++i) SendMessageW(lg, CB_ADDSTRING, 0, (LPARAM)LangName(i));
     SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
-    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 20, 192, 520, 150, IDC_LOG);
-    int bw = 120, y = 354;
+    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 20, 228, 560, 128, IDC_LOG);
+    // Four buttons in one row with gaps: 3 x 136 + 1 x 100 + 3 x 10 = 538 <= 560 (Close is flush right).
+    int bw = 136, gap = 10, y = 368;
     Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 20, y, bw, 32, IDC_INSTALL);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + bw + 10, y, bw, 32, IDC_REMOVE);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + 2 * (bw + 10), y, bw, 32, IDC_LAUNCH);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + 3 * (bw + 10) - 30, y, 90, 32, IDC_CLOSE);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + bw + gap, y, bw, 32, IDC_REMOVE);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 20 + 2 * (bw + gap), y, bw, 32, IDC_LAUNCH);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 580 - 100, y, 100, 32, IDC_CLOSE);
     Refresh();
 }
 
@@ -366,6 +443,7 @@ void Rescale(UINT dpi, const RECT* suggested)
     g_wantDesktop = IsDlgButtonChecked(g_wnd, IDC_DESKTOP) == BST_CHECKED;
     g_wantStart = IsDlgButtonChecked(g_wnd, IDC_START) == BST_CHECKED;
     g_wantAuto = IsDlgButtonChecked(g_wnd, IDC_AUTO) == BST_CHECKED;
+    GetWindowTextW(Ctl(IDC_PATH), g_dir, MAX_PATH);
     g_dpi = dpi;
     HWND c;
     while ((c = GetWindow(g_wnd, GW_CHILD)) != nullptr) DestroyWindow(c);
@@ -387,6 +465,7 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_INSTALL: Start(ACT_INSTALL); break;
         case IDC_REMOVE: Start(ACT_REMOVE); break;
         case IDC_LAUNCH: Launch(); break;
+        case IDC_BROWSE: Browse(); break;
         case IDC_CLOSE: DestroyWindow(hw); break;
         case IDC_LANG:
             if (HIWORD(wp) == CBN_SELCHANGE) { g_lang = (int)SendMessageW(Ctl(IDC_LANG), CB_GETCURSEL, 0, 0); LangSelect(g_lang + 1); Refresh(); }
@@ -436,6 +515,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     if (cmd && wcsstr(cmd, L"/desktop-")) g_wantDesktop = false;
     if (cmd && wcsstr(cmd, L"/startmenu-")) g_wantStart = false;
     if (cmd && wcsstr(cmd, L"/autostart")) g_wantAuto = true;
+    InstalledDir(g_dir);                                    // the default: where it is installed now, else Program Files
+    if (cmd) {                                               // /dir "C:\\Some\\Folder"  (quotes optional without spaces)
+        const wchar_t* d = wcsstr(cmd, L"/dir");
+        if (d && (d[4] == L' ' || d[4] == L'=' || d[4] == L':')) {
+            d += 5; while (*d == L' ') ++d;
+            bool q = *d == L'"'; if (q) ++d;
+            size_t n = 0;
+            while (d[n] && (q ? d[n] != L'"' : d[n] != L' ') && n < MAX_PATH - 1) { g_dir[n] = d[n]; ++n; }
+            g_dir[n] = 0;
+        }
+    }
     if (g_silent && (doInstall || doRemove)) {
         g_action = doInstall ? ACT_INSTALL : ACT_REMOVE;
         Worker(nullptr);
@@ -448,7 +538,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     wc.lpfnWndProc = Proc; wc.hInstance = inst; wc.lpszClassName = L"Click2ScreenSetup";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    RECT r = { 0, 0, Sc(560), Sc(404) };
+    RECT r = { 0, 0, Sc(600), Sc(416) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     HWND w = CreateWindowExW(0, L"Click2ScreenSetup", L"Click2Screen", style, CW_USEDEFAULT, CW_USEDEFAULT,

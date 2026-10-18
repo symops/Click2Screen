@@ -123,3 +123,14 @@ Twoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostały zachowane.
 Błąd: nie znaleziono pliku Click2Screen.exe obok instalatora.
 Błąd: nie znaleziono folderu Program Files.
 Usunąć Click2Screen z tego komputera?\n\nTwoje ustawienia oraz wykonane zrzuty ekranu i nagrania zostaną zachowane.
+Zainstaluj w:
+Przeglądaj…
+Wybierz folder, w którym zainstalować Click2Screen
+Błąd: folder instalacji jest nieprawidłowy (potrzebna pełna ścieżka, np. C:\Programs\Click2Screen).
+Zainstaluj ponownie
+Otwórz folder z obrazami
+Otwórz folder z wideo
+Obrazy
+Nazwa pliku
+Opcje wideo
+Opcje dźwięku

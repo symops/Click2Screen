@@ -12,7 +12,8 @@
 namespace {
 
 HINSTANCE g_inst;
-HWND   g_main, g_panel;
+HWND   g_main, g_panel, g_frame, g_tip;
+bool   g_modeDesktop;             // the recording covers the whole desktop: no frame, the panel sits at the bottom
 HFONT  g_font, g_fontBold;
 HICON  g_icon, g_iconSmall;
 Settings g_cfg;
@@ -34,7 +35,7 @@ void MakeFonts()
     NONCLIENTMETRICSW ncm; memset(&ncm, 0, sizeof(ncm)); ncm.cbSize = sizeof(ncm);
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
-    LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_SEMIBOLD; lf.lfHeight = lf.lfHeight * 3 / 2;
+    LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_BOLD; lf.lfQuality = ANTIALIASED_QUALITY;
     g_fontBold = CreateFontIndirectW(&lf);
 }
 
@@ -107,25 +108,165 @@ void ShowMain(bool show)
     else ShowWindow(g_main, SW_HIDE);
 }
 
+// ---- the look: the original's minimal one (a dark caption, one row of flat icons, a dark strip while recording) ----
+const COLORREF kCapTop = RGB(70, 80, 101), kCapBot = RGB(39, 45, 56), kBody = RGB(238, 250, 255), kBlue = RGB(8, 115, 197),
+               kGlyph = RGB(54, 62, 78), kStripTop = RGB(40, 45, 57), kStripBot = RGB(71, 80, 101), kStripSep = RGB(82, 91, 108),
+               kStripInk = RGB(177, 180, 187), kRecRed = RGB(203, 62, 58);
+const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3;
+
+void Box(HDC dc, int x, int y, int w, int h, COLORREF c)       // a rectangle in 96-dpi units at the pixel origin (ox, oy) set by the caller
+{
+    RECT r = { x, y, x + w, y + h };
+    SetBkColor(dc, c);
+    ExtTextOutW(dc, 0, 0, ETO_OPAQUE, &r, nullptr, 0, nullptr);
+}
+
+struct Glyph { HDC dc; int ox, oy; };                           // logical (96 dpi) coordinates relative to (ox, oy), scaled to the DPI
+void GBox(const Glyph& g, int x, int y, int w, int h, COLORREF c)
+{
+    Box(g.dc, g.ox + Sc(x), g.oy + Sc(y), Sc(x + w) - Sc(x), Sc(y + h) - Sc(y), c);
+}
+
+// The three icons are 16 x 16 grids of 1-unit strokes (a dashed square for the region, a window inside the dashes for a
+// window, a window with a title bar for the desktop); a '#' is a set unit, scaled to the DPI.
+const char* const kIconRegion[16] = {
+    "##### #### #####", "#              #", "#              #", "#              #", "                ", "#              #", "#              #", "#              #",
+    "#              #", "#              #", "#              #", "                ", "#              #", "#              #", "#              #", "##### #### #####" };
+const char* const kIconWindow[16] = {
+    "##### #### #####", "#              #", "#              #", "#              #", "   ##########   ", "#  ##########  #", "#  #        #  #", "#  #        #  #",
+    "#  #        #  #", "#  #        #  #", "#  #        #  #", "   ##########   ", "#              #", "#              #", "#              #", "##### #### #####" };
+const char* const kIconDesktop[16] = {
+    " ############## ", "######### # # ##", "################", "#              #", "#              #", "#  ##  ##  ##  #", "#  #        #  #", "#              #",
+    "#  #        #  #", "#  #        #  #", "#              #", "#  #        #  #", "#  ##  ##  ##  #", "#              #", "##            ##", " ############## " };
+
+void DrawGrid(const Glyph& g, const char* const* rows, COLORREF c)
+{
+    for (int y = 0; y < 16; ++y)
+        for (int x = 0; x < 16; ++x)
+            if (rows[y][x] == '#') GBox(g, x, y, 1, 1, c);
+}
+
+void DrawShotIcon(const Glyph& g, int id, COLORREF c)
+{
+    if (id == IDC_SHOT_REGION || id == IDC_REC_REGION) DrawGrid(g, kIconRegion, c);
+    else if (id == IDC_SHOT_WINDOW || id == IDC_REC_WINDOW) DrawGrid(g, kIconWindow, c);
+    else DrawGrid(g, kIconDesktop, c);
+}
+
+void DrawMainItem(const DRAWITEMSTRUCT* d)
+{
+    HDC dc = d->hDC;
+    RECT rc = d->rcItem;
+    int w = rc.right - rc.left, h = rc.bottom - rc.top;
+    bool down = (d->itemState & ODS_SELECTED) != 0;
+    int id = (int)d->CtlID;
+    if (id == IDC_MIN || id == IDC_CLOSE) {
+        int cap = (int)(rc.top + 0);
+        (void)cap;
+        for (int y = 0; y < h; ++y) {                                        // the caption gradient continues behind the buttons
+            int t = y * 255 / (h > 1 ? h - 1 : 1);
+            COLORREF c = RGB(GetRValue(kCapTop) + (GetRValue(kCapBot) - GetRValue(kCapTop)) * t / 255,
+                             GetGValue(kCapTop) + (GetGValue(kCapBot) - GetGValue(kCapTop)) * t / 255,
+                             GetBValue(kCapTop) + (GetBValue(kCapBot) - GetBValue(kCapTop)) * t / 255);
+            if (down) c = RGB(GetRValue(c) / 2, GetGValue(c) / 2, GetBValue(c) / 2);
+            Box(dc, rc.left, rc.top + y, w, 1, c);
+        }
+        HPEN pen = CreatePen(PS_SOLID, Sc(1) > 1 ? Sc(1) : 1, RGB(235, 238, 243));
+        HPEN old = (HPEN)SelectObject(dc, pen);
+        int cx = rc.left + w / 2, cy = rc.top + h / 2;
+        if (id == IDC_MIN) { MoveToEx(dc, cx - Sc(5), rc.top + Sc(19), nullptr); LineTo(dc, cx + Sc(5), rc.top + Sc(19)); }
+        else {
+            MoveToEx(dc, cx - Sc(5), cy - Sc(5), nullptr); LineTo(dc, cx + Sc(5) + 1, cy + Sc(5) + 1);
+            MoveToEx(dc, cx + Sc(5), cy - Sc(5), nullptr); LineTo(dc, cx - Sc(5) - 1, cy + Sc(5) + 1);
+        }
+        SelectObject(dc, old); DeleteObject(pen);
+    } else {
+        Box(dc, rc.left, rc.top, w, h, down ? RGB(205, 228, 245) : kBody);
+        if (id == IDC_MENU) {
+            Glyph g = { dc, rc.left + (w - Sc(12)) / 2, rc.top + (h - Sc(10)) / 2 };
+            for (int y = 0; y < 3; ++y) GBox(g, 0, y * 4, 12, 2, kGlyph);
+        } else {
+            bool rec = id == IDC_REC_DESKTOP || id == IDC_REC_REGION || id == IDC_REC_WINDOW;
+            Glyph g = { dc, rc.left + (w - Sc(16)) / 2, rc.top + (h - Sc(16)) / 2 };
+            DrawShotIcon(g, id, rec || id == IDC_SHOT_REGION ? kBlue : RGB(0, 0, 0));   // (as the original: the region screenshot icon is blue too)
+        }
+    }
+    if (d->itemState & ODS_FOCUS) { RECT f = rc; InflateRect(&f, -1, -1); DrawFocusRect(dc, &f); }
+}
+
+void FillStrip(HDC dc, int x, int w)                            // the vertical gradient of the recording strip
+{
+    int h = Sc(kStripH);
+    for (int y = 0; y < h; ++y) {
+        int t = y * 255 / (h > 1 ? h - 1 : 1);
+        Box(dc, x, y, w, 1, RGB(GetRValue(kStripTop) + (GetRValue(kStripBot) - GetRValue(kStripTop)) * t / 255,
+                                GetGValue(kStripTop) + (GetGValue(kStripBot) - GetGValue(kStripTop)) * t / 255,
+                                GetBValue(kStripTop) + (GetBValue(kStripBot) - GetBValue(kStripTop)) * t / 255));
+    }
+}
+
+void DrawPanelItem(const DRAWITEMSTRUCT* d)
+{
+    HDC dc = d->hDC;
+    RECT rc = d->rcItem;
+    FillStrip(dc, rc.left, rc.right - rc.left);
+    int id = (int)d->CtlID;
+    int cx = (rc.left + rc.right) / 2, cy = (rc.top + rc.bottom) / 2;
+    if (id == IDC_P_START || id == IDC_P_STOP) {
+        bool enabled = (d->itemState & ODS_DISABLED) == 0;
+        COLORREF ink = enabled ? kStripInk : RGB(110, 115, 125);
+        int r = Sc(5);
+        if (id == IDC_P_STOP) Box(dc, cx - r, cy - r, 2 * r, 2 * r, ink);
+        else if (g_state == ST_RECORDING) { Box(dc, cx - r, cy - r, Sc(3), 2 * r, ink); Box(dc, cx + r - Sc(3), cy - r, Sc(3), 2 * r, ink); }
+        else {
+            HBRUSH b = CreateSolidBrush(enabled ? kRecRed : RGB(110, 115, 125)); HPEN pn = CreatePen(PS_SOLID, 1, enabled ? kRecRed : RGB(110, 115, 125));
+            HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, pn);
+            Ellipse(dc, cx - r, cy - r, cx + r + 1, cy + r + 1);
+            SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(b); DeleteObject(pn);
+        }
+        return;
+    }
+    wchar_t text[100]; GetWindowTextW(d->hwndItem, text, 100);
+    SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(253, 253, 253));
+    HGDIOBJ of = SelectObject(dc, g_fontBold);
+    RECT t = rc;
+    DrawTextW(dc, text, -1, &t, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, of);
+}
+
+static void TimeText(int t, bool minus, wchar_t* out)
+{
+    if (t >= 3600) _snwprintf(out, 32, L"%d:%02d:%02d", t / 3600, t / 60 % 60, t % 60);
+    else _snwprintf(out, 32, L"%s%02d:%02d", minus ? L"-" : L"", t / 60, t % 60);
+}
+
+void SetCell(HWND parent, int id, const wchar_t* text)
+{
+    HWND c = GetDlgItem(parent, id);
+    wchar_t old[100] = L"";
+    GetWindowTextW(c, old, 100);
+    if (wcscmp(old, text) != 0) { SetWindowTextW(c, text); InvalidateRect(c, nullptr, FALSE); }
+}
+
 void UpdatePanel()
 {
     if (!g_panel) return;
     double sec = g_rec ? g_rec->ElapsedSec() : 0.0;
-    int t = (int)sec;
     wchar_t buf[96];
-    _snwprintf(buf, 96, L"%s  %02d:%02d:%02d", T(S_TIME), t / 3600, t / 60 % 60, t % 60);
-    SetWindowTextW(GetDlgItem(g_panel, IDC_P_TIME), buf);
+    if (g_state == ST_COUNTDOWN) TimeText(g_countdown, true, buf); else TimeText((int)sec, false, buf);
+    SetCell(g_panel, IDC_P_TIME, buf);
     double mb = g_rec && g_state != ST_ARMED && g_state != ST_COUNTDOWN ? g_rec->FileBytes() / 1048576.0 : 0.0;
-    _snwprintf(buf, 96, L"%s  %.1f Mb", T(S_SIZE), mb);
-    SetWindowTextW(GetDlgItem(g_panel, IDC_P_SIZE), buf);
+    _snwprintf(buf, 96, L"%d Mb", (int)mb);
+    SetCell(g_panel, IDC_P_SIZE, buf);
     const wchar_t* b = T(S_START);
     if (g_state == ST_COUNTDOWN) { _snwprintf(buf, 96, T(S_STARTING_IN), g_countdown); b = buf; }
     else if (g_state == ST_RECORDING) b = T(S_PAUSE);
     else if (g_state == ST_PAUSED) b = T(S_RESUME);
-    SetWindowTextW(GetDlgItem(g_panel, IDC_P_START), b);
+    SetCell(g_panel, IDC_P_START, b);
     EnableWindow(GetDlgItem(g_panel, IDC_P_START), g_state != ST_COUNTDOWN);
     EnableWindow(GetDlgItem(g_panel, IDC_P_STOP), g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_ARMED || g_state == ST_COUNTDOWN);
-    SetWindowTextW(GetDlgItem(g_panel, IDC_P_HINT), T(S_STOP_HINT));
+    _snwprintf(buf, 96, L"F11: %s", T(S_STOP));
+    SetCell(g_panel, IDC_P_HINT, buf);
     TrayTip();
 }
 
@@ -161,6 +302,7 @@ void ClosePanel()
         KillTimer(g_panel, TIMER_UI); KillTimer(g_panel, TIMER_COUNTDOWN);
         DestroyWindow(g_panel); g_panel = nullptr;
     }
+    if (g_frame) { DestroyWindow(g_frame); g_frame = nullptr; }
     UnregisterHotKey(g_main, HK_STOP);
 }
 
@@ -232,9 +374,99 @@ void HidePanel()
     Balloon(T(S_APP), T(S_TRAY_HIDDEN));
 }
 
+void ExcludeFromCapture(HWND w)
+{
+    // The panel and the frame must not appear in the recording (Windows 10 2004 and later; the frame lies outside the
+    // recorded rectangle anyway).
+    typedef BOOL(WINAPI* SetAff)(HWND, DWORD);
+    SetAff aff = (SetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowDisplayAffinity");
+    if (aff) aff(w, 0x11 /*WDA_EXCLUDEFROMCAPTURE*/);
+}
+
+// The recorded rectangle now (a followed window moves).
+RECT TargetRect()
+{
+    RECT rc = g_target.rc, r;
+    if (g_target.hwnd && IsWindow(g_target.hwnd) && WindowVisibleRect(g_target.hwnd, &r)) rc = r;
+    return rc;
+}
+
+// The frame lies just outside the recorded rectangle; the strip sits below it, centred (above it or inside at the
+// bottom of the screen). For the whole desktop there is no frame and the strip sits at the bottom of the main screen.
+void PlaceOverlay()
+{
+    if (!g_panel) return;
+    RECT rc = TargetRect();
+    int fw = Sc(kFrameW);
+    if (g_frame) {
+        int w = rc.right - rc.left + 2 * fw, h = rc.bottom - rc.top + 2 * fw;
+        HRGN outer = CreateRectRgn(0, 0, w, h), inner = CreateRectRgn(fw, fw, w - fw, h - fw);
+        CombineRgn(outer, outer, inner, RGN_DIFF);
+        DeleteObject(inner);
+        SetWindowRgn(g_frame, outer, TRUE);
+        SetWindowPos(g_frame, HWND_TOPMOST, rc.left - fw, rc.top - fw, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+    int w = Sc(kStripW), h = Sc(kStripH);
+    HMONITOR mon = MonitorFromRect(&rc, MONITOR_DEFAULTTONEAREST);
+    MONITORINFO mi; mi.cbSize = sizeof(mi); GetMonitorInfoW(mon, &mi);
+    RECT wa = mi.rcWork;
+    int x, y;
+    if (g_modeDesktop) {
+        POINT origin = { 0, 0 };
+        MONITORINFO pm; pm.cbSize = sizeof(pm); GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);
+        wa = pm.rcWork;
+        x = (wa.left + wa.right - w) / 2; y = wa.bottom - h - Sc(20);
+    } else {
+        x = (rc.left + rc.right - w) / 2 - 1; y = rc.bottom + fw;
+        if (y + h > wa.bottom) y = rc.top - fw - h;                 // no room below: above the frame
+        if (y < wa.top) y = rc.bottom - h - Sc(10);                 // nor above: inside, at the bottom
+    }
+    if (x + w > wa.right) x = wa.right - w;
+    if (x < wa.left) x = wa.left;
+    SetWindowPos(g_panel, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
+}
+
+void RoundWindow(HWND w, int wpx, int hpx, int radius)         // the lower corners are round, the upper ones nearly square (as the original)
+{
+    HRGN low = CreateRoundRectRgn(0, 0, wpx + 1, hpx + 1, radius, radius), top = CreateRectRgn(0, 0, wpx, hpx / 2);
+    CombineRgn(low, low, top, RGN_OR);
+    DeleteObject(top);
+    SetWindowRgn(w, low, TRUE);
+}
+
+LRESULT CALLBACK FrameProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    switch (m) {
+    case WM_NCHITTEST: return HTTRANSPARENT;
+    case WM_ERASEBKGND: { RECT r; GetClientRect(hw, &r); Box((HDC)wp, 0, 0, r.right, r.bottom, RGB(255, 0, 0)); return 1; }
+    case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
+    }
+    return DefWindowProcW(hw, m, wp, lp);
+}
+
 LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 {
     switch (m) {
+    case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: {
+        PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
+        RECT r; GetClientRect(hw, &r);
+        FillStrip(dc, 0, r.right);
+        static const int seps[4] = { 47, 103, 168, 199 };
+        for (int x : seps) { Box(dc, Sc(x), Sc(6), 1, Sc(kStripH) - Sc(12), kStripSep); }
+        EndPaint(hw, &ps);
+        return 0; }
+    case WM_DRAWITEM: DrawPanelItem((const DRAWITEMSTRUCT*)lp); return TRUE;
+    case WM_CONTEXTMENU: {
+        HMENU mn = CreatePopupMenu();
+        AppendMenuW(mn, MF_STRING, IDC_P_HIDE, T(S_HIDE));
+        POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+        if (lp == (LPARAM)-1) GetCursorPos(&pt);
+        int cmd = TrackPopupMenu(mn, TPM_RIGHTBUTTON | TPM_RETURNCMD, pt.x, pt.y, 0, hw, nullptr);
+        DestroyMenu(mn);
+        if (cmd == IDC_P_HIDE) PostMessageW(hw, WM_COMMAND, MAKEWPARAM(IDC_P_HIDE, 0), 0);
+        return 0; }
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case IDC_P_START: StartPressed(); break;
@@ -248,6 +480,7 @@ LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             else { Beep(true); UpdatePanel(); }
         } else if (wp == TIMER_UI) {
             if (g_rec && (g_rec->LimitReached() || g_rec->Failed())) { FinishRecording(true, false); return 0; }
+            if (g_target.hwnd) PlaceOverlay();                       // a followed window moves
             UpdatePanel();
         }
         return 0;
@@ -264,30 +497,32 @@ void ShowPanel()
     if (!reg) {
         WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
         wc.lpfnWndProc = PanelProc; wc.hInstance = g_inst; wc.lpszClassName = L"Click2ScreenPanel";
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
-        RegisterClassW(&wc); reg = true;
+        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = g_icon;
+        RegisterClassW(&wc);
+        wc.lpfnWndProc = FrameProc; wc.lpszClassName = C2S_CLASS_FRAME; wc.hIcon = nullptr;
+        RegisterClassW(&wc);
+        reg = true;
     }
-    int w = Sc(430), h = Sc(120);
-    RECT r = { 0, 0, w, h };
-    AdjustWindowRectEx(&r, WS_CAPTION | WS_SYSMENU, FALSE, WS_EX_TOPMOST | WS_EX_TOOLWINDOW);
-    RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
-    int ww = r.right - r.left, wh = r.bottom - r.top;
-    g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_CAPTION | WS_SYSMENU,
-                              (wa.left + wa.right - ww) / 2, wa.bottom - wh - Sc(20), ww, wh, nullptr, nullptr, g_inst, nullptr);
-    // The panel must not appear in the recording (Windows 10 2004 and later).
-    typedef BOOL(WINAPI* SetAff)(HWND, DWORD);
-    SetAff aff = (SetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowDisplayAffinity");
-    if (aff) aff(g_panel, 0x11 /*WDA_EXCLUDEFROMCAPTURE*/);
-    int m = Sc(12), y = Sc(10);
-    MakeCtl(g_panel, L"STATIC", L"", 0, m, y, Sc(190), Sc(20), IDC_P_TIME);
-    MakeCtl(g_panel, L"STATIC", L"", 0, m + Sc(190), y, Sc(130), Sc(20), IDC_P_SIZE);
-    MakeCtl(g_panel, L"STATIC", L"", SS_RIGHT, w - m - Sc(80), y, Sc(80), Sc(20), IDC_P_HINT);
-    y += Sc(34);
-    int bw = (w - 2 * m - 2 * Sc(8)) / 3, bh = Sc(34);
-    MakeCtl(g_panel, L"BUTTON", T(S_START), WS_TABSTOP | BS_PUSHBUTTON, m, y, bw, bh, IDC_P_START);
-    MakeCtl(g_panel, L"BUTTON", T(S_STOP), WS_TABSTOP | BS_PUSHBUTTON, m + bw + Sc(8), y, bw, bh, IDC_P_STOP);
-    MakeCtl(g_panel, L"BUTTON", T(S_HIDE), WS_TABSTOP | BS_PUSHBUTTON, m + 2 * (bw + Sc(8)), y, bw, bh, IDC_P_HIDE);
+    int w = Sc(kStripW), h = Sc(kStripH);
+    g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP,
+                              0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
+    ExcludeFromCapture(g_panel);
+    RoundWindow(g_panel, w, h, Sc(8));
+    // time | size | F11: Stop | start / pause | stop  (cells split at 47, 103, 168, 199 of 230 units)
+    static const int cell[6] = { 0, 47, 103, 168, 199, 230 };
+    static const int ids[5] = { IDC_P_TIME, IDC_P_SIZE, IDC_P_HINT, IDC_P_START, IDC_P_STOP };
+    for (int i = 0; i < 5; ++i) {
+        bool button = i >= 3;
+        HWND c = CreateWindowExW(0, button ? L"BUTTON" : L"STATIC", L"", WS_CHILD | WS_VISIBLE | (button ? (BS_OWNERDRAW | WS_TABSTOP) : SS_OWNERDRAW),
+                                 Sc(cell[i]) + 1, 0, Sc(cell[i + 1]) - Sc(cell[i]) - 1, h, g_panel, (HMENU)(INT_PTR)ids[i], g_inst, nullptr);
+        SendMessageW(c, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
+    }
+    if (!g_modeDesktop) {
+        g_frame = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, C2S_CLASS_FRAME, L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr, g_inst, nullptr);
+        if (g_frame) ExcludeFromCapture(g_frame);
+    }
     UpdatePanel();
+    PlaceOverlay();
     ShowWindow(g_panel, SW_SHOWNA);
 }
 
@@ -314,6 +549,7 @@ void Arm(Mode mode)
     if (!EnsureFolder(g_cfg.vidFolder, err, 300)) { Warn(err); if (g_mainWasVisible) ShowMain(true); return; }
     memset(&g_target, 0, sizeof(g_target));
     g_target.rc = rc; g_target.hwnd = hw;
+    g_modeDesktop = mode == M_DESKTOP;
     g_outPath[0] = 0;
     ShowMain(false);
     g_state = ST_ARMED;
@@ -355,9 +591,8 @@ void Shot(Mode mode)
     HBITMAP bmp = CaptureRect(rc, g_cfg.capMouse, g_cfg.highlight);
     if (wasVisible) ShowMain(true);
     if (!bmp) { Warn(T(S_ERR_CAPTURE)); g_busyShot = false; return; }
-    static const wchar_t* ext[] = { L"png", L"jpg", L"bmp" };
     wchar_t path[MAX_PATH];
-    if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ext[g_cfg.imageFormat], L"ImgCounter", path, MAX_PATH, err, 300)) {
+    if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
         Warn(err); DeleteObject(bmp); g_busyShot = false; return;
     }
     if (!SaveBitmap(bmp, path, g_cfg.imageFormat)) {
@@ -374,7 +609,8 @@ void Shot(Mode mode)
 }
 
 // ---- options -----------------------------------------------------------------------------------------------------
-struct OptState { Settings s; bool ok, done; HWND dlg; HWND tab; HWND pg[4][32]; int np[4]; };
+const int kPages = 5;
+struct OptState { Settings s; bool ok, done; HWND dlg; HWND pg[kPages][32]; int np[kPages]; int sel; RECT tabRc[kPages]; };
 
 HWND OAdd(OptState* o, int page, HWND parent, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id)
 {
@@ -383,7 +619,29 @@ HWND OAdd(OptState* o, int page, HWND parent, const wchar_t* cls, const wchar_t*
     return c;
 }
 
-int ComboAdd(HWND cb, const wchar_t* t) { return (int)SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)t); }
+int ComboAdd(HWND cb, const wchar_t* t, LPARAM data = -1)
+{
+    int i = (int)SendMessageW(cb, CB_ADDSTRING, 0, (LPARAM)t);
+    if (i >= 0 && data >= 0) SendMessageW(cb, CB_SETITEMDATA, i, data);
+    return i;
+}
+
+// A format combo lists the formats this Windows can write; the item data is the format number.
+void ComboSelectData(HWND d, int id, int data)
+{
+    HWND cb = GetDlgItem(d, id);
+    int n = (int)SendMessageW(cb, CB_GETCOUNT, 0, 0), pick = 0;
+    for (int i = 0; i < n; ++i) if ((int)SendMessageW(cb, CB_GETITEMDATA, i, 0) == data) pick = i;
+    SendMessageW(cb, CB_SETCURSEL, pick, 0);
+}
+int ComboGetData(HWND d, int id, int fallback)
+{
+    HWND cb = GetDlgItem(d, id);
+    int i = (int)SendMessageW(cb, CB_GETCURSEL, 0, 0);
+    if (i < 0) return fallback;
+    int v = (int)SendMessageW(cb, CB_GETITEMDATA, i, 0);
+    return v < 0 ? fallback : v;
+}
 
 void OptLoad(OptState* o)
 {
@@ -392,7 +650,7 @@ void OptLoad(OptState* o)
     chk(O_AUTOSTART, s.runAtStartup); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
     chk(O_OPENEDITOR, s.openEditor); chk(O_SOUNDS, s.sounds); chk(O_MIC, s.mic);
     SetDlgItemInt(d, O_DELAY, s.delaySec, FALSE);
-    SendDlgItemMessageW(d, O_VCODEC, CB_SETCURSEL, s.videoCodec, 0);
+    ComboSelectData(d, O_VCODEC, s.videoCodec);
     SendDlgItemMessageW(d, O_ACODEC, CB_SETCURSEL, s.audioCodec, 0);
     SendDlgItemMessageW(d, O_VQ, CB_SETCURSEL, s.videoQuality, 0);
     SendDlgItemMessageW(d, O_AQ, CB_SETCURSEL, s.audioQuality, 0);
@@ -401,7 +659,7 @@ void OptLoad(OptState* o)
     SendDlgItemMessageW(d, O_FPS, CB_SETCURSEL, fi, 0);
     SetDlgItemInt(d, O_DH, s.durH, FALSE); SetDlgItemInt(d, O_DM, s.durM, FALSE); SetDlgItemInt(d, O_DS, s.durS, FALSE);
     SetDlgItemTextW(d, O_VIDFOLDER, s.vidFolder); SetDlgItemTextW(d, O_IMGFOLDER, s.imgFolder);
-    SendDlgItemMessageW(d, O_IMGFMT, CB_SETCURSEL, s.imageFormat, 0);
+    ComboSelectData(d, O_IMGFMT, s.imageFormat);
     SetDlgItemTextW(d, O_TPL, s.fileName);
     SendDlgItemMessageW(d, O_LANG, CB_SETCURSEL, s.language, 0);
 }
@@ -415,7 +673,7 @@ void OptCollect(OptState* o, Settings& s)
     s.openEditor = chk(O_OPENEDITOR); s.sounds = chk(O_SOUNDS); s.mic = chk(O_MIC);
     auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
     s.delaySec = num(O_DELAY, 0, 60);
-    s.videoCodec = (int)SendDlgItemMessageW(d, O_VCODEC, CB_GETCURSEL, 0, 0);
+    s.videoCodec = ComboGetData(d, O_VCODEC, s.videoCodec);
     s.audioCodec = (int)SendDlgItemMessageW(d, O_ACODEC, CB_GETCURSEL, 0, 0);
     s.videoQuality = (int)SendDlgItemMessageW(d, O_VQ, CB_GETCURSEL, 0, 0);
     s.audioQuality = (int)SendDlgItemMessageW(d, O_AQ, CB_GETCURSEL, 0, 0);
@@ -424,7 +682,7 @@ void OptCollect(OptState* o, Settings& s)
     s.fps = fpsv[fi];
     s.durH = num(O_DH, 0, 99); s.durM = num(O_DM, 0, 59); s.durS = num(O_DS, 0, 59);
     GetDlgItemTextW(d, O_VIDFOLDER, s.vidFolder, MAX_PATH); GetDlgItemTextW(d, O_IMGFOLDER, s.imgFolder, MAX_PATH);
-    s.imageFormat = (int)SendDlgItemMessageW(d, O_IMGFMT, CB_GETCURSEL, 0, 0); if (s.imageFormat < 0) s.imageFormat = 0;
+    s.imageFormat = ComboGetData(d, O_IMGFMT, s.imageFormat);
     GetDlgItemTextW(d, O_TPL, s.fileName, 128);
     s.language = (int)SendDlgItemMessageW(d, O_LANG, CB_GETCURSEL, 0, 0); if (s.language < 0) s.language = 0;
 }
@@ -501,8 +759,35 @@ void BrowseFolder(HWND d, int editId)
 
 void ShowPage(OptState* o, int page)
 {
-    for (int p = 0; p < 4; ++p)
+    o->sel = page;
+    for (int p = 0; p < kPages; ++p)
         for (int i = 0; i < o->np[p]; ++i) ShowWindow(o->pg[p][i], p == page ? SW_SHOW : SW_HIDE);
+    InvalidateRect(o->dlg, nullptr, FALSE);
+}
+
+// Tabs and the page frame are drawn by hand (the original's flat look): 1-unit grey lines, the selected tab open to the page.
+void PaintOptions(OptState* o, HDC dc)
+{
+    const COLORREF face = GetSysColor(COLOR_BTNFACE), line = RGB(160, 160, 160);
+    RECT cr; GetClientRect(o->dlg, &cr);
+    Box(dc, 0, 0, cr.right, cr.bottom, face);
+    RECT pg = { Sc(16), Sc(37), Sc(513), Sc(287) };
+    Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
+    Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
+    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG };
+    SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(0, 0, 0));
+    HGDIOBJ of = SelectObject(dc, g_font);
+    for (int i = 0; i < kPages; ++i) {
+        RECT t = o->tabRc[i];
+        bool on = i == o->sel;
+        if (on) { t.top -= Sc(2); }
+        Box(dc, t.left, t.top, t.right - t.left, t.bottom - t.top, on ? RGB(255, 255, 255) : RGB(232, 232, 232));
+        Box(dc, t.left, t.top, t.right - t.left, 1, line); Box(dc, t.left, t.top, 1, t.bottom - t.top, line); Box(dc, t.right - 1, t.top, 1, t.bottom - t.top, line);
+        if (on) Box(dc, t.left + 1, pg.top, t.right - t.left - 2, 1, RGB(255, 255, 255));        // opens onto the page
+        RECT tx = t;
+        DrawTextW(dc, T(names[i]), -1, &tx, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    }
+    SelectObject(dc, of);
 }
 
 LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
@@ -512,9 +797,13 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_NCCREATE:
         SetWindowLongPtrW(hw, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCTW*)lp)->lpCreateParams);
         return DefWindowProcW(hw, m, wp, lp);
-    case WM_NOTIFY:
-        if (((NMHDR*)lp)->idFrom == O_TABS && ((NMHDR*)lp)->code == TCN_SELCHANGE)
-            ShowPage(o, TabCtrl_GetCurSel(o->tab));
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); if (o) PaintOptions(o, dc); EndPaint(hw, &ps); return 0; }
+    case WM_LBUTTONDOWN:
+        if (o) {
+            POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+            for (int i = 0; i < kPages; ++i) if (PtInRect(&o->tabRc[i], pt)) { ShowPage(o, i); break; }
+        }
         return 0;
     case WM_COMMAND:
         switch (LOWORD(wp)) {
@@ -545,83 +834,93 @@ bool OptionsDialog()
     }
     OptState o; memset(&o, 0, sizeof(o));
     o.s = g_cfg;
-    int W = Sc(660), H = Sc(430);
+    // 526 x 340 units as the original: tabs at y 16, the page frame 16..513 x 37..287, buttons 75 x 22 at y 303.
+    int W = Sc(526), H = Sc(340);
     RECT r = { 0, 0, W, H };
     AdjustWindowRect(&r, WS_CAPTION | WS_SYSMENU, FALSE);
     HWND owner = g_main && IsWindowVisible(g_main) ? g_main : nullptr;
     o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", T(S_OPT_TITLE), WS_CAPTION | WS_SYSMENU,
                             CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, owner, nullptr, g_inst, &o);
     HWND d = o.dlg;
-    int mg = Sc(10), tabH = Sc(32);
-    // Flat tab buttons without a page body: the controls stay on the plain window background (no mismatched colours).
-    o.tab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TCS_BUTTONS | TCS_FLATBUTTONS | TCS_FOCUSNEVER,
-                            mg, mg, W - 2 * mg, tabH, d, (HMENU)(INT_PTR)O_TABS, g_inst, nullptr);
-    SendMessageW(o.tab, WM_SETFONT, (WPARAM)g_font, TRUE);
-    const Str tabs[] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_FILES, S_OPT_LANG };
-    for (int i = 0; i < 4; ++i) { TCITEMW ti; memset(&ti, 0, sizeof(ti)); ti.mask = TCIF_TEXT; ti.pszText = (LPWSTR)T(tabs[i]); TabCtrl_InsertItem(o.tab, i, &ti); }
-    RECT ar = { mg, mg + tabH + Sc(8), W - mg, H - Sc(56) };
-    int x0 = ar.left + Sc(8), y = ar.top + Sc(8), cw = ar.right - ar.left - Sc(16), lh = Sc(22), gap = Sc(30);
-    auto chkbox = [&](int page, Str s, int id) { OAdd(&o, page, d, L"BUTTON", T(s), WS_TABSTOP | BS_AUTOCHECKBOX, x0, y, cw, lh, id); y += gap; };
-
-    // page 0: general
-    chkbox(0, S_OPT_AUTOSTART, O_AUTOSTART); chkbox(0, S_OPT_MOUSE, O_MOUSE); chkbox(0, S_OPT_HIGHLIGHT, O_HILITE);
-    chkbox(0, S_OPT_OPEN_FOLDER, O_OPENFOLDER); chkbox(0, S_OPT_OPEN_EDITOR, O_OPENEDITOR); chkbox(0, S_OPT_SOUNDS, O_SOUNDS);
-    chkbox(0, S_OPT_MIC, O_MIC);
-    OAdd(&o, 0, d, L"STATIC", T(S_OPT_DELAY), 0, x0, y + Sc(3), Sc(200), lh, 0);
-    OAdd(&o, 0, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_NUMBER, x0 + Sc(210), y, Sc(60), lh, O_DELAY);
-    OAdd(&o, 0, d, L"STATIC", T(S_OPT_SECONDS), 0, x0 + Sc(280), y + Sc(3), Sc(100), lh, 0);
-
-    // page 1: video and audio
-    y = ar.top + Sc(8);
-    auto combo = [&](Str lab, int id, const wchar_t* i0, const wchar_t* i1, const wchar_t* i2 = nullptr, const wchar_t* i3 = nullptr,
-                     const wchar_t* i4 = nullptr, const wchar_t* i5 = nullptr, const wchar_t* i6 = nullptr) {
-        OAdd(&o, 1, d, L"STATIC", T(lab), 0, x0, y + Sc(3), Sc(170), lh, 0);
-        HWND cb = OAdd(&o, 1, d, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, x0 + Sc(180), y, cw - Sc(190), Sc(200), id);
-        const wchar_t* items[] = { i0, i1, i2, i3, i4, i5, i6 };
-        for (auto t : items) if (t) ComboAdd(cb, t);
-        y += gap;
+    {   // the tab rectangles: the text width + 16 units, 21 units high
+        HDC dc = GetDC(d); HGDIOBJ of = SelectObject(dc, g_font);
+        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG };
+        int x = Sc(16);
+        for (int i = 0; i < kPages; ++i) {
+            SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz);
+            o.tabRc[i].left = x; o.tabRc[i].right = x + sz.cx + Sc(16); o.tabRc[i].top = Sc(16); o.tabRc[i].bottom = Sc(37);
+            x = o.tabRc[i].right;
+        }
+        SelectObject(dc, of); ReleaseDC(d, dc);
+    }
+    // All positions are in 96-dpi units inside the dialog; Sc() scales them.
+    auto add = [&](int page, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
+        return OAdd(&o, page, d, cls, text, style, Sc(x), Sc(y), Sc(w), Sc(h), id);
     };
-    combo(S_OPT_VCODEC, O_VCODEC, T(S_VC_BEST), T(S_VC_FAST));
-    combo(S_OPT_VQUALITY, O_VQ, T(S_Q_HIGH), T(S_Q_MEDIUM), T(S_Q_LOW));
-    combo(S_OPT_ACODEC, O_ACODEC, T(S_AC_AAC), T(S_AC_MP3));
-    combo(S_OPT_AQUALITY, O_AQ, T(S_Q_HIGH), T(S_Q_MEDIUM), T(S_Q_LOW));
-    combo(S_OPT_FPS, O_FPS, L"10", L"15", L"20", L"25", L"30", L"45", L"60");
-    OAdd(&o, 1, d, L"STATIC", T(S_OPT_DURATION), 0, x0, y + Sc(3), cw, lh, 0); y += gap;
-    OAdd(&o, 1, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_NUMBER, x0, y, Sc(50), lh, O_DH);
-    OAdd(&o, 1, d, L"STATIC", T(S_OPT_HOURS), 0, x0 + Sc(56), y + Sc(3), Sc(60), lh, 0);
-    OAdd(&o, 1, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_NUMBER, x0 + Sc(130), y, Sc(50), lh, O_DM);
-    OAdd(&o, 1, d, L"STATIC", T(S_OPT_MINUTES), 0, x0 + Sc(186), y + Sc(3), Sc(70), lh, 0);
-    OAdd(&o, 1, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_NUMBER, x0 + Sc(270), y, Sc(50), lh, O_DS);
-    OAdd(&o, 1, d, L"STATIC", T(S_OPT_SECONDS), 0, x0 + Sc(326), y + Sc(3), Sc(70), lh, 0);
+    auto label = [&](int page, Str s, int x, int y, int w) { add(page, L"STATIC", T(s), SS_LEFT | SS_NOPREFIX, x, y, w, 16, 0); };
+    auto combo = [&](int page, int id, int x, int y, int w) { return add(page, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, x, y, w, 200, id); };
+    auto edit = [&](int page, int id, int x, int y, int w, DWORD extra = 0) { return add(page, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL | extra, x, y, w, 20, id); };
 
-    // page 2: files
-    y = ar.top + Sc(8);
-    OAdd(&o, 2, d, L"STATIC", T(S_OPT_VIDFOLDER), 0, x0, y, cw, lh, 0); y += Sc(22);
-    OAdd(&o, 2, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, x0, y, cw - Sc(100), lh, O_VIDFOLDER);
-    OAdd(&o, 2, d, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, x0 + cw - Sc(92), y - Sc(1), Sc(92), lh + Sc(2), O_BRVID); y += Sc(34);
-    OAdd(&o, 2, d, L"STATIC", T(S_OPT_IMGFOLDER), 0, x0, y, cw, lh, 0); y += Sc(22);
-    OAdd(&o, 2, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, x0, y, cw - Sc(100), lh, O_IMGFOLDER);
-    OAdd(&o, 2, d, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, x0 + cw - Sc(92), y - Sc(1), Sc(92), lh + Sc(2), O_BRIMG); y += Sc(34);
-    OAdd(&o, 2, d, L"STATIC", T(S_OPT_IMGFORMAT), 0, x0, y + Sc(3), Sc(170), lh, 0);
-    HWND fm = OAdd(&o, 2, d, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST, x0 + Sc(180), y, Sc(120), Sc(120), O_IMGFMT);
-    ComboAdd(fm, L"PNG"); ComboAdd(fm, L"JPG"); ComboAdd(fm, L"BMP"); y += gap;
-    OAdd(&o, 2, d, L"STATIC", T(S_OPT_TEMPLATE), 0, x0, y, cw, lh, 0); y += Sc(22);
-    OAdd(&o, 2, d, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL, x0, y, cw, lh, O_TPL); y += Sc(30);
-    OAdd(&o, 2, d, L"STATIC", T(S_OPT_TEMPLATE_TIPS), 0, x0, y, cw, Sc(80), 0);
+    // page 0: general (checkboxes at 28.5-unit steps from y 91; the delay on top)
+    label(0, S_OPT_DELAY, 33, 61, 200);
+    edit(0, O_DELAY, 244, 59, 40, ES_NUMBER);
+    label(0, S_OPT_SECONDS, 294, 61, 150);
+    static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE},
+        {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_OPEN_EDITOR, O_OPENEDITOR}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_MIC, O_MIC} };
+    for (int i = 0; i < 7; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 91 + i * 57 / 2, 460, 18, chk[i].id);
 
-    // page 3: language
-    y = ar.top + Sc(8);
-    OAdd(&o, 3, d, L"STATIC", T(S_OPT_LANG), 0, x0, y + Sc(3), Sc(170), lh, 0);
-    HWND lg = OAdd(&o, 3, d, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, x0 + Sc(180), y, Sc(260), Sc(320), O_LANG);
+    // page 1: video (left column) and audio (right column)
+    label(1, S_OPT_VIDEO_OPTIONS, 35, 52, 220); label(1, S_OPT_AUDIO_OPTIONS, 270, 52, 220);
+    label(1, S_OPT_VCODEC, 35, 72, 220);        label(1, S_OPT_ACODEC, 270, 72, 220);
+    HWND vc = combo(1, O_VCODEC, 34, 90, 223);  HWND ac = combo(1, O_ACODEC, 270, 90, 223);
+    for (int i = 0; i < VC_COUNT; ++i) if (VideoFormatAvailable(i)) ComboAdd(vc, VideoFormatName(i), i);
+    ComboAdd(ac, T(S_AC_AAC)); ComboAdd(ac, T(S_AC_MP3));
+    label(1, S_OPT_VQUALITY, 35, 118, 220);     label(1, S_OPT_AQUALITY, 270, 118, 220);
+    HWND vq = combo(1, O_VQ, 34, 136, 223);     HWND aq = combo(1, O_AQ, 270, 136, 223);
+    HWND qs[2] = { vq, aq };
+    for (HWND q : qs) { ComboAdd(q, T(S_Q_HIGH)); ComboAdd(q, T(S_Q_MEDIUM)); ComboAdd(q, T(S_Q_LOW)); }
+    label(1, S_OPT_FPS, 35, 166, 140);
+    HWND fp = combo(1, O_FPS, 180, 162, 77);
+    static const wchar_t* const fpsText[7] = { L"10", L"15", L"20", L"25", L"30", L"45", L"60" };
+    for (const wchar_t* f : fpsText) ComboAdd(fp, f);
+    label(1, S_OPT_VIDFOLDER, 35, 193, 400);
+    edit(1, O_VIDFOLDER, 34, 211, 417);
+    add(1, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, 459, 210, 33, 22, O_BRVID);
+    label(1, S_OPT_DURATION, 35, 240, 450);
+    edit(1, O_DH, 35, 258, 38, ES_NUMBER);  label(1, S_OPT_HOURS, 78, 260, 70);
+    edit(1, O_DM, 160, 258, 38, ES_NUMBER); label(1, S_OPT_MINUTES, 203, 260, 70);
+    edit(1, O_DS, 285, 258, 38, ES_NUMBER); label(1, S_OPT_SECONDS, 328, 260, 70);
+
+    // page 2: images
+    label(2, S_OPT_IMGFORMAT, 35, 63, 160);
+    HWND fm = combo(2, O_IMGFMT, 203, 61, 188);
+    for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ComboAdd(fm, ImageFormatName(i), i);
+    label(2, S_OPT_IMGFOLDER, 35, 113, 400);
+    edit(2, O_IMGFOLDER, 134, 111, 316);
+    add(2, L"BUTTON", T(S_BROWSE), WS_TABSTOP | BS_PUSHBUTTON, 459, 110, 33, 22, O_BRIMG);
+
+    // page 3: file name
+    label(3, S_OPT_TEMPLATE, 34, 61, 120);
+    edit(3, O_TPL, 160, 59, 333);
+    add(3, L"STATIC", T(S_OPT_TEMPLATE_TIPS), SS_LEFT | SS_NOPREFIX, 34, 92, 460, 150, 0);
+
+    // page 4: language (and the settings file: export / import)
+    label(4, S_OPT_LANG, 33, 57, 205);
+    HWND lg = combo(4, O_LANG, 33, 76, 205);
     ComboAdd(lg, T(S_LANG_AUTO));
     for (int i = 0; i < LangCount(); ++i) ComboAdd(lg, LangName(i));
+    add(4, L"BUTTON", T(S_OPT_EXPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 118, 205, 22, O_EXPORT);
+    add(4, L"BUTTON", T(S_OPT_IMPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 148, 205, 22, O_IMPORT);
 
-    int by = H - Sc(40);
-    MakeCtl(d, L"BUTTON", T(S_RESTORE_DEFAULT), WS_TABSTOP | BS_PUSHBUTTON, mg, by, Sc(130), Sc(28), O_DEFAULTS);
-    MakeCtl(d, L"BUTTON", T(S_OPT_EXPORT), WS_TABSTOP | BS_PUSHBUTTON, mg + Sc(136), by, Sc(150), Sc(28), O_EXPORT);
-    MakeCtl(d, L"BUTTON", T(S_OPT_IMPORT), WS_TABSTOP | BS_PUSHBUTTON, mg + Sc(292), by, Sc(150), Sc(28), O_IMPORT);
-    MakeCtl(d, L"BUTTON", T(S_BTN_OK), WS_TABSTOP | BS_DEFPUSHBUTTON, W - mg - Sc(180), by, Sc(84), Sc(28), IDOK);
-    MakeCtl(d, L"BUTTON", T(S_BTN_CANCEL), WS_TABSTOP | BS_PUSHBUTTON, W - mg - Sc(90), by, Sc(84), Sc(28), IDCANCEL);
+    // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
+    auto btn = [&](const wchar_t* text, DWORD style, int x, int w, int id) { MakeCtl(d, L"BUTTON", text, WS_TABSTOP | style, Sc(x), Sc(303), Sc(w), Sc(22), id); };
+    btn(T(S_RESTORE_DEFAULT), BS_PUSHBUTTON, 16, 170, O_DEFAULTS);
+    btn(T(S_BTN_OK), BS_DEFPUSHBUTTON, 354, 75, IDOK);
+    btn(T(S_BTN_CANCEL), BS_PUSHBUTTON, 435, 75, IDCANCEL);
+    // all the children use the dialog font
+    {   HWND c = nullptr;
+        while ((c = FindWindowExW(d, c, nullptr, nullptr)) != nullptr) SendMessageW(c, WM_SETFONT, (WPARAM)g_font, TRUE);
+    }
     OptLoad(&o);
     ShowPage(&o, 0);
 
@@ -665,32 +964,87 @@ void LayoutMainText()
 {
     if (!g_main) return;
     SetWindowTextW(g_main, T(S_APP));
+    // The icons carry no text; the window text of each button is its tooltip (and what a screen reader says).
     struct { int id; Str s; } t[] = {
         {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW},
         {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP}, {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW},
-        {IDC_OPTIONS, S_OPTIONS}, {IDC_HINT, S_HOTKEYS_HINT}, {IDC_GRP_VIDEO, S_GRP_VIDEO}, {IDC_GRP_SHOT, S_GRP_SHOT} };
+        {IDC_MENU, S_OPTIONS} };
     for (auto& i : t) SetWindowTextW(GetDlgItem(g_main, i.id), T(i.s));
+    InvalidateRect(g_main, nullptr, TRUE);
 }
 
 void CreateMainControls(HWND hw)
 {
-    int m = Sc(14), bw = Sc(140), bh = Sc(52), gap = Sc(10), gh = Sc(98), y = Sc(14);
-    MakeCtl(hw, L"BUTTON", L"", BS_GROUPBOX, m, y, 3 * bw + 2 * gap + 2 * Sc(10), gh, IDC_GRP_VIDEO);
-    int bx = m + Sc(10), by = y + Sc(26);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx, by, bw, bh, IDC_REC_DESKTOP);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx + bw + gap, by, bw, bh, IDC_REC_REGION);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx + 2 * (bw + gap), by, bw, bh, IDC_REC_WINDOW);
-    y += gh + Sc(10);
-    MakeCtl(hw, L"BUTTON", L"", BS_GROUPBOX, m, y, 3 * bw + 2 * gap + 2 * Sc(10), gh, IDC_GRP_SHOT);
-    by = y + Sc(26);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx, by, bw, bh, IDC_SHOT_DESKTOP);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx + bw + gap, by, bw, bh, IDC_SHOT_REGION);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON | BS_MULTILINE, bx + 2 * (bw + gap), by, bw, bh, IDC_SHOT_WINDOW);
-    y += gh + Sc(12);
-    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, m, y, Sc(110), Sc(30), IDC_OPTIONS);
-    MakeCtl(hw, L"STATIC", L"", SS_LEFT, m + Sc(124), y + Sc(7), Sc(300), Sc(20), IDC_HINT);
-    y += Sc(42);
-    MakeCtl(hw, L"STATIC", T(S_STATUS_READY), SS_LEFT | SS_PATHELLIPSIS, m, y, 3 * bw + 2 * gap + 2 * Sc(10), Sc(20), IDC_STATUS);
+    // 206 x 62 units: a 28-unit caption (icon, name, minimize, close) and a row of 26-unit buttons with 16-unit icons:
+    // three screenshots (black) at 1, 27, 53; three recordings (blue) at 91, 117, 143; the menu at 180.
+    struct { int id; int x; } b[] = {
+        { IDC_SHOT_DESKTOP, 1 }, { IDC_SHOT_WINDOW, 27 }, { IDC_SHOT_REGION, 53 },
+        { IDC_REC_DESKTOP, 91 }, { IDC_REC_WINDOW, 117 }, { IDC_REC_REGION, 143 }, { IDC_MENU, 180 } };
+    for (auto& i : b)
+        MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_OWNERDRAW, Sc(i.x), Sc(32), Sc(26), Sc(26), i.id);
+    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_OWNERDRAW, Sc(150), 0, Sc(28), Sc(kCapH), IDC_MIN);
+    MakeCtl(hw, L"BUTTON", L"", WS_TABSTOP | BS_OWNERDRAW, Sc(178), 0, Sc(28), Sc(kCapH), IDC_CLOSE);
+    // The last saved file / error (read by the tests and the screen readers); the window itself shows no status line.
+    CreateWindowExW(0, L"STATIC", T(S_STATUS_READY), WS_CHILD | SS_LEFT, 0, 0, Sc(10), Sc(10), hw, (HMENU)(INT_PTR)IDC_STATUS, g_inst, nullptr);
+    // Tooltips of the icon buttons.
+    if (g_tip) DestroyWindow(g_tip);
+    g_tip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT,
+                            CW_USEDEFAULT, CW_USEDEFAULT, hw, nullptr, g_inst, nullptr);
+    for (auto& i : b) {
+        if (i.id == IDC_MENU) continue;
+        TOOLINFOW ti; memset(&ti, 0, sizeof(ti));
+        ti.cbSize = sizeof(ti); ti.uFlags = TTF_IDISHWND | TTF_SUBCLASS; ti.hwnd = hw; ti.uId = (UINT_PTR)GetDlgItem(hw, i.id);
+        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(g_tip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+    }
+    SendMessageW(g_tip, TTM_SETMAXTIPWIDTH, 0, Sc(320));
+}
+
+void RoundMain()
+{
+    RECT r; GetWindowRect(g_main, &r);
+    RoundWindow(g_main, r.right - r.left, r.bottom - r.top, Sc(8));
+}
+
+void PaintMain(HWND hw, HDC dc)
+{
+    int w = Sc(kMainW), capH = Sc(kCapH);
+    for (int y = 0; y < capH; ++y) {                                          // caption: a vertical gradient
+        int t = y * 255 / (capH - 1);
+        Box(dc, 0, y, w, 1, RGB(GetRValue(kCapTop) + (GetRValue(kCapBot) - GetRValue(kCapTop)) * t / 255,
+                                GetGValue(kCapTop) + (GetGValue(kCapBot) - GetGValue(kCapTop)) * t / 255,
+                                GetBValue(kCapTop) + (GetBValue(kCapBot) - GetBValue(kCapTop)) * t / 255));
+    }
+    RECT rc; GetClientRect(hw, &rc);
+    Box(dc, 0, capH, w, rc.bottom - capH, kBody);
+    if (g_iconSmall) DrawIconEx(dc, Sc(6), Sc(6), g_iconSmall, Sc(16), Sc(16), 0, nullptr, DI_NORMAL);
+    SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(255, 255, 255));
+    HGDIOBJ of = SelectObject(dc, g_fontBold);
+    RECT t = { Sc(28), 0, Sc(148), capH };
+    DrawTextW(dc, T(S_APP), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+    SelectObject(dc, of);
+}
+
+void ShowMainMenu()
+{
+    HMENU mn = CreatePopupMenu();
+    AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
+    AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(mn, MF_STRING, ID_MENU_PICTURES, T(S_OPEN_PICTURES));
+    AppendMenuW(mn, MF_STRING, ID_MENU_VIDEOS, T(S_OPEN_VIDEOS));
+    AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(mn, MF_STRING | (g_cfg.capMouse ? MF_CHECKED : 0), ID_MENU_MOUSE, T(S_OPT_MOUSE));
+    RECT r; GetWindowRect(GetDlgItem(g_main, IDC_MENU), &r);
+    int cmd = TrackPopupMenu(mn, TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_RIGHTBUTTON, r.right, r.bottom, 0, g_main, nullptr);
+    DestroyMenu(mn);
+    if (cmd) PostMessageW(g_main, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
+}
+
+void OpenFolder(const wchar_t* folder)
+{
+    wchar_t err[300];
+    if (!EnsureFolder(folder, err, 300)) { Warn(err); return; }
+    ShellExecuteW(nullptr, L"open", folder, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void RebuildMain(UINT dpi, const RECT* suggested)
@@ -707,7 +1061,9 @@ void RebuildMain(UINT dpi, const RECT* suggested)
     LayoutMainText();
     SetStatus(status);
     if (suggested)
-        SetWindowPos(g_main, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(g_main, nullptr, suggested->left, suggested->top, Sc(kMainW), Sc(kMainH), SWP_NOZORDER | SWP_NOACTIVATE);
+    else SetWindowPos(g_main, nullptr, 0, 0, Sc(kMainW), Sc(kMainH), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
+    RoundMain();
 }
 
 void RegisterHotkeys()
@@ -730,15 +1086,45 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         g_main = hw;
         CreateMainControls(hw);
         return 0;
+    case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
+    case WM_ERASEBKGND: return 1;
+    case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); PaintMain(hw, dc); EndPaint(hw, &ps); return 0; }
+    case WM_DRAWITEM: DrawMainItem((const DRAWITEMSTRUCT*)lp); return TRUE;
+    case WM_NCHITTEST: {                         // the caption is drawn by the program: dragging it moves the window
+        POINT pt = { (short)LOWORD(lp), (short)HIWORD(lp) };
+        ScreenToClient(hw, &pt);
+        return pt.y >= 0 && pt.y < Sc(kCapH) ? HTCAPTION : HTCLIENT; }
+    case WM_NOTIFY: {
+        NMTTDISPINFOW* nm = (NMTTDISPINFOW*)lp;
+        if (nm->hdr.code == TTN_GETDISPINFOW) {
+            static wchar_t tip[120];
+            int id = GetDlgCtrlID((HWND)nm->hdr.idFrom);
+            static const struct { int id; Str s; } t[] = { {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW},
+                {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP}, {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW} };
+            tip[0] = 0;
+            for (auto& i : t) if (i.id == id) { wcsncpy(tip, T(i.s), 119); tip[119] = 0; }
+            for (wchar_t* c = tip; *c; ++c) if (*c == L'\n') *c = L' ';       // "Capture desktop (Ctrl+PrintScreen)"
+            nm->lpszText = tip;
+        }
+        return 0; }
     case WM_COMMAND:
         switch (LOWORD(wp)) {
+        case IDC_MENU: ShowMainMenu(); break;
+        case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;
+        case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
+        case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
+        case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
+        case ID_MENU_MOUSE: g_cfg.capMouse = !g_cfg.capMouse; SettingsSave(g_cfg); break;
+        case IDC_OPTIONS:
+            if (OptionsDialog()) ApplyLanguage();
+            break;
         case IDC_REC_DESKTOP: Arm(M_DESKTOP); break;
         case IDC_REC_REGION:  Arm(M_REGION); break;
         case IDC_REC_WINDOW:  Arm(M_WINDOW); break;
         case IDC_SHOT_DESKTOP: PostMessageW(hw, WM_HOTKEY, HK_DESKTOP, 0); break;
         case IDC_SHOT_REGION:  PostMessageW(hw, WM_HOTKEY, HK_REGION, 0); break;
         case IDC_SHOT_WINDOW:  PostMessageW(hw, WM_HOTKEY, HK_WINDOW, 0); break;
-        case IDC_OPTIONS: case ID_TRAY_OPTIONS: if (OptionsDialog()) ApplyLanguage(); break;
+        case ID_TRAY_OPTIONS: if (OptionsDialog()) ApplyLanguage(); break;
         case ID_TRAY_SHOW: ShowMain(true); break;
         case ID_TRAY_PANEL: if (g_state != ST_IDLE) ShowPanel(); break;
         case ID_TRAY_PAUSE: if (g_state != ST_IDLE) StartPressed(); break;
@@ -842,7 +1228,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     }
     SettingsLoad(g_cfg);
     LangSelect(g_cfg.language);
-    INITCOMMONCONTROLSEX ic = { sizeof(ic), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES };
+    INITCOMMONCONTROLSEX ic = { sizeof(ic), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES | ICC_WIN95_CLASSES };
     InitCommonControlsEx(&ic);
     MakeFonts();
     g_icon = (HICON)LoadImageW(inst, MAKEINTRESOURCEW(1), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0);
@@ -851,14 +1237,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
 
     WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
     wc.lpfnWndProc = MainProc; wc.hInstance = inst; wc.lpszClassName = kMainClass;
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    int cw = 3 * Sc(140) + 2 * Sc(10) + 2 * Sc(10) + 2 * Sc(14), ch = Sc(14) + 2 * Sc(98) + Sc(10) + Sc(12) + Sc(42) + Sc(34);
-    RECT r = { 0, 0, cw, ch };
-    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
-    AdjustWindowRect(&r, style, FALSE);
-    CreateWindowExW(0, kMainClass, T(S_APP), style, CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, nullptr, nullptr, inst, nullptr);
+    // A window of its own look: no system caption (the program draws the 28-unit one), 206 x 62 units, rounded corners.
+    RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    int ww = Sc(kMainW), wh = Sc(kMainH);
+    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU,
+                    (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
+    RoundMain();
     LayoutMainText();
     TrayAdd();
     RegisterHotkeys();

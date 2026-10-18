@@ -123,3 +123,14 @@ Click2Screen 不会随 Windows 启动。
 错误：在安装程序旁边找不到 Click2Screen.exe。
 错误：找不到 Program Files 文件夹。
 要从此计算机卸载 Click2Screen 吗？\n\n您的设置以及已创建的截图和视频将被保留。
+安装到：
+浏览…
+选择安装 Click2Screen 的文件夹
+错误：安装文件夹无效（需要完整路径，例如 C:\Programs\Click2Screen）。
+重新安装
+打开图片文件夹
+打开视频文件夹
+图像
+文件名
+视频选项
+音频选项

@@ -123,3 +123,14 @@ Uw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven
 Fout: Click2Screen.exe is niet gevonden naast het installatieprogramma.
 Fout: de map Program Files is niet gevonden.
 Click2Screen van deze computer verwijderen?\n\nUw instellingen en de schermafbeeldingen en video’s die u hebt gemaakt blijven behouden.
+Installeren in:
+Bladeren…
+Kies de map waarin Click2Screen wordt geïnstalleerd
+Fout: de installatiemap is ongeldig (een volledig pad zoals C:\Programs\Click2Screen is nodig).
+Opnieuw installeren
+Afbeeldingenmap openen
+Videomap openen
+Afbeeldingen
+Bestandsnaam
+Video-opties
+Audio-opties

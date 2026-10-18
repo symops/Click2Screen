@@ -33,6 +33,8 @@ enum Str {
     S_SU_REMOVE, S_SU_LAUNCH, S_SU_CLOSE, S_SU_LANG, S_SU_LOG_INSTALL, S_SU_LOG_REMOVE, S_SU_LOG_CLOSEAPP,
     S_SU_LOG_COPY, S_SU_LOG_COPY_FAIL, S_SU_LOG_REG, S_SU_LOG_LINKS, S_SU_LOG_LINKS_DEL, S_SU_LOG_AUTO_ON, S_SU_LOG_AUTO_OFF,
     S_SU_LOG_DONE, S_SU_LOG_FAIL, S_SU_LOG_KEPT, S_SU_LOG_NOSRC, S_SU_LOG_NODIR, S_SU_ASK_REMOVE,
+    S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
+    S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -42,7 +44,15 @@ int  LangAutoIndex();           // table index chosen for "system language"
 const wchar_t* LangName(int index);   // native name of table language `index` (0-based)
 
 // ---- settings (settings.cpp) -----------------------------------------------------------------------------------
-enum { IMG_PNG = 0, IMG_JPG = 1, IMG_BMP = 2 };
+enum { IMG_PNG = 0, IMG_JPG, IMG_BMP, IMG_GIF, IMG_TIFF, IMG_WEBP, IMG_JXR, IMG_COUNT };      // picture formats (capture.cpp)
+enum { VC_H264_BEST = 0, VC_H264_FAST, VC_H265, VC_WMV, VC_AVI, VC_GIF, VC_COUNT };           // video formats (recorder.cpp)
+const wchar_t* ImageFormatName(int fmt);              // "PNG", "JPG", ...
+const wchar_t* ImageFormatExt(int fmt);               // "png", "jpg", ...
+bool ImageFormatAvailable(int fmt);                   // an encoder for it is installed (WebP / JPEG XR may be missing)
+int  ImageFormatFromPath(const wchar_t* path);        // by the extension; -1 when it is none of ours
+const wchar_t* VideoFormatName(int vc);               // "H.264 (MP4, slower)" ...
+const wchar_t* VideoFormatExt(int vc);                // "mp4", "wmv", "avi", "gif"
+bool VideoFormatAvailable(int vc);                    // the encoder exists on this Windows (HEVC needs the Microsoft extension)
 struct Settings {
     wchar_t vidFolder[MAX_PATH];
     wchar_t imgFolder[MAX_PATH];
@@ -57,7 +67,7 @@ struct Settings {
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..60)
     int  durH, durM, durS;          // stop after (all 0 = no limit)
-    int  videoCodec;                // 0 = H.264, best quality (slower); 1 = H.264, fast
+    int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF
     int  audioCodec;                // 0 = AAC, 1 = MP3
     int  videoQuality;              // 0 high, 1 medium, 2 low
     int  audioQuality;              // 0 high, 1 medium, 2 low

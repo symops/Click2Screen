@@ -491,7 +491,7 @@ static void T_Languages()
         _snwprintf(buf, 400, T(S_STARTING_IN), 3); if (!buf[0]) ++bad;
         _snwprintf(buf, 400, T(S_SAVED), L"C:\\x.mp4"); if (!buf[0]) ++bad;
         _snwprintf(buf, 400, T(S_SU_LOG_COPY_FAIL), L"a.exe", 5UL); if (!buf[0]) ++bad;
-        _snwprintf(buf, 400, T(S_SU_STATE_INST), L"1.0.0", L"C:\\p"); if (!buf[0]) ++bad;
+        _snwprintf(buf, 400, T(S_SU_STATE_INST), L"1.0.291.1", L"C:\\p"); if (!buf[0]) ++bad;
     }
     LangSelect(0);
     Check(bad == 0, L"languages: formatted messages work in every language");
@@ -1404,7 +1404,7 @@ static void AppTexts(App& a, int language, const wchar_t* tag)
 {
     LangSelect(language);
     struct { int id; Str s; } t[] = { {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW}, {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP},
-        {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW}, {IDC_OPTIONS, S_OPTIONS}, {IDC_HINT, S_HOTKEYS_HINT} };
+        {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW}, {IDC_MENU, S_OPTIONS} };
     int bad = 0;
     DWORD end = GetTickCount() + WMS(8000);                   // the program rebuilds its texts a moment after the change
     for (;;) {

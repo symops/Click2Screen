@@ -123,3 +123,14 @@ Ayarlarınız ile aldığınız ekran görüntüleri ve videolar korunur.
 Hata: Click2Screen.exe yükleyicinin yanında bulunamadı.
 Hata: Program Files klasörü bulunamadı.
 Click2Screen bu bilgisayardan kaldırılsın mı?\n\nAyarlarınız ile aldığınız ekran görüntüleri ve videolar korunur.
+Kurulum klasörü:
+Gözat…
+Click2Screen'in kurulacağı klasörü seçin
+Hata: kurulum klasörü geçersiz (C:\Programs\Click2Screen gibi tam bir yol gerekir).
+Yeniden yükle
+Resimler klasörünü aç
+Videolar klasörünü aç
+Resimler
+Dosya adı
+Video seçenekleri
+Ses seçenekleri

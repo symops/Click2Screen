@@ -123,3 +123,14 @@ Pengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.
 Kesalahan: Click2Screen.exe tidak ditemukan di samping pemasang.
 Kesalahan: folder Program Files tidak ditemukan.
 Hapus Click2Screen dari komputer ini?\n\nPengaturan Anda serta tangkapan layar dan video yang Anda buat tetap disimpan.
+Pasang di:
+Telusuri…
+Pilih folder untuk memasang Click2Screen
+Kesalahan: folder pemasangan tidak valid (diperlukan path lengkap seperti C:\Programs\Click2Screen).
+Pasang ulang
+Buka folder gambar
+Buka folder video
+Gambar
+Nama berkas
+Opsi video
+Opsi audio

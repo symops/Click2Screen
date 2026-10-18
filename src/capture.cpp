@@ -190,6 +190,53 @@ bool WindowVisibleRect(HWND hw, RECT* rc)
     return false;
 }
 
+// ---- picture formats ---------------------------------------------------------------------------------------------
+// WIC encoders: PNG, JPEG, BMP, GIF, TIFF and JPEG XR ship with Windows; WebP comes with Windows 10 1809+ (the WebP image
+// extension on older builds).
+static const GUID kContainerWebp = { 0xe094b0e2, 0x67f2, 0x45b3, { 0xb0, 0xea, 0x11, 0x53, 0x37, 0xca, 0x7c, 0xf3 } };
+static const GUID kContainerWmp  = { 0x57a37caa, 0x367a, 0x4540, { 0x91, 0x6b, 0xf1, 0x83, 0xc5, 0x09, 0x3a, 0x4b } };
+
+struct ImageFmt { const wchar_t* name; const wchar_t* ext; const GUID* container; };
+static const ImageFmt kImageFmts[IMG_COUNT] = {
+    { L"PNG",  L"png",  &GUID_ContainerFormatPng },
+    { L"JPG",  L"jpg",  &GUID_ContainerFormatJpeg },
+    { L"BMP",  L"bmp",  &GUID_ContainerFormatBmp },
+    { L"GIF",  L"gif",  &GUID_ContainerFormatGif },
+    { L"TIFF", L"tif",  &GUID_ContainerFormatTiff },
+    { L"WebP", L"webp", &kContainerWebp },
+    { L"JXR",  L"jxr",  &kContainerWmp },
+};
+
+const wchar_t* ImageFormatName(int fmt) { return fmt >= 0 && fmt < IMG_COUNT ? kImageFmts[fmt].name : L"PNG"; }
+const wchar_t* ImageFormatExt(int fmt) { return fmt >= 0 && fmt < IMG_COUNT ? kImageFmts[fmt].ext : L"png"; }
+
+int ImageFormatFromPath(const wchar_t* path)
+{
+    const wchar_t* dot = path ? wcsrchr(path, L'.') : nullptr;
+    if (!dot) return -1;
+    ++dot;
+    if (!_wcsicmp(dot, L"jpeg") || !_wcsicmp(dot, L"jpe")) return IMG_JPG;
+    if (!_wcsicmp(dot, L"tiff")) return IMG_TIFF;
+    if (!_wcsicmp(dot, L"wdp") || !_wcsicmp(dot, L"hdp")) return IMG_JXR;
+    for (int i = 0; i < IMG_COUNT; ++i) if (!_wcsicmp(dot, kImageFmts[i].ext)) return i;
+    return -1;
+}
+
+bool ImageFormatAvailable(int fmt)
+{
+    if (fmt < 0 || fmt >= IMG_COUNT) return false;
+    HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    bool ok = false;
+    IWICImagingFactory* f = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f)) && f) {
+        IWICBitmapEncoder* enc = nullptr;
+        if (SUCCEEDED(f->CreateEncoder(*kImageFmts[fmt].container, nullptr, &enc)) && enc) { ok = true; enc->Release(); }
+        f->Release();
+    }
+    if (SUCCEEDED(hrInit)) CoUninitialize();
+    return ok;
+}
+
 // ---- saving ----------------------------------------------------------------------------------------------------
 // One attempt; `step` names where it failed and `hr` says why.
 static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const wchar_t** step, HRESULT* hr)
@@ -202,30 +249,35 @@ static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const w
     IWICBitmapEncoder* enc = nullptr;
     IWICBitmapFrameEncode* fr = nullptr;
     IPropertyBag2* props = nullptr;
+    IWICPalette* pal = nullptr;
     HRESULT h = S_OK;
+    if (format < 0 || format >= IMG_COUNT) format = IMG_PNG;
 #define STEP(name, expr) do { *step = L"" name; h = (expr); if (FAILED(h)) { *hr = h; goto done; } } while (0)
     STEP("factory", CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f));
     STEP("bitmap from HBITMAP", f->CreateBitmapFromHBITMAP(bmp, nullptr, WICBitmapIgnoreAlpha, &wb));
     STEP("stream", f->CreateStream(&st));
     STEP("open the file", st->InitializeFromFilename(path, GENERIC_WRITE));
-    {
-        const GUID& cf = format == IMG_JPG ? GUID_ContainerFormatJpeg : format == IMG_BMP ? GUID_ContainerFormatBmp : GUID_ContainerFormatPng;
-        STEP("encoder", f->CreateEncoder(cf, nullptr, &enc));
-    }
+    STEP("encoder", f->CreateEncoder(*kImageFmts[format].container, nullptr, &enc));
     STEP("encoder init", enc->Initialize(st, WICBitmapEncoderNoCache));
     STEP("frame", enc->CreateNewFrame(&fr, &props));
-    if (format == IMG_JPG && props) {
+    if ((format == IMG_JPG || format == IMG_WEBP) && props) {
         PROPBAG2 opt; memset(&opt, 0, sizeof(opt));
         opt.pstrName = (LPOLESTR)L"ImageQuality";
         VARIANT v; VariantInit(&v); v.vt = VT_R4; v.fltVal = 0.92f;
-        props->Write(1, &opt, &v);
+        props->Write(1, &opt, &v);                       // (an encoder without this property just ignores it)
     }
     STEP("frame init", fr->Initialize(props));
     {
         UINT w = 0, hh = 0; wb->GetSize(&w, &hh);
         STEP("frame size", fr->SetSize(w, hh));
         WICPixelFormatGUID pf = GUID_WICPixelFormat24bppBGR;
+        if (format == IMG_GIF) pf = GUID_WICPixelFormat8bppIndexed;
         STEP("pixel format", fr->SetPixelFormat(&pf));
+        if (format == IMG_GIF) {                                      // GIF has 256 colours: a palette made from the picture
+            STEP("palette", f->CreatePalette(&pal));
+            STEP("palette from the picture", pal->InitializeFromBitmap(wb, 256, FALSE));
+            STEP("set the palette", fr->SetPalette(pal));
+        }
     }
     STEP("write the picture", fr->WriteSource(wb, nullptr));
     STEP("frame commit", fr->Commit());
@@ -233,6 +285,7 @@ static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const w
     ok = true;
 done:
 #undef STEP
+    if (pal) pal->Release();
     if (props) props->Release();
     if (fr) fr->Release();
     if (enc) enc->Release();

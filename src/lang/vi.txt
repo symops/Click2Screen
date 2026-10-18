@@ -123,3 +123,14 @@ Cài đặt của bạn cùng ảnh chụp màn hình và video đã tạo đư�
 Lỗi: không tìm thấy Click2Screen.exe cạnh trình cài đặt.
 Lỗi: không tìm thấy thư mục Program Files.
 Gỡ bỏ Click2Screen khỏi máy tính này?\n\nCài đặt của bạn cùng ảnh chụp màn hình và video đã tạo sẽ được giữ lại.
+Cài đặt vào:
+Duyệt…
+Chọn thư mục để cài đặt Click2Screen
+Lỗi: thư mục cài đặt không hợp lệ (cần đường dẫn đầy đủ, ví dụ C:\Programs\Click2Screen).
+Cài đặt lại
+Mở thư mục hình ảnh
+Mở thư mục video
+Hình ảnh
+Tên tệp
+Tùy chọn video
+Tùy chọn âm thanh

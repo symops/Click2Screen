@@ -123,3 +123,14 @@ Se conservan su configuración y las capturas y vídeos que haya realizado.
 Error: no se encontró Click2Screen.exe junto al instalador.
 Error: no se encuentra la carpeta Archivos de programa.
 ¿Quitar Click2Screen de este equipo?\n\nSe conservan su configuración y las capturas y vídeos que haya realizado.
+Instalar en:
+Examinar…
+Elija la carpeta donde instalar Click2Screen
+Error: la carpeta de instalación no es válida (se necesita una ruta completa, como C:\Programs\Click2Screen).
+Reinstalar
+Abrir la carpeta de imágenes
+Abrir la carpeta de vídeos
+Imágenes
+Nombre de archivo
+Opciones de vídeo
+Opciones de audio

@@ -8,7 +8,19 @@
 #     x64\  x86\                  the program and its installer for each bitness
 set -e
 cd "$(dirname "$0")"
-[ -f tools/make_icon.py ] && [ ! -f src/Click2Screen.ico ] && python3 tools/make_icon.py
+[ -f tools/make_icon.py ] && python3 tools/make_icon.py
+# Every package gets a new version, as in Speak2Mic / Show2Cam: 1.0.<day of year>.<minute of day>.
+python3 - <<'PY'
+import datetime, re
+now = datetime.datetime.now()
+major, minor, build, rev = 1, 0, now.timetuple().tm_yday, now.hour * 60 + now.minute
+p = 'src/version.h'
+s = open(p, encoding='utf-8').read()
+for name, val in (('MAJOR', major), ('MINOR', minor), ('BUILD', build), ('REV', rev)):
+    s = re.sub(r'(#define C2S_VER_%s\s+)\d+' % name, r'\g<1>%d' % val, s)
+s = re.sub(r'(#define C2S_VER_STR\s+)"[^"]*"', r'\g<1>"%d.%d.%d.%d"' % (major, minor, build, rev), s)
+open(p, 'w', encoding='utf-8').write(s)
+PY
 ARCH=x64 ./build.sh
 ARCH=x86 ./build.sh
 

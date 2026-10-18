@@ -2,7 +2,7 @@
 #include <winver.h>
 #include "version.h"
 1 RT_MANIFEST "Click2Screen-Setup.manifest"
-1 ICON "Click2Screen.ico"
+1 ICON "Click2Screen-Setup.ico"
 
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION     C2S_VER_MAJOR, C2S_VER_MINOR, C2S_VER_BUILD, C2S_VER_REV

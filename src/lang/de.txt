@@ -123,3 +123,14 @@ Ihre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.
 Fehler: Click2Screen.exe wurde neben dem Installationsprogramm nicht gefunden.
 Fehler: Der Ordner „Programme“ wurde nicht gefunden.
 Click2Screen von diesem Computer entfernen?\n\nIhre Einstellungen sowie die erstellten Screenshots und Videos bleiben erhalten.
+Installieren nach:
+Durchsuchen…
+Ordner für die Installation von Click2Screen wählen
+Fehler: Der Installationsordner ist ungültig (ein vollständiger Pfad wie C:\Programs\Click2Screen ist nötig).
+Neu installieren
+Bilderordner öffnen
+Videoordner öffnen
+Bilder
+Dateiname
+Videooptionen
+Audiooptionen
