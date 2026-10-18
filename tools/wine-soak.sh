@@ -11,11 +11,12 @@ ROOT=$PWD
 W=${SOAK_DIR:-${TMPDIR:-/tmp}/c2s-soak}
 GOAL=${SOAK_MINUTES:-60}
 mkdir -p "$W"
-export WINEPREFIX=${WINEPREFIX:-$W/prefix} WINEDEBUG=-all
-if [ -z "$DISPLAY" ]; then
-    export DISPLAY=:77
-    pgrep -f 'Xvfb :77' >/dev/null || { nice -n 19 Xvfb :77 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2; }
-fi
+# Its own Wine prefix and its own display, whatever the calling shell has set (a soak sharing a prefix or a display with
+# some other Wine job would meet its mutexes, windows and logs): SOAK_WINEPREFIX / SOAK_DISPLAY change them on purpose.
+export WINEPREFIX=${SOAK_WINEPREFIX:-$W/prefix} WINEDEBUG=-all
+export DISPLAY=${SOAK_DISPLAY:-:77}
+DNUM=${DISPLAY#:}
+[ -S /tmp/.X11-unix/X$DNUM ] || { nice -n 19 Xvfb $DISPLAY -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 3; }
 LOW="nice -n 19 ionice -c3"
 STATE=$W/state
 product_hash() { cat build/x64/Click2Screen.exe build/x64/Click2Screen-Setup.exe build/x86/Click2Screen.exe build/x86/Click2Screen-Setup.exe build/x86/c2slauncher.exe 2>/dev/null | sha256sum | cut -c1-16; }

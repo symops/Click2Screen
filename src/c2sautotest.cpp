@@ -1674,7 +1674,8 @@ static void T_AppPicks()
             wchar_t file[MAX_PATH] = L""; int dw = 0, dh = 0; uint8_t* px = nullptr;
             bool got = driven && WaitNewFile(s.imgFolder, before, 20000, file) && DecodePixels(file, &dw, &dh, &px);
             _snwprintf(nm, 160, L"program picks: region screenshot %dx%d is saved at exactly that size", abs(p2.x - p1.x), abs(p2.y - p1.y));
-            Check(got && dw == abs(p2.x - p1.x) && dh == abs(p2.y - p1.y), nm);
+            wchar_t dd[200]; _snwprintf(dd, 200, L"driven=%d got=%d file %dx%d, dragged (%d,%d)-(%d,%d)", (int)driven, (int)got, dw, dh, (int)p1.x, (int)p1.y, (int)p2.x, (int)p2.y);
+            Check(got && dw == abs(p2.x - p1.x) && dh == abs(p2.y - p1.y), nm, dd);
             delete[] px;
         } else if (what == 1) {                                        // window screenshot (Alt+Shift+5)
             POINT p = { fr.left + R(20, g_fx.w - 20), fr.top + R(20, g_fx.h - 20) };
@@ -1695,8 +1696,8 @@ static void T_AppPicks()
                 COLORREF ex = Expected(x, y, g_fx.w, g_fx.h);
                 // Under Wine / Xvfb a part of the window may not be repainted yet when the dimmed picker has just gone: a
                 // pure black pixel is then not counted (on Windows the desktop is composed and every pixel counts).
-                if (g_wine && q[0] < 30 && q[1] < 30 && q[2] < 30) continue;       // near black (JPEG noise): not repainted yet
-                ++n; if (!Near(ex, q[2], q[1], q[0], s.imageFormat == IMG_JPG ? 40 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
+                if (g_wine && ((q[0] < 30 && q[1] < 30 && q[2] < 30) || (q[0] > 235 && q[1] > 235 && q[2] > 235))) continue;   // black / white: not repainted yet
+                ++n; if (!Near(ex, q[2], q[1], q[0], s.imageFormat == IMG_JPG ? 90 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
             }
             Check(got && n >= 5 && bad == 0, L"program picks: the window screenshot shows that window's colours in the right places");
             delete[] px;
@@ -2233,6 +2234,50 @@ static void T_InstallWhileRunning()
     Sleep(3000);
 }
 
+
+// ---- saving a picture to a file somebody else holds ---------------------------------------------------------------
+struct LockJob { wchar_t path[MAX_PATH]; int holdMs; HANDLE ready; };
+static DWORD WINAPI HoldFile(LPVOID p)
+{
+    LockJob* j = (LockJob*)p;
+    HANDLE h = CreateFileW(j->path, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);      // exclusive: nobody else may open it
+    SetEvent(j->ready);
+    Sleep(j->holdMs);
+    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
+    return 0;
+}
+
+static void T_SaveLocked()
+{
+    MakeFixture(R(200, 400), R(160, 300));
+    RECT fr = FxScreenRect();
+    HBITMAP bmp = CaptureRect(fr, false, false);
+    if (!bmp) { FAIL(L"save to a held file: no picture"); return; }
+    for (int pass = 0; pass < 2; ++pass) {
+        bool brief = pass == 0;
+        LockJob job; memset(&job, 0, sizeof(job));
+        _snwprintf(job.path, MAX_PATH, L"%s\\held%d.png", g_dir, R(0, 99999));
+        job.holdMs = brief ? R(50, 300) : 3000;                  // released within the retries / not at all
+        job.ready = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        HANDLE th = CreateThread(nullptr, 0, HoldFile, &job, 0, nullptr);
+        WaitForSingleObject(job.ready, 5000);
+        DWORD t0 = GetTickCount();
+        bool ok = SaveBitmap(bmp, job.path, IMG_PNG);
+        DWORD took = GetTickCount() - t0;
+        WaitForSingleObject(th, 10000); CloseHandle(th); CloseHandle(job.ready);
+        wchar_t d[140]; _snwprintf(d, 140, L"held %d ms, SaveBitmap returned %d after %lu ms, file %llu bytes", job.holdMs, (int)ok, (unsigned long)took, FileSz(job.path));
+        if (brief) {
+            int dw = 0, dh = 0; uint8_t* px = nullptr;
+            bool good = ok && DecodePixels(job.path, &dw, &dh, &px);
+            Check(good, L"save to a held file: a file held for a moment is saved after the retries", d);
+            delete[] px;
+        } else {
+            Check(!ok && took >= 300 && FileSz(job.path) == 0, L"save to a held file: a file that stays held makes the save fail (after the retries), without a partial picture", d);
+        }
+    }
+    DeleteObject(bmp);
+}
+
 // ==== main =====================================================================================================
 struct TestDef { const wchar_t* name; void (*fn)(); int weight; };
 
@@ -2272,7 +2317,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();

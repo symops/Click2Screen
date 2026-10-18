@@ -191,9 +191,9 @@ bool WindowVisibleRect(HWND hw, RECT* rc)
 }
 
 // ---- saving ----------------------------------------------------------------------------------------------------
-bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format)
+// One attempt; `step` names where it failed and `hr` says why.
+static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const wchar_t** step, HRESULT* hr)
 {
-    if (!bmp) return false;
     HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool ok = false;
     IWICImagingFactory* f = nullptr;
@@ -202,31 +202,37 @@ bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format)
     IWICBitmapEncoder* enc = nullptr;
     IWICBitmapFrameEncode* fr = nullptr;
     IPropertyBag2* props = nullptr;
-    do {
-        if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f))) break;
-        if (FAILED(f->CreateBitmapFromHBITMAP(bmp, nullptr, WICBitmapIgnoreAlpha, &wb))) break;
-        if (FAILED(f->CreateStream(&st))) break;
-        if (FAILED(st->InitializeFromFilename(path, GENERIC_WRITE))) break;
+    HRESULT h = S_OK;
+#define STEP(name, expr) do { *step = L"" name; h = (expr); if (FAILED(h)) { *hr = h; goto done; } } while (0)
+    STEP("factory", CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f));
+    STEP("bitmap from HBITMAP", f->CreateBitmapFromHBITMAP(bmp, nullptr, WICBitmapIgnoreAlpha, &wb));
+    STEP("stream", f->CreateStream(&st));
+    STEP("open the file", st->InitializeFromFilename(path, GENERIC_WRITE));
+    {
         const GUID& cf = format == IMG_JPG ? GUID_ContainerFormatJpeg : format == IMG_BMP ? GUID_ContainerFormatBmp : GUID_ContainerFormatPng;
-        if (FAILED(f->CreateEncoder(cf, nullptr, &enc))) break;
-        if (FAILED(enc->Initialize(st, WICBitmapEncoderNoCache))) break;
-        if (FAILED(enc->CreateNewFrame(&fr, &props))) break;
-        if (format == IMG_JPG && props) {
-            PROPBAG2 opt; memset(&opt, 0, sizeof(opt));
-            opt.pstrName = (LPOLESTR)L"ImageQuality";
-            VARIANT v; VariantInit(&v); v.vt = VT_R4; v.fltVal = 0.92f;
-            props->Write(1, &opt, &v);
-        }
-        if (FAILED(fr->Initialize(props))) break;
-        UINT w = 0, h = 0; wb->GetSize(&w, &h);
-        if (FAILED(fr->SetSize(w, h))) break;
+        STEP("encoder", f->CreateEncoder(cf, nullptr, &enc));
+    }
+    STEP("encoder init", enc->Initialize(st, WICBitmapEncoderNoCache));
+    STEP("frame", enc->CreateNewFrame(&fr, &props));
+    if (format == IMG_JPG && props) {
+        PROPBAG2 opt; memset(&opt, 0, sizeof(opt));
+        opt.pstrName = (LPOLESTR)L"ImageQuality";
+        VARIANT v; VariantInit(&v); v.vt = VT_R4; v.fltVal = 0.92f;
+        props->Write(1, &opt, &v);
+    }
+    STEP("frame init", fr->Initialize(props));
+    {
+        UINT w = 0, hh = 0; wb->GetSize(&w, &hh);
+        STEP("frame size", fr->SetSize(w, hh));
         WICPixelFormatGUID pf = GUID_WICPixelFormat24bppBGR;
-        if (FAILED(fr->SetPixelFormat(&pf))) break;
-        if (FAILED(fr->WriteSource(wb, nullptr))) break;
-        if (FAILED(fr->Commit())) break;
-        if (FAILED(enc->Commit())) break;
-        ok = true;
-    } while (false);
+        STEP("pixel format", fr->SetPixelFormat(&pf));
+    }
+    STEP("write the picture", fr->WriteSource(wb, nullptr));
+    STEP("frame commit", fr->Commit());
+    STEP("file commit", enc->Commit());
+    ok = true;
+done:
+#undef STEP
     if (props) props->Release();
     if (fr) fr->Release();
     if (enc) enc->Release();
@@ -234,6 +240,20 @@ bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format)
     if (wb) wb->Release();
     if (f) f->Release();
     if (SUCCEEDED(hrInit)) CoUninitialize();
-    if (!ok) DeleteFileW(path);
     return ok;
+}
+
+bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format)
+{
+    if (!bmp) return false;
+    // A freshly created file can be held for a moment by a virus scanner or an indexer: try a few times.
+    for (int attempt = 1; attempt <= 3; ++attempt) {
+        const wchar_t* step = L"";
+        HRESULT hr = S_OK;
+        if (SaveBitmapOnce(bmp, path, format, &step, &hr)) return true;
+        Log(L"save %s: attempt %d failed at '%s' (0x%08lX)", path, attempt, step, (unsigned long)hr);
+        DeleteFileW(path);
+        if (attempt < 3) Sleep(150 * attempt);
+    }
+    return false;
 }
