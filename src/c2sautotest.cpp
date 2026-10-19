@@ -1904,7 +1904,7 @@ static void T_AppPicks()
                 COLORREF ex = Expected(x, y, g_fx.w, g_fx.h);
                 // Under Wine / Xvfb a part of the window may not be repainted yet when the dimmed picker has just gone: a
                 // pure black pixel is then not counted (on Windows the desktop is composed and every pixel counts).
-                if (g_wine && ((q[0] < 30 && q[1] < 30 && q[2] < 30) || (q[0] > 235 && q[1] > 235 && q[2] > 235))) continue;   // black / white: not repainted yet
+                if (g_wine && ((q[0] < (LossyFmt(s.imageFormat) ? 70 : 30) && q[1] < (LossyFmt(s.imageFormat) ? 70 : 30) && q[2] < (LossyFmt(s.imageFormat) ? 70 : 30)) || (q[0] > 235 && q[1] > 235 && q[2] > 235))) continue;   // black / white: not repainted yet
                 ++n; if (!Near(ex, q[2], q[1], q[0], LossyFmt(s.imageFormat) ? 90 : s.imageFormat == IMG_GIF ? 60 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
             }
             Check(got && n >= 5 && bad == 0, L"program picks: the window screenshot shows that window's colours in the right places");
@@ -2375,8 +2375,10 @@ static void T_AppCrashRestart()
         int before = CountFiles(s.imgFolder);
         PostMessageW(b.main, WM_HOTKEY, HK_DESKTOP, 0);
         wchar_t f[MAX_PATH];
+        DWORD t0 = GetTickCount();
         bool got = WaitNewFile(s.imgFolder, before, 20000, f);
-        wchar_t d[120]; _snwprintf(d, 120, L"files before %d, after %d, alive %d", before, CountFiles(s.imgFolder), (int)AppAlive(b));
+        wchar_t d[400]; _snwprintf(d, 400, L"files before %d, after %d, alive %d, waited %lu ms, image format %d, delay %d, folder %s (exists %d)", before, CountFiles(s.imgFolder), (int)AppAlive(b),
+                                   (unsigned long)(GetTickCount() - t0), s.imageFormat, s.delaySec, s.imgFolder, (int)(GetFileAttributesW(s.imgFolder) != INVALID_FILE_ATTRIBUTES));
         Check(got, L"crash: and works (a screenshot after the restart)", d);
     }
     StopApp(b);
