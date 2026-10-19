@@ -2320,9 +2320,39 @@ static void T_Effects()
     }
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
     Check(tested > 5 && red * 10 >= tested * 9, L"effects: the Shift trail is a red line behind the pointer", d2);
-    Check(oldTested > 5 && oldRed == 0, L"effects: a trail point that has lived its time has faded out (the lifetime is five minutes in the program)", d2);
+    Check(oldTested > 5 && oldRed == 0, L"effects: a trail point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
     FxTestTrailLifetime(0);
     FxStop();
+    // the left Shift draws the trail, the right Shift wipes all of it (the keys are given to the library by the test)
+    {
+        Grabber gk; gk.Init(w, h);
+        FxTestKeys(1);                                                   // left Shift held
+        for (int i = 0; i < 12; ++i) { SetCursorPos(fr.left + 40 + i * 14, fr.top + ty); Pump(25); gk.Grab(rc, true, false, true); }
+        int redL = 0, tL = 0;
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; ++tL; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redL; }
+        FxTestKeys(2);                                                   // right Shift: everything goes at once
+        Pump(25); gk.Grab(rc, true, false, true);
+        int redR = 0;
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redR; }
+        FxTestKeys(3);                                                   // both: the right one wins, nothing is drawn
+        SetCursorPos(fr.left + 60, fr.top + ty); Pump(25); gk.Grab(rc, true, false, true);
+        int redB = 0;
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redB; }
+        FxTestKeys(-1); FxStop(); SetCursorPos(2, 2);
+        wchar_t kd[160]; _snwprintf(kd, 160, L"left Shift: %d of %d points red; after the right Shift: %d; both held: %d", redL, tL, redR, redB);
+        Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the left Shift draws the trail", kd);
+        Check(redR == 0, L"effects: the right Shift wipes all the lines at once", kd);
+        Check(redB == 0, L"effects: with both Shifts held nothing is drawn (the right one wins)", kd);
+    }
+    // the yellow circle round the pointer is for recordings only: a screenshot never has it
+    {
+        Grabber s1, s2; s1.Init(w, h); s2.Init(w, h);
+        SetCursorPos(fr.left + w / 2, fr.top + h / 2); Pump(80);
+        s1.Grab(rc, true, true, false);                                 // a screenshot with the highlight option on
+        s2.Grab(rc, true, false, false);                                // ... and off
+        SetCursorPos(2, 2);
+        Check(memcmp(s1.Bits(), s2.Bits(), (size_t)w * h * 4) == 0, L"effects: a screenshot has no yellow circle round the pointer whatever the option says");
+    }
     // a real click, seen by the low-level mouse hook
     FxStart();
     SetCursorPos(fr.left + cx, fr.top + cy); Pump(120);
@@ -2433,14 +2463,18 @@ static void T_AppEffects()
     bool running = false;
     if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); running = WaitText(panel, IDC_P_START, T(S_PAUSE), 15000); }
     int cx = w * 3 / 4, cy = h / 4, ty = h * 3 / 4;                      // the click in the green quarter, the trail in the lower half
+    bool overlaySeen = false;
     if (running) {
         Pump(500);
         SetCursorPos(fr.left + cx, fr.top + cy); Pump(150);
         mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0); Sleep(60); mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
         Pump(900);
-        keybd_event(VK_SHIFT, 0x2A, 0, 0);                              // Shift held, the pointer moves across the lower half
-        for (int i = 0; i <= 40; ++i) { SetCursorPos(fr.left + 40 + i * 6, fr.top + ty); Pump(40); }
-        keybd_event(VK_SHIFT, 0x2A, KEYEVENTF_KEYUP, 0);
+        keybd_event(VK_LSHIFT, 0x2A, 0, 0);                             // the left Shift held, the pointer moves across the lower half
+        for (int i = 0; i <= 40; ++i) {
+            SetCursorPos(fr.left + 40 + i * 6, fr.top + ty); Pump(40);
+            if (i > 20) { HWND tw = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tw && IsWindowVisible(tw)) overlaySeen = true; }
+        }
+        keybd_event(VK_LSHIFT, 0x2A, KEYEVENTF_KEYUP, 0);
         Pump(500);
         SetCursorPos(2, 2); Pump(300);
         PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_STOP, BN_CLICKED), 0);
@@ -2482,7 +2516,10 @@ static void T_AppEffects()
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
     Check(waveFrames >= 3, L"program effects: a real click is a blue wave in the recorded video", dd);
     if (trailFrames < 3 && g_wine) SKIP(L"program effects: Wine does not pass a synthetic Shift to GetAsyncKeyState");
-    else Check(trailFrames >= 3, L"program effects: with Shift held a red trail follows the pointer in the recorded video", dd);
+    else {
+        Check(trailFrames >= 3, L"program effects: with the left Shift held a red trail follows the pointer in the recorded video", dd);
+        Check(overlaySeen, L"program effects: the trail is shown on the screen too, while recording", dd);
+    }
     StopApp(a);
 }
 

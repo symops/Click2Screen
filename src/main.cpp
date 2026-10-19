@@ -43,6 +43,9 @@ int RecordAreas(RECT* out);
 int MonitorRects(RECT* out, int cap);
 RECT TargetRect();
 void RegisterOverlayClasses();
+void TrailOverlayHide();
+void TrailOverlayUpdate();
+LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 
 UINT g_dpi = 96;                 // DPI of the monitor the main window is on (WM_DPICHANGED keeps it current)
 int Sc(int v) { return MulDiv(v, (int)g_dpi, 96); }
@@ -401,6 +404,7 @@ void BeginRecord()
     SetTimer(g_panel, TIMER_UI, 250, nullptr);
     CountdownHide();
     FxStart();                                                   // click waves and the Shift trail
+    SetTimer(g_main, TIMER_TRAIL, 40, nullptr);                  // what is drawn with Shift is shown on the screen at once
     g_frameBlink = true;                                         // the frame blinks while the recording runs
     UpdatePanel();
 }
@@ -413,6 +417,7 @@ void ClosePanel()
     }
     FrameHide();
     CountdownHide();
+    TrailOverlayHide();
     FxStop();
     UnregisterHotKey(g_main, HK_STOP);
 }
@@ -789,6 +794,74 @@ void RegisterOverlayClasses()
     RegisterClassW(&wc);
     wc.lpfnWndProc = CountProc; wc.lpszClassName = L"Click2ScreenCount";
     RegisterClassW(&wc);
+    wc.lpfnWndProc = TrailProc; wc.lpszClassName = L"Click2ScreenTrail";
+    RegisterClassW(&wc);
+}
+
+// What is drawn with the left Shift while recording is shown on the screen too (the user sees what he has drawn): a see-through,
+// click-through window with the same trail, excluded from the picture (the frame already has the trail in it).
+HWND g_trailWnd;
+unsigned g_trailVer = 0xFFFFFFFFu;
+LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcW(hw, m, wp, lp); }
+
+void TrailOverlayHide()
+{
+    KillTimer(g_main, TIMER_TRAIL);
+    if (g_trailWnd) { DestroyWindow(g_trailWnd); g_trailWnd = nullptr; }
+    g_trailVer = 0xFFFFFFFFu;
+}
+
+void TrailOverlayUpdate()
+{
+    static POINT pts[4096]; static unsigned char brk[4096];
+    unsigned ver = 0;
+    int n = FxTrailSnapshot(pts, brk, 4096, &ver);
+    if (ver == g_trailVer) return;                               // nothing changed since the last picture
+    g_trailVer = ver;
+    if (n < 1) { if (g_trailWnd) ShowWindow(g_trailWnd, SW_HIDE); return; }
+    int l = pts[0].x, t = pts[0].y, r = l, b = t;
+    for (int i = 1; i < n; ++i) { if (pts[i].x < l) l = pts[i].x; if (pts[i].x > r) r = pts[i].x; if (pts[i].y < t) t = pts[i].y; if (pts[i].y > b) b = pts[i].y; }
+    const int pad = 6;
+    l -= pad; t -= pad; r += pad; b += pad;
+    int w = r - l + 1, h = b - t + 1;
+    if (w < 1 || h < 1 || w > 16000 || h > 16000) return;
+    RegisterOverlayClasses();
+    if (!g_trailWnd) {
+        g_trailWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenTrail", L"", WS_POPUP,
+                                     l, t, w, h, nullptr, nullptr, g_inst, nullptr);
+        if (!g_trailWnd) return;
+        ExcludeFromCapture(g_trailWnd);
+    }
+    HDC scr = GetDC(nullptr);
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    bi.bmiHeader.biWidth = w; bi.bmiHeader.biHeight = -h;
+    uint32_t* px = nullptr;
+    HBITMAP bmp = CreateDIBSection(scr, &bi, DIB_RGB_COLORS, (void**)&px, nullptr, 0);
+    HDC mem = CreateCompatibleDC(scr);
+    if (bmp && px && mem) {
+        HGDIOBJ ob = SelectObject(mem, bmp);
+        memset(px, 0, (size_t)w * h * 4);
+        HPEN pen = CreatePen(PS_SOLID, 3, RGB(255, 255, 255));    // drawn white, then every drawn pixel becomes opaque red
+        HGDIOBJ op = SelectObject(mem, pen);
+        bool down = false;
+        for (int i = 0; i < n; ++i) {
+            int x = pts[i].x - l, y = pts[i].y - t;
+            if (brk[i] || !down) { MoveToEx(mem, x, y, nullptr); down = true; if (brk[i]) { LineTo(mem, x, y); continue; } }
+            LineTo(mem, x, y);
+        }
+        SelectObject(mem, op); DeleteObject(pen);
+        const uint32_t red = 0xFF000000u | (255u << 16) | (40u << 8) | 40u;
+        for (size_t i = 0; i < (size_t)w * h; ++i) px[i] = (px[i] & 0x00FFFFFFu) ? red : 0;
+        POINT pos = { l, t }, src = { 0, 0 }; SIZE size = { w, h };
+        BLENDFUNCTION bf; bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0; bf.SourceConstantAlpha = 255; bf.AlphaFormat = AC_SRC_ALPHA;
+        UpdateLayeredWindow(g_trailWnd, scr, &pos, &size, mem, &src, 0, &bf, ULW_ALPHA);
+        SetWindowPos(g_trailWnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        SelectObject(mem, ob);
+    }
+    if (mem) DeleteDC(mem);
+    if (bmp) DeleteObject(bmp);
+    ReleaseDC(nullptr, scr);
 }
 
 // The red frame round the chosen area (recording and screenshots), blinking twice a second as in the original.
@@ -1391,7 +1464,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         CreateMainControls(hw);
         return 0;
     case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
-    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); return 0;
+    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); else if (wp == TIMER_TRAIL) TrailOverlayUpdate(); return 0;
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); PaintMain(hw, dc); EndPaint(hw, &ps); return 0; }
     case WM_DRAWITEM: DrawMainItem((const DRAWITEMSTRUCT*)lp); return TRUE;

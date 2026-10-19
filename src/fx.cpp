@@ -11,7 +11,7 @@ namespace {
 struct Click { ULONGLONG t; int x, y, button; };       // button: 0 left, 1 right, 2 middle
 const int kMaxClicks = 32;
 const ULONGLONG kWaveMs = 650;
-const ULONGLONG kTrailDefaultMs = 5ULL * 60 * 1000;    // the trail of a point lives five minutes
+const ULONGLONG kTrailDefaultMs = 10ULL * 1000;          // a point of the trail lives 10 seconds
 ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shortens it: a fresh machine has not been up for five minutes)
 
 struct Pt { int x, y; ULONGLONG t; bool brk; };         // brk: this point starts a new stroke
@@ -23,6 +23,8 @@ int g_nClicks;
 Pt* g_trail;
 size_t g_nTrail, g_head, g_capTrail;
 bool g_shiftWas;
+unsigned g_version;                                         // changes whenever the trail does (the on-screen copy redraws then)
+int g_keyOverride = -1;                                  // (the autotest) -1: the real keys; bit 0 left Shift, bit 1 right Shift
 bool g_btnWas[3];
 HHOOK g_hook;
 DWORD g_hookErr;
@@ -55,7 +57,7 @@ void AddPoint(int x, int y, ULONGLONG t, bool brk)
         }
     }
     g_trail[g_nTrail].x = x; g_trail[g_nTrail].y = y; g_trail[g_nTrail].t = t; g_trail[g_nTrail].brk = brk;
-    ++g_nTrail;
+    ++g_nTrail; ++g_version;
     Unlock();
 }
 
@@ -66,6 +68,21 @@ LRESULT CALLBACK MouseProc(int code, WPARAM wp, LPARAM lp)
         if (b >= 0) { const MSLLHOOKSTRUCT* m = (const MSLLHOOKSTRUCT*)lp; ++g_hookCalls; AddClick(m->pt.x, m->pt.y, b, GetTickCount64()); }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
+}
+
+// The points that have lived their time go, the oldest first (called with the lock held).
+void Prune(ULONGLONG now)
+{
+    size_t before = g_head;
+    while (g_head < g_nTrail && now - g_trail[g_head].t > g_trailMs) ++g_head;
+    if (g_head != before) ++g_version;
+}
+
+void ReadShifts(bool* left, bool* right)
+{
+    if (g_keyOverride >= 0) { *left = (g_keyOverride & 1) != 0; *right = (g_keyOverride & 2) != 0; return; }
+    *left = (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0;
+    *right = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
 }
 
 COLORREF WaveColor(int button)
@@ -108,7 +125,7 @@ void DrawWave(HDC dc, double cx, double cy, double radius, double thick, double 
 void FxStart()
 {
     Lock();
-    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false;
+    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false; ++g_version;
     Unlock();
     if (!g_hook) { g_hook = SetWindowsHookExW(WH_MOUSE_LL, MouseProc, GetModuleHandleW(nullptr), 0); g_hookErr = g_hook ? 0 : GetLastError(); }
     g_hookCalls = 0;
@@ -118,11 +135,27 @@ void FxStop()
 {
     if (g_hook) { UnhookWindowsHookEx(g_hook); g_hook = nullptr; }
     Lock();
-    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false;
+    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false; ++g_version;
     Unlock();
 }
 
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err) { *clicksSeen = g_hookCalls; *err = g_hookErr; return g_hook != nullptr; }
+// The visible points of the trail (for the copy on the screen): newest last; `brk` marks the start of a stroke.
+int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version)
+{
+    Lock();
+    Prune(GetTickCount64());
+    int n = (int)(g_nTrail - g_head);
+    size_t from = g_head;
+    if (n > cap) { from = g_nTrail - cap; n = cap; }
+    for (int i = 0; i < n; ++i) { pts[i].x = g_trail[from + i].x; pts[i].y = g_trail[from + i].y; brk[i] = g_trail[from + i].brk ? 1 : 0; }
+    if (n > 0 && n == cap) brk[0] = 1;
+    *version = g_version;
+    Unlock();
+    return n;
+}
+
+void FxTestKeys(int keys) { g_keyOverride = keys; }
 void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }
 void FxTestClick(int x, int y, int button) { AddClick(x, y, button, GetTickCount64()); }
 void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)
@@ -157,7 +190,15 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
         g_btnWas[b] = down;
     }
 
-    bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    // The left Shift draws the trail, the right Shift wipes all of it at once.
+    bool shiftL = false, shiftR = false;
+    ReadShifts(&shiftL, &shiftR);
+    bool shift = shiftL && !shiftR;
+    if (shiftR) {
+        Lock();
+        if (g_nTrail > g_head) { g_head = g_nTrail = 0; ++g_version; }
+        Unlock();
+    }
     if (shift) {
         POINT p;
         if (GetCursorPos(&p)) {
@@ -172,7 +213,7 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
     g_shiftWas = shift;
 
     Lock();
-    while (g_head < g_nTrail && now - g_trail[g_head].t > g_trailMs) ++g_head;       // the oldest points fade out first
+    Prune(now);                                                                      // the oldest points fade out first
     if (g_nTrail > g_head) {
         int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2;                         // thin, but it survives video compression
         HPEN pen = CreatePen(PS_SOLID, w, RGB(255, 40, 40));

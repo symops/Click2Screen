@@ -143,7 +143,7 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
         ok = StretchBlt(m_dc, 0, 0, m_w, m_h, scr, src.left, src.top, sw, sh, SRCCOPY | CAPTUREBLT);
     }
     if (ok && mouse && fx) FxDraw(m_dc, src, m_w, m_h);                // click waves and the Shift trail: in recordings, with the pointer, under it and its halo
-    const bool halo = highlight || fx;                                 // a recording has the yellow circle round the pointer (a screenshot: when asked)
+    const bool halo = highlight && fx;                                 // the yellow circle round the pointer: in recordings only, never in a screenshot
     if (ok && mouse) {
         CURSORINFO ci; memset(&ci, 0, sizeof(ci)); ci.cbSize = sizeof(ci);
         if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) && ci.hCursor) {
