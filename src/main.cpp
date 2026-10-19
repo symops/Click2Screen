@@ -3,6 +3,7 @@
 #include "uiids.h"
 #include <commctrl.h>
 #include <shellapi.h>
+#include <dwmapi.h>
 #include <shlobj.h>
 #include <commdlg.h>
 #include <stdio.h>
@@ -876,7 +877,7 @@ void Shot(Mode mode)
     for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i, rects, count); PumpFor(1000); }
     CountdownHide();
     if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
-    if (mode != M_DESKTOP) PumpFor(300);          // let the screen show the desktop again, not the dimmed picker
+    if (mode != M_DESKTOP) { PumpFor(60); DwmFlush(); PumpFor(40); }          // let the screen show the desktop again, not the dimmed picker (one compositor frame)
     HBITMAP bmps[16];                             // all the monitors are captured at the same moment, then saved one by one
     int got = 0;
     Log(L"shot: capturing %d area(s)", count);
@@ -1161,7 +1162,7 @@ bool OptionsDialog()
     auto add = [&](int page, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id) {
         return OAdd(&o, page, d, cls, text, style, Sc(x), Sc(y), Sc(w), Sc(h), id);
     };
-    auto label = [&](int page, Str s, int x, int y, int w) { add(page, L"STATIC", T(s), SS_LEFT | SS_NOPREFIX, x, y, w, 16, 0); };
+    auto label = [&](int page, Str s, int x, int y, int w) { add(page, L"STATIC", T(s), SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, x, y, w, 16, 0); };
     auto combo = [&](int page, int id, int x, int y, int w) { return add(page, L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, x, y, w, 200, id); };
     auto edit = [&](int page, int id, int x, int y, int w, DWORD extra = 0) { return add(page, L"EDIT", L"", WS_TABSTOP | WS_BORDER | ES_AUTOHSCROLL | extra, x, y, w, 20, id); };
 
@@ -1200,14 +1201,14 @@ bool OptionsDialog()
     label(2, S_OPT_IMGFORMAT, 35, 63, 160);
     HWND fm = combo(2, O_IMGFMT, 203, 61, 188);
     for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ComboAdd(fm, ImageFormatName(i), i);
-    label(2, S_OPT_IMGFOLDER, 35, 113, 400);
-    edit(2, O_IMGFOLDER, 134, 111, 316);
-    add(2, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 110, 33, 22, O_BRIMG);
+    label(2, S_OPT_IMGFOLDER, 35, 105, 450);                    // the label above the field (a long translation does not run into it)
+    edit(2, O_IMGFOLDER, 34, 123, 417);
+    add(2, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 122, 33, 22, O_BRIMG);
 
     // page 3: file name
-    label(3, S_OPT_TEMPLATE, 34, 61, 120);
-    edit(3, O_TPL, 160, 59, 333);
-    add(3, L"STATIC", T(S_OPT_TEMPLATE_TIPS), SS_LEFT | SS_NOPREFIX, 34, 92, 460, 150, 0);
+    label(3, S_OPT_TEMPLATE, 34, 57, 459);
+    edit(3, O_TPL, 34, 75, 459);
+    add(3, L"STATIC", T(S_OPT_TEMPLATE_TIPS), SS_LEFT | SS_NOPREFIX, 34, 108, 460, 150, 0);
 
     // page 4: language (and the settings file: export / import)
     label(4, S_OPT_LANG, 33, 57, 205);
@@ -1337,8 +1338,6 @@ void ShowMainMenu()
     AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(mn, MF_STRING, ID_MENU_PICTURES, T(S_OPEN_PICTURES));
     AppendMenuW(mn, MF_STRING, ID_MENU_VIDEOS, T(S_OPEN_VIDEOS));
-    AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(mn, MF_STRING | (g_cfg.capMouse ? MF_CHECKED : 0), ID_MENU_MOUSE, T(S_OPT_MOUSE));
     RECT r; GetWindowRect(GetDlgItem(g_main, IDC_MENU), &r);
     int cmd = TrackPopupMenu(mn, TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_RIGHTBUTTON, r.right, r.bottom, 0, g_main, nullptr);
     DestroyMenu(mn);
@@ -1420,7 +1419,6 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
         case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
         case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
-        case ID_MENU_MOUSE: g_cfg.capMouse = !g_cfg.capMouse; SettingsSave(g_cfg); break;
         case IDC_OPTIONS:
             if (OptionsDialog()) ApplyLanguage();
             break;
@@ -1551,6 +1549,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     CreateWindowExW(WS_EX_TOOLWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
+    { BOOL off = TRUE; DwmSetWindowAttribute(g_main, 3 /*DWMWA_TRANSITIONS_FORCEDISABLED*/, &off, sizeof(off)); }   // hides at once (the picker and the screenshots do not wait for a fade-out)
     RoundMain();
     LayoutMainText();
     TrayAdd();

@@ -6,6 +6,7 @@
 #   c2slauncher.exe          (x86 only) the package's root Click2Screen-Setup.exe: starts x64\ or x86\Click2Screen-Setup.exe
 set -e
 cd "$(dirname "$0")/src"
+python3 ../tools/gen_lang.py >/dev/null     # src/lang/*.txt -> lang_table.inc (a stale table once showed an old example in the options)
 ARCH=${ARCH:-x64}
 if [ "$ARCH" = x86 ]; then TRIPLE=i686-w64-mingw32; TARGET=i686-w64-windows-gnu
 else TRIPLE=x86_64-w64-mingw32; TARGET=x86_64-w64-windows-gnu; fi

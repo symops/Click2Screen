@@ -219,7 +219,10 @@ bool Run(HWND owner, bool region, RECT* out, HWND* hw)
     int w = p.vs.right - p.vs.left, h = p.vs.bottom - p.vs.top;
     // The owner window stays out of the snapshot.
     bool wasVisible = owner && IsWindowVisible(owner);
-    if (wasVisible) { ShowWindow(owner, SW_HIDE); Sleep(200); }
+    DWORD t0 = GetTickCount();
+    // The window goes at once (the program switches its fade-out animation off) and one frame of the compositor is enough for it
+    // to be gone from the snapshot: no fixed pause.
+    if (wasVisible) { ShowWindow(owner, SW_HIDE); DwmFlush(); Sleep(25); }
     p.shot = CaptureRect(p.vs, false, false);
     if (!p.shot) { if (wasVisible) ShowWindow(owner, SW_SHOW); return false; }
     p.dim = MakeDim(p.shot, w, h);
@@ -236,8 +239,11 @@ bool Run(HWND owner, bool region, RECT* out, HWND* hw)
                               p.vs.left, p.vs.top, w, h, nullptr, nullptr, GetModuleHandleW(nullptr), &p);
     p.self = ov;
     if (!ov) { DeleteObject(p.shot); DeleteObject(p.dim); DeleteObject(p.font); if (wasVisible) ShowWindow(owner, SW_SHOW); return false; }
+    { BOOL off = TRUE; DwmSetWindowAttribute(ov, 3 /*DWMWA_TRANSITIONS_FORCEDISABLED*/, &off, sizeof(off)); }      // no fade-in either
     ShowWindow(ov, SW_SHOW);
+    UpdateWindow(ov);
     SetForegroundWindow(ov); SetFocus(ov);
+    Log(L"picker: ready %lu ms after the button", (unsigned long)(GetTickCount() - t0));
     MSG msg;
     bool quit = false; int quitCode = 0;
     while (!p.done) {
