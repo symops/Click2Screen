@@ -142,8 +142,9 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
         SetBrushOrgEx(m_dc, 0, 0, nullptr);
         ok = StretchBlt(m_dc, 0, 0, m_w, m_h, scr, src.left, src.top, sw, sh, SRCCOPY | CAPTUREBLT);
     }
-    if (ok && mouse && fx) FxDraw(m_dc, src, m_w, m_h);                 // under the pointer and its highlight
-    if (ok && mouse) {
+    if (ok && fx) FxDraw(m_dc, src, m_w, m_h);                         // click waves and the Shift trail: in every recording, under the pointer and its halo
+    const bool halo = highlight || fx;                                 // a recording always has the yellow circle round the pointer
+    if (ok && (mouse || halo)) {
         CURSORINFO ci; memset(&ci, 0, sizeof(ci)); ci.cbSize = sizeof(ci);
         if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) && ci.hCursor) {
             double sx = (double)m_w / sw, sy = (double)m_h / sh;
@@ -155,7 +156,7 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
                 if (ii.hbmMask) DeleteObject(ii.hbmMask);
             }
             double px = (ci.ptScreenPos.x - src.left) * sx, py = (ci.ptScreenPos.y - src.top) * sy;
-            if (highlight) {
+            if (halo) {
                 if (!m_halo) BuildHalo(scr, m_halo, m_haloBmp, m_haloOld);
                 if (m_halo) {
                     int r = (int)(26 * (sx < sy ? sx : sy) + 0.5); if (r < 8) r = 8;
@@ -163,9 +164,11 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
                     AlphaBlend(m_dc, (int)px - r, (int)py - r, 2 * r, 2 * r, m_halo, 0, 0, 64, 64, bf);
                 }
             }
-            int cw = GetSystemMetrics(SM_CXCURSOR), ch = GetSystemMetrics(SM_CYCURSOR);
-            cw = (int)(cw * sx + 0.5); ch = (int)(ch * sy + 0.5);
-            DrawIconEx(m_dc, (int)(px - hx * sx), (int)(py - hy * sy), ci.hCursor, cw, ch, 0, nullptr, DI_NORMAL);
+            if (mouse) {
+                int cw = GetSystemMetrics(SM_CXCURSOR), ch = GetSystemMetrics(SM_CYCURSOR);
+                cw = (int)(cw * sx + 0.5); ch = (int)(ch * sy + 0.5);
+                DrawIconEx(m_dc, (int)(px - hx * sx), (int)(py - hy * sy), ci.hCursor, cw, ch, 0, nullptr, DI_NORMAL);
+            }
         }
     }
     ReleaseDC(nullptr, scr);

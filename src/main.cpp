@@ -15,6 +15,7 @@ namespace {
 
 HINSTANCE g_inst;
 HWND   g_main, g_panel, g_frame, g_tip;
+bool   g_frameBlink;               // the red frame blinks only while a recording runs or a screenshot is being made
 bool   g_modeDesktop;             // the recording covers the whole desktop: no frame, the panel sits at the bottom
 HFONT  g_font, g_fontBold;
 HICON  g_icon, g_iconSmall;
@@ -66,13 +67,43 @@ void SetStatus(const wchar_t* text)
     if (g_main) SetWindowTextW(GetDlgItem(g_main, IDC_STATUS), text);
 }
 
-// The only sound of the original is a short click (about 8.3 kHz, dying away in some 20 ms) on every second of the delay.
-// It is made here, as 44.1 kHz stereo PCM in memory (no sound files).
+// The only sound of the original is a short mechanical click (a recorded one: a burst of broadband noise above 3 kHz with a
+// sharp peak 14 ms in, dying away within 70 ms, the two channels alike by 0.87). It is made here, as 44.1 kHz stereo PCM in
+// memory (no sound files): noise filtered to 3 - 11.5 kHz and shaped by the loudness curve measured every millisecond.
 const int kTickFrames = 6208;
 unsigned char g_tickWav[44 + kTickFrames * 4];
 bool g_tickBuilt;
+struct Biquad {
+    double b0, b1, b2, a1, a2, x1, x2, y1, y2;
+    void Make(bool high, double f0)
+    {
+        double w0 = 6.283185307179586 * f0 / 44100.0, c = cos(w0), al = sin(w0) / (2 * 0.707), a0 = 1 + al;
+        if (high) { b0 = (1 + c) / 2 / a0; b1 = -(1 + c) / a0; b2 = b0; } else { b0 = (1 - c) / 2 / a0; b1 = (1 - c) / a0; b2 = b0; }
+        a1 = -2 * c / a0; a2 = (1 - al) / a0; x1 = x2 = y1 = y2 = 0;
+    }
+    double Run(double v) { double o = b0 * v + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2; x2 = x1; x1 = v; y2 = y1; y1 = o; return o; }
+};
+void FilteredNoise(unsigned seed, double* out, int n)
+{
+    Biquad h1, h2, l1; h1.Make(true, 3000); h2.Make(true, 3000); l1.Make(false, 11500);
+    unsigned st = seed; double sum = 0;
+    for (int i = 0; i < n; ++i) {
+        st = st * 1664525u + 1013904223u;
+        double v = ((st >> 8) / 8388608.0) - 1.0;
+        v = l1.Run(h2.Run(h1.Run(v)));
+        out[i] = v; sum += v * v;
+    }
+    double rms = sqrt(sum / n);
+    for (int i = 0; i < n; ++i) out[i] /= rms;
+}
 void BuildTick()
 {
+    static const unsigned short rms[75] = { 4, 9, 12, 17, 21, 25, 31, 40, 53, 43, 44, 50, 68, 136, 7960, 7153, 4290, 4646, 2965, 1419, 1065, 913, 918, 951, 1137,
+        637, 601, 513, 689, 743, 548, 639, 409, 543, 516, 488, 372, 341, 239, 238, 210, 242, 204, 169, 134, 127, 116, 159, 85, 83, 67, 91, 52, 61, 51, 47, 42,
+        38, 39, 33, 36, 44, 32, 25, 31, 31, 19, 26, 23, 23, 17, 18, 15, 12, 7 };
+    static double c[kTickFrames], l[kTickFrames], r[kTickFrames];
+    FilteredNoise(12345u, c, kTickFrames); FilteredNoise(777u, l, kTickFrames); FilteredNoise(991u, r, kTickFrames);
+    const double common = 0.93, indep = sqrt(1.0 - common * common);
     unsigned char* w = g_tickWav;
     unsigned dataBytes = kTickFrames * 4;
     memcpy(w, "RIFF", 4); unsigned v = 36 + dataBytes; memcpy(w + 4, &v, 4); memcpy(w + 8, "WAVEfmt ", 8);
@@ -83,9 +114,14 @@ void BuildTick()
     memcpy(w + 36, "data", 4); memcpy(w + 40, &dataBytes, 4);
     short* s = (short*)(w + 44);
     for (int i = 0; i < kTickFrames; ++i) {
-        double t = i / 44100.0 - 0.0100;                         // the click starts 10 ms in
-        double a = t < 0 ? 0 : 30000.0 * exp(-t / 0.0055) * sin(6.283185307179586 * 8318.0 * t);
-        s[2 * i] = s[2 * i + 1] = (short)a;
+        double ms = i * 1000.0 / 44100.0, e;                      // the loudness curve, linear between the 1 ms values
+        double pos = ms - 0.5; int k = (int)floor(pos); double fr = pos - k;
+        if (k < 0) e = rms[0]; else if (k >= 74) e = 0; else e = rms[k] * (1 - fr) + rms[k + 1] * fr;
+        if (ms >= 14.0 && ms < 14.8) e *= 2.3;                    // the sharp peak of the click
+        double a = e * (common * c[i] + indep * l[i]), b = e * (common * c[i] + indep * r[i]);
+        if (a > 32767) a = 32767; if (a < -32767) a = -32767;
+        if (b > 32767) b = 32767; if (b < -32767) b = -32767;
+        s[2 * i] = (short)a; s[2 * i + 1] = (short)b;
     }
     g_tickBuilt = true;
 }
@@ -364,6 +400,7 @@ void BeginRecord()
     SetTimer(g_panel, TIMER_UI, 250, nullptr);
     CountdownHide();
     FxStart();                                                   // click waves and the Shift trail
+    g_frameBlink = true;                                         // the frame blinks while the recording runs
     UpdatePanel();
 }
 
@@ -437,8 +474,8 @@ void StartPressed()
             UpdatePanel();
         } else BeginRecord();
         break;
-    case ST_RECORDING: for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(true); g_state = ST_PAUSED; UpdatePanel(); break;
-    case ST_PAUSED:    for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(false); g_state = ST_RECORDING; UpdatePanel(); break;
+    case ST_RECORDING: for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(true); g_state = ST_PAUSED; g_frameBlink = false; UpdatePanel(); break;
+    case ST_PAUSED:    for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(false); g_state = ST_RECORDING; g_frameBlink = true; UpdatePanel(); break;
     default: break;
     }
 }
@@ -642,29 +679,62 @@ void PumpFor(int ms)
     }
 }
 
-// The countdown: big red digits (3, 2, 1) in the centre of the chosen area (of every monitor for the whole desktop).
-// The windows are see-through and click-through, excluded from the picture, and gone before it is taken.
-const COLORREF kDigitKey = RGB(1, 2, 3), kDigitRed = RGB(230, 30, 30);
+// The countdown: red digits (3, 2, 1) in the centre of the chosen area (of every monitor for the whole desktop).
+// The windows are see-through (per-pixel alpha, so the edges are smooth) and click-through, excluded from the picture, and
+// gone before it is taken.
+const COLORREF kDigitRed = RGB(230, 30, 30);
 HWND g_digit[16];
 int g_nDigit;
 LRESULT CALLBACK CountProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 {
     if (m == WM_NCCREATE) return DefWindowProcW(hw, m, wp, lp);
-    if (m == WM_ERASEBKGND) return 1;
-    if (m == WM_PAINT) {
-        PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
-        RECT r; GetClientRect(hw, &r);
-        Box(dc, 0, 0, r.right, r.bottom, kDigitKey);
-        wchar_t t[16]; GetWindowTextW(hw, t, 16);
-        HFONT f = CreateFontW(-(int)(r.bottom * 0.82), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, ANTIALIASED_QUALITY, 0, L"Segoe UI");
-        HGDIOBJ of = SelectObject(dc, f);
-        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, kDigitRed);
-        DrawTextW(dc, t, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-        SelectObject(dc, of); DeleteObject(f);
-        EndPaint(hw, &ps);
-        return 0;
-    }
     return DefWindowProcW(hw, m, wp, lp);
+}
+
+// The digit is drawn white on black at three times the size, the grey levels become the alpha of a red picture, and the
+// picture is shrunk by averaging: smooth edges whatever the font smoothing does.
+void RenderDigit(HWND hw, const wchar_t* text, int x, int y, int sz)
+{
+    const int K = 3, big = sz * K;
+    HDC scr = GetDC(nullptr);
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER); bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32; bi.bmiHeader.biCompression = BI_RGB;
+    bi.bmiHeader.biWidth = big; bi.bmiHeader.biHeight = -big;
+    uint32_t* bg = nullptr;
+    HBITMAP bb = CreateDIBSection(scr, &bi, DIB_RGB_COLORS, (void**)&bg, nullptr, 0);
+    HDC bdc = CreateCompatibleDC(scr);
+    bi.bmiHeader.biWidth = sz; bi.bmiHeader.biHeight = -sz;
+    uint32_t* sm = nullptr;
+    HBITMAP sb = CreateDIBSection(scr, &bi, DIB_RGB_COLORS, (void**)&sm, nullptr, 0);
+    HDC sdc = CreateCompatibleDC(scr);
+    if (bb && bg && sb && sm && bdc && sdc) {
+        HGDIOBJ ob = SelectObject(bdc, bb), os = SelectObject(sdc, sb);
+        memset(bg, 0, (size_t)big * big * 4);
+        HFONT f = CreateFontW(-(int)(big * 0.82), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, ANTIALIASED_QUALITY, 0, L"Segoe UI");
+        HGDIOBJ of = SelectObject(bdc, f);
+        SetBkMode(bdc, TRANSPARENT); SetTextColor(bdc, RGB(255, 255, 255));
+        RECT r = { 0, 0, big, big };
+        DrawTextW(bdc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        SelectObject(bdc, of); DeleteObject(f);
+        const unsigned cr = GetRValue(kDigitRed), cg = GetGValue(kDigitRed), cb = GetBValue(kDigitRed);
+        for (int yy = 0; yy < sz; ++yy)
+            for (int xx = 0; xx < sz; ++xx) {
+                unsigned sum = 0;
+                for (int dy = 0; dy < K; ++dy)
+                    for (int dx = 0; dx < K; ++dx) sum += (bg[(yy * K + dy) * big + xx * K + dx] >> 8) & 0xFF;       // the grey level (green channel)
+                unsigned A = sum / (K * K);
+                sm[yy * sz + xx] = (A << 24) | ((cr * A / 255) << 16) | ((cg * A / 255) << 8) | (cb * A / 255);
+            }
+        POINT pos = { x, y }, src = { 0, 0 }; SIZE size = { sz, sz };
+        BLENDFUNCTION bf; bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0; bf.SourceConstantAlpha = 255; bf.AlphaFormat = AC_SRC_ALPHA;
+        UpdateLayeredWindow(hw, scr, &pos, &size, sdc, &src, 0, &bf, ULW_ALPHA);
+        SelectObject(bdc, ob); SelectObject(sdc, os);
+    }
+    if (bdc) DeleteDC(bdc);
+    if (sdc) DeleteDC(sdc);
+    if (bb) DeleteObject(bb);
+    if (sb) DeleteObject(sb);
+    ReleaseDC(nullptr, scr);
 }
 
 void CountdownShow(int n, const RECT* areas, int count)
@@ -674,21 +744,20 @@ void CountdownShow(int n, const RECT* areas, int count)
     if (count > 16) count = 16;
     for (int i = 0; i < count; ++i) {
         int aw = areas[i].right - areas[i].left, ah = areas[i].bottom - areas[i].top;
-        int sz = (aw < ah ? aw : ah) / 3;
-        if (sz < Sc(70)) sz = Sc(70);
-        if (sz > Sc(220)) sz = Sc(220);
+        int sz = (aw < ah ? aw : ah) / 6;                                 // half what it was
+        if (sz < Sc(36)) sz = Sc(36);
+        if (sz > Sc(110)) sz = Sc(110);
         if (i >= g_nDigit) {
             g_digit[i] = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenCount", t, WS_POPUP,
                                          0, 0, sz, sz, nullptr, nullptr, g_inst, nullptr);
             if (!g_digit[i]) continue;
-            SetLayeredWindowAttributes(g_digit[i], kDigitKey, 0, LWA_COLORKEY);
             ExcludeFromCapture(g_digit[i]);
             g_nDigit = i + 1;
         }
         SetWindowTextW(g_digit[i], t);
-        SetWindowPos(g_digit[i], HWND_TOPMOST, (areas[i].left + areas[i].right - sz) / 2, (areas[i].top + areas[i].bottom - sz) / 2, sz, sz, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        InvalidateRect(g_digit[i], nullptr, FALSE);
-        UpdateWindow(g_digit[i]);
+        int x = (areas[i].left + areas[i].right - sz) / 2, y = (areas[i].top + areas[i].bottom - sz) / 2;
+        SetWindowPos(g_digit[i], HWND_TOPMOST, x, y, sz, sz, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        RenderDigit(g_digit[i], t, x, y, sz);
     }
 }
 
@@ -745,18 +814,20 @@ void FrameShow(const RECT& rc)
         SetTimer(g_main, TIMER_BLINK, 500, nullptr);
     }
     g_frameOn = true;
+    g_frameBlink = false;
     FramePlace(rc);
 }
 
 void FrameHide()
 {
     if (g_frame) { KillTimer(g_main, TIMER_BLINK); DestroyWindow(g_frame); g_frame = nullptr; }
-    g_frameOn = false;
+    g_frameOn = false; g_frameBlink = false;
 }
 
 void FrameBlink()
 {
     if (!g_frame) return;
+    if (!g_frameBlink) { if (!g_frameOn) { g_frameOn = true; ShowWindow(g_frame, SW_SHOWNA); } return; }     // steady
     g_frameOn = !g_frameOn;
     ShowWindow(g_frame, g_frameOn ? SW_SHOWNA : SW_HIDE);
 }
@@ -801,7 +872,7 @@ void Shot(Mode mode)
     }
     else if (!ChooseTarget(mode, &rects[0], &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
     else if (wasVisible) ShowMain(false);
-    if (mode != M_DESKTOP) FrameShow(rects[0]);              // the red frame round the chosen area (as for a recording)
+    if (mode != M_DESKTOP) { FrameShow(rects[0]); g_frameBlink = true; }     // the red frame round the chosen area; it blinks while the screenshot is made
     for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i, rects, count); PumpFor(1000); }
     CountdownHide();
     if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }

@@ -308,7 +308,7 @@ static int CheckColors(HBITMAP bmp, int ox, int oy, int cw, int ch, int tol, int
 }
 
 // ---- WIC decoding of saved images --------------------------------------------------------------------------------
-static bool DecodePixels(const wchar_t* path, int* w, int* h, uint8_t** px)
+static bool DecodePixelsOnce(const wchar_t* path, int* w, int* h, uint8_t** px)
 {
     HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     IWICImagingFactory* f = nullptr; IWICBitmapDecoder* dec = nullptr; IWICBitmapFrameDecode* fr = nullptr; IWICFormatConverter* cv = nullptr;
@@ -328,6 +328,17 @@ static bool DecodePixels(const wchar_t* path, int* w, int* h, uint8_t** px)
     if (cv) cv->Release(); if (fr) fr->Release(); if (dec) dec->Release(); if (f) f->Release();
     if (SUCCEEDED(hrInit)) CoUninitialize();
     return ok;
+}
+
+// A picture that is still being written (a slow machine: a 3 MB BMP took seconds) is read again for a while before it counts as broken.
+static bool DecodePixels(const wchar_t* path, int* w, int* h, uint8_t** px)
+{
+    for (int attempt = 0; attempt < 40; ++attempt) {
+        if (DecodePixelsOnce(path, w, h, px)) return true;
+        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) return false;       // there is no such file: nothing to wait for
+        Sleep(150);
+    }
+    return false;
 }
 
 int CurrentDpi() { return 96; }          // the editor asks the main program for it
@@ -823,7 +834,7 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                 IMFMediaType* cur = nullptr; INT32 stride = 0;
                 if (SUCCEEDED(rd->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur))) {
                     UINT32 s = 0, ow = 0, oh = 0;
-                    if (SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &s))) stride = (INT32)s; else stride = v.w * 4;
+                    if (SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &s))) stride = (INT32)s; else stride = -(INT32)(v.w * 4);   // RGB32 without a stride attribute is bottom-up (the Media Foundation default)
                     MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &ow, &oh);
                     Rep(L"INFO", L"  decoder output %ux%u, stride %d (native %dx%d)", ow, oh, (int)stride, v.w, v.h);
                     cur->Release();
@@ -1553,7 +1564,7 @@ static int CountFiles(const wchar_t* dir)
     WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
     int n = 0;
     if (h == INVALID_HANDLE_VALUE) return 0;
-    do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) ++n; } while (FindNextFileW(h, &fd));
+    do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fd.cFileName[0] != L'.') ++n; } while (FindNextFileW(h, &fd));   // (".c2s-probe-*": the program tries the folder for writing)
     FindClose(h);
     return n;
 }
@@ -1662,7 +1673,7 @@ static void T_App()
         wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.*", s.imgFolder);
         WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
         wchar_t file[MAX_PATH] = L"";
-        if (h != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) _snwprintf(file, MAX_PATH, L"%s\\%s", s.imgFolder, fd.cFileName); } while (FindNextFileW(h, &fd)); FindClose(h); }
+        if (h != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fd.cFileName[0] != L'.') _snwprintf(file, MAX_PATH, L"%s\\%s", s.imgFolder, fd.cFileName); } while (FindNextFileW(h, &fd)); FindClose(h); }
         // the file shows up while the program is still writing it: wait until its size stops changing
         unsigned long long last = 0; int stable = 0;
         for (int i = 0; i < 100 && stable < 4 && file[0]; ++i) { unsigned long long z = FileSz(file); if (z == last && z > 0) ++stable; else stable = 0; last = z; Sleep(150); }
@@ -1705,7 +1716,8 @@ static void T_App()
                     if (Chance(40)) {                          // hide the panel, bring it back from the tray menu command
                         PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_HIDE, BN_CLICKED), 0);
                         bool asked = DismissBox(a.pi.dwProcessId, IDYES, 5000);
-                        Sleep(300);
+                        DWORD hideEnd = GetTickCount() + WMS(3000);
+                        while (IsWindowVisible(panel) && (int)(hideEnd - GetTickCount()) > 0) Sleep(50);
                         Check(asked && !IsWindowVisible(panel), L"program: Hide asks once and hides the panel");
                         PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL, 0);
                         Sleep(300);
@@ -1803,8 +1815,10 @@ static bool DrivePicker(DWORD pid, int mode, POINT a, POINT b, bool stray = fals
         if (stray) { SendMessageW(ov, WM_LBUTTONDOWN, MK_LBUTTON, L(a)); SendMessageW(ov, WM_LBUTTONUP, 0, L(a)); Sleep(150); }
         SendMessageW(ov, WM_LBUTTONDOWN, MK_LBUTTON, L(a));
         for (int i = 1; i <= 4; ++i) { POINT m = { a.x + (b.x - a.x) * i / 4, a.y + (b.y - a.y) * i / 4 }; SendMessageW(ov, WM_MOUSEMOVE, MK_LBUTTON, L(m)); }
+        SetCursorPos(b.x, b.y);
         SendMessageW(ov, WM_LBUTTONUP, 0, L(b));
     } else if (mode == 1) {
+        SetCursorPos(a.x, a.y);                       // the real pointer on the target too: a parked one would send its own WM_MOUSEMOVE in between
         SendMessageW(ov, WM_MOUSEMOVE, 0, L(a)); Pump(80);
         SendMessageW(ov, WM_LBUTTONUP, 0, L(a));
     } else SendMessageW(ov, WM_KEYDOWN, VK_ESCAPE, 0);
@@ -1818,7 +1832,7 @@ static bool LatestFile(const wchar_t* dir, wchar_t* out)
     FILETIME best = {0, 0}; bool any = false;
     if (h == INVALID_HANDLE_VALUE) return false;
     do {
-        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        if ((fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || fd.cFileName[0] == L'.') continue;
         if (!any || CompareFileTime(&fd.ftLastWriteTime, &best) >= 0) { best = fd.ftLastWriteTime; _snwprintf(out, MAX_PATH, L"%s\\%s", dir, fd.cFileName); any = true; }
     } while (FindNextFileW(h, &fd));
     FindClose(h);
@@ -2374,10 +2388,23 @@ static void T_Effects()
     wchar_t dd[200]; _snwprintf(dd, 200, L"button %d, %d ring pixels, %d changed farN away, mean change %.0f,%.0f,%.0f", button, ringN, farN, dR, dG, dB);
     Check(ringN >= 25 && farN == 0, L"effects: a click draws a wave round the pointer and nothing else", dd);
     Check(ringN >= 25 && colour, L"effects: the wave has the colour of the button (left blue, right red, middle purple)", dd);
+    // a recording has the waves whether or not the pointer itself is drawn ("include the pointer" off)
+    {
+        FxStop();
+        Grabber ga, gb; ga.Init(w, h); gb.Init(w, h);
+        ga.Grab(rc, false, false, false);
+        FxTestClick(fr.left + cx, fr.top + cy, 0);
+        gb.Grab(rc, false, false, true);
+        int ch2 = 0;
+        for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
+            if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
+        Check(ch2 >= 25, L"effects: a recording shows the waves although the pointer itself is not drawn", ch2 ? L"" : L"(nothing changed)");
+    }
     // the Shift trail: a red line behind the pointer, and a stroke older than five minutes is gone
     FxStop();
+    FxTestTrailLifetime(3000);                                  // a point lives 3 s here (five minutes for real); the old stroke is 5 s old
     int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half: blue and yellow, never red
-    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 6ULL * 60 * 1000);       // points come in time order: the old stroke first
+    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 5000);                    // points come in time order: the old stroke first
     for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + ty, i == 0, 1000);
     Grabber g2; g2.Init(w, h);
     g2.Grab(rc, true, false, true);
@@ -2391,7 +2418,8 @@ static void T_Effects()
     }
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
     Check(tested > 5 && red * 10 >= tested * 9, L"effects: the Shift trail is a red line behind the pointer", d2);
-    Check(oldTested > 5 && oldRed == 0, L"effects: a trail older than five minutes has faded out", d2);
+    Check(oldTested > 5 && oldRed == 0, L"effects: a trail point that has lived its time has faded out (the lifetime is five minutes in the program)", d2);
+    FxTestTrailLifetime(0);
     FxStop();
     // a real click, seen by the low-level mouse hook
     FxStart();
@@ -2403,13 +2431,14 @@ static void T_Effects()
     Grabber g4; g4.Init(w, h);
     g4.Grab(rc, true, false, true);
     int changed = 0;
+    unsigned seen = 0; unsigned long herr = 0; bool hooked = FxTestHook(&seen, &herr);
     const uint8_t* e0 = g3.Bits(); const uint8_t* e1 = g4.Bits();
     for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
         if (abs(e1[o + 2] - e0[o + 2]) + abs(e1[o + 1] - e0[o + 1]) + abs(e1[o] - e0[o]) > 30) ++changed;
     FxStop();
     SetCursorPos(2, 2);
     if (changed < 25 && g_wine) SKIP(L"effects: Wine does not pass a synthetic click to the low-level hook");
-    else Check(changed >= 25, L"effects: a real click (low-level mouse hook) makes a wave in the frame", changed ? L"" : L"(nothing changed)");
+    else { wchar_t hd[160]; _snwprintf(hd, 160, L"%d pixels changed, hook installed %d (error %lu), clicks seen by the hook %u", changed, (int)hooked, herr, seen); Check(changed >= 25, L"effects: a real click (low-level mouse hook) makes a wave in the frame", hd); }
 }
 
 // ---- the red frame (blinking) and the red countdown digits of the real program -----------------------------------------
@@ -2427,7 +2456,7 @@ static void T_AppFrame()
     int before = CountFiles(s.imgFolder);
     PostMessageW(a.main, WM_HOTKEY, HK_REGION, 0);
     bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
-    bool seenOn = false, seenOff = false, digit = false, centred = false, framed = false;
+    bool seenOn = false, seenOff = false, digit = false, centred = false, framed = false, digitBig = false;
     DWORD end = GetTickCount() + WMS(3600);
     while (driven && (int)(end - GetTickCount()) > 0) {
         HWND f = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0);
@@ -2438,6 +2467,7 @@ static void T_AppFrame()
         }
         if (d && IsWindowVisible(d)) {
             digit = true; RECT r; GetWindowRect(d, &r);
+            if (r.right - r.left > 112 || r.right - r.left < 30) digitBig = true;                  // 36..110 units: small, not as big as before
             int mx = (r.left + r.right) / 2, my = (r.top + r.bottom) / 2, cx = (p1.x + p2.x) / 2, cy = (p1.y + p2.y) / 2;
             centred = centred || (abs(mx - cx) <= 2 && abs(my - cy) <= 2);
         }
@@ -2452,8 +2482,31 @@ static void T_AppFrame()
     wchar_t dd[200]; _snwprintf(dd, 200, L"driven %d, on %d off %d, frame at the area %d, digit %d centred %d", (int)driven, (int)seenOn, (int)seenOff, (int)framed, (int)digit, (int)centred);
     Check(framed, L"frame: after the region is chosen a red frame stands round it (as for a recording)", dd);
     Check(seenOn && seenOff, L"frame: the red frame blinks", dd);
-    Check(digit && centred, L"frame: the countdown digits stand in the middle of the chosen area", dd);
+    Check(digit && centred && !digitBig, L"frame: the countdown digits are small and stand in the middle of the chosen area", dd);
     Check(got && !f2 && !d2, L"frame: the picture is saved and the frame and the digits are gone", dd);
+    // a region recording: the frame is steady while the area is only chosen and during the countdown, and blinks while it records
+    PostMessageW(a.main, WM_COMMAND, IDC_REC_REGION, 0);
+    bool drv2 = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
+    HWND panel = drv2 ? FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000) : nullptr;
+    bool armOn = false, armOff = false, recOn = false, recOff = false;
+    DWORD t1 = GetTickCount();
+    while ((int)(GetTickCount() - t1) < 1500) {
+        HWND f = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0);
+        if (f) { if (IsWindowVisible(f)) armOn = true; else armOff = true; }
+        Pump(60);
+    }
+    if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); LangSelect(s.language); }
+    bool running = panel && WaitText(panel, IDC_P_START, T(S_PAUSE), (s.delaySec + 8) * 1000);
+    DWORD t2 = GetTickCount();
+    while (running && (int)(GetTickCount() - t2) < 2000) {
+        HWND f = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0);
+        if (f) { if (IsWindowVisible(f)) recOn = true; else recOff = true; }
+        Pump(60);
+    }
+    if (panel) PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_STOP, BN_CLICKED), 0);
+    wchar_t d3[160]; _snwprintf(d3, 160, L"armed: on %d off %d; recording (running %d): on %d off %d", (int)armOn, (int)armOff, (int)running, (int)recOn, (int)recOff);
+    Check(armOn && !armOff, L"frame: the red frame does not blink while the area is only chosen", d3);
+    Check(running && recOn && recOff, L"frame: the red frame blinks while the recording runs", d3);
     StopApp(a);
 }
 

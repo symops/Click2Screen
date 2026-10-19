@@ -116,6 +116,8 @@ private:
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
 void FxDraw(HDC dc, const RECT& src, int outW, int outH);
+bool FxTestHook(unsigned* clicksSeen, unsigned long* err);   // (autotest) is the hook installed, how many clicks it saw
+void FxTestTrailLifetime(unsigned ms);             // (autotest) how long a trail point lives; 0 = five minutes
 void FxTestClick(int x, int y, int button);        // (autotest) a click at a screen point, now
 void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs);   // (autotest) a trail point of that age
 // One-shot screenshot of a screen rectangle (full size). The caller owns the bitmap.

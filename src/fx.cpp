@@ -11,7 +11,8 @@ namespace {
 struct Click { ULONGLONG t; int x, y, button; };       // button: 0 left, 1 right, 2 middle
 const int kMaxClicks = 32;
 const ULONGLONG kWaveMs = 650;
-const ULONGLONG kTrailMs = 5ULL * 60 * 1000;           // the trail of a point lives five minutes
+const ULONGLONG kTrailDefaultMs = 5ULL * 60 * 1000;    // the trail of a point lives five minutes
+ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shortens it: a fresh machine has not been up for five minutes)
 
 struct Pt { int x, y; ULONGLONG t; bool brk; };         // brk: this point starts a new stroke
 
@@ -23,6 +24,8 @@ Pt* g_trail;
 size_t g_nTrail, g_head, g_capTrail;
 bool g_shiftWas;
 HHOOK g_hook;
+DWORD g_hookErr;
+unsigned g_hookCalls;                                      // clicks seen by the hook (diagnostics)
 
 void Lock() { if (!g_csInit) { InitializeCriticalSection(&g_cs); g_csInit = true; } EnterCriticalSection(&g_cs); }
 void Unlock() { LeaveCriticalSection(&g_cs); }
@@ -59,7 +62,7 @@ LRESULT CALLBACK MouseProc(int code, WPARAM wp, LPARAM lp)
 {
     if (code == HC_ACTION) {
         int b = wp == WM_LBUTTONDOWN ? 0 : wp == WM_RBUTTONDOWN ? 1 : wp == WM_MBUTTONDOWN ? 2 : -1;
-        if (b >= 0) { const MSLLHOOKSTRUCT* m = (const MSLLHOOKSTRUCT*)lp; AddClick(m->pt.x, m->pt.y, b, GetTickCount64()); }
+        if (b >= 0) { const MSLLHOOKSTRUCT* m = (const MSLLHOOKSTRUCT*)lp; ++g_hookCalls; AddClick(m->pt.x, m->pt.y, b, GetTickCount64()); }
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -106,7 +109,8 @@ void FxStart()
     Lock();
     g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false;
     Unlock();
-    if (!g_hook) g_hook = SetWindowsHookExW(WH_MOUSE_LL, MouseProc, GetModuleHandleW(nullptr), 0);
+    if (!g_hook) { g_hook = SetWindowsHookExW(WH_MOUSE_LL, MouseProc, GetModuleHandleW(nullptr), 0); g_hookErr = g_hook ? 0 : GetLastError(); }
+    g_hookCalls = 0;
 }
 
 void FxStop()
@@ -117,6 +121,8 @@ void FxStop()
     Unlock();
 }
 
+bool FxTestHook(unsigned* clicksSeen, unsigned long* err) { *clicksSeen = g_hookCalls; *err = g_hookErr; return g_hook != nullptr; }
+void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }
 void FxTestClick(int x, int y, int button) { AddClick(x, y, button, GetTickCount64()); }
 void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)
 {
@@ -147,7 +153,7 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
     g_shiftWas = shift;
 
     Lock();
-    while (g_head < g_nTrail && now - g_trail[g_head].t > kTrailMs) ++g_head;       // the oldest points fade out first
+    while (g_head < g_nTrail && now - g_trail[g_head].t > g_trailMs) ++g_head;       // the oldest points fade out first
     if (g_nTrail > g_head) {
         int w = (int)(2.0 * sc + 0.5); if (w < 1) w = 1;
         HPEN pen = CreatePen(PS_SOLID, w, RGB(255, 40, 40));
