@@ -137,3 +137,5 @@ Tùy chọn âm thanh
 Phiên bản %s
 Trạng thái
 Chạy Click2Screen sau khi cài đặt
+Hiển thị thông báo trong khu vực thông báo
+Ghi âm thanh từ loa

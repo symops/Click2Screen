@@ -137,3 +137,5 @@ Opzioni audio
 Versione %s
 Stato
 Avvia Click2Screen dopo l'installazione
+Mostra le notifiche nell'area di notifica
+Registra l'audio degli altoparlanti

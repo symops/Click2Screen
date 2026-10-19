@@ -137,3 +137,5 @@ Audio-opties
 Versie %s
 Status
 Click2Screen starten na de installatie
+Meldingen weergeven in het systeemvak
+Geluid van de luidsprekers opnemen

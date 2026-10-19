@@ -58,7 +58,7 @@ void SettingsDefaults(Settings& s)
     KnownFolder(FOLDERID_Pictures, L"Click2Screen", s.imgFolder, MAX_PATH);
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
-    s.capMouse = true; s.highlight = true; s.sounds = true; s.mic = true;
+    s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
     s.openFolder = true; s.runAtStartup = false;
     s.delaySec = 3; s.durH = s.durM = s.durS = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
@@ -78,6 +78,8 @@ void SettingsLoad(Settings& s)
     s.capMouse     = GetDw(k, L"CapMouse", d.capMouse) != 0;
     s.highlight    = GetDw(k, L"Highlight", d.highlight) != 0;
     s.sounds       = GetDw(k, L"EnableSound", d.sounds) != 0;
+    s.notify       = GetDw(k, L"Notifications", d.notify) != 0;
+    s.loopback     = GetDw(k, L"RecordSpeakers", d.loopback) != 0;
     s.mic          = GetDw(k, L"EnableMicRec", d.mic) != 0;
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
@@ -106,6 +108,8 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"CapMouse", s.capMouse);
     PutDw(k, L"Highlight", s.highlight);
     PutDw(k, L"EnableSound", s.sounds);
+    PutDw(k, L"Notifications", s.notify);
+    PutDw(k, L"RecordSpeakers", s.loopback);
     PutDw(k, L"EnableMicRec", s.mic);
     PutDw(k, L"OpenOutFolder", s.openFolder);
     PutDw(k, L"RunAtStartup", s.runAtStartup);
@@ -306,6 +310,8 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"CapMouse", s.capMouse);
     IniInt(path, L"Highlight", s.highlight);
     IniInt(path, L"EnableSound", s.sounds);
+    IniInt(path, L"Notifications", s.notify);
+    IniInt(path, L"RecordSpeakers", s.loopback);
     IniInt(path, L"EnableMicRec", s.mic);
     IniInt(path, L"OpenOutFolder", s.openFolder);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
@@ -353,6 +359,8 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"CapMouse", 0, 1, &v)) s.capMouse = v != 0;
     if (IniGetInt(path, L"Highlight", 0, 1, &v)) s.highlight = v != 0;
     if (IniGetInt(path, L"EnableSound", 0, 1, &v)) s.sounds = v != 0;
+    if (IniGetInt(path, L"Notifications", 0, 1, &v)) s.notify = v != 0;
+    if (IniGetInt(path, L"RecordSpeakers", 0, 1, &v)) s.loopback = v != 0;
     if (IniGetInt(path, L"EnableMicRec", 0, 1, &v)) s.mic = v != 0;
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;

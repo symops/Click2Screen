@@ -137,3 +137,5 @@ Click2Screen 不会随 Windows 启动。
 版本 %s
 状态
 安装后启动 Click2Screen
+在通知区域显示通知
+录制扬声器的声音

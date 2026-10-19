@@ -137,3 +137,5 @@ Opcje dźwięku
 Wersja %s
 Stan
 Uruchom Click2Screen po instalacji
+Pokazuj powiadomienia w obszarze powiadomień
+Nagrywaj dźwięk z głośników

@@ -19,7 +19,7 @@ static const wchar_t* const kLangNames[kLangCount] = {
     L"\x65e5" L"\x672c" L"\x8a9e",
     L"\xd55c" L"\xad6d" L"\xc5b4",
 };
-static const wchar_t* const kStrings[kLangCount][139] = {
+static const wchar_t* const kStrings[kLangCount][141] = {
     { // en
         L"Click2Screen",
         L"Record desktop",
@@ -160,6 +160,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Version %s",
         L"Status",
         L"Start Click2Screen after installation",
+        L"Show notifications in the notification area",
+        L"Record sound from the speakers",
     },
     { // ru
         L"Click2Screen",
@@ -301,6 +303,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\x0412" L"\x0435" L"\x0440" L"\x0441" L"\x0438" L"\x044f" L" %s",
         L"\x0421" L"\x043e" L"\x0441" L"\x0442" L"\x043e" L"\x044f" L"\x043d" L"\x0438" L"\x0435",
         L"\x0417" L"\x0430" L"\x043f" L"\x0443" L"\x0441" L"\x0442" L"\x0438" L"\x0442" L"\x044c" L" Click2Screen " L"\x043f" L"\x043e" L"\x0441" L"\x043b" L"\x0435" L" " L"\x0443" L"\x0441" L"\x0442" L"\x0430" L"\x043d" L"\x043e" L"\x0432" L"\x043a" L"\x0438",
+        L"\x041f" L"\x043e" L"\x043a" L"\x0430" L"\x0437" L"\x044b" L"\x0432" L"\x0430" L"\x0442" L"\x044c" L" " L"\x0443" L"\x0432" L"\x0435" L"\x0434" L"\x043e" L"\x043c" L"\x043b" L"\x0435" L"\x043d" L"\x0438" L"\x044f" L" " L"\x0432" L" " L"\x043e" L"\x0431" L"\x043b" L"\x0430" L"\x0441" L"\x0442" L"\x0438" L" " L"\x0443" L"\x0432" L"\x0435" L"\x0434" L"\x043e" L"\x043c" L"\x043b" L"\x0435" L"\x043d" L"\x0438" L"\x0439",
+        L"\x0417" L"\x0430" L"\x043f" L"\x0438" L"\x0441" L"\x044b" L"\x0432" L"\x0430" L"\x0442" L"\x044c" L" " L"\x0437" L"\x0432" L"\x0443" L"\x043a" L" " L"\x0441" L" " L"\x0434" L"\x0438" L"\x043d" L"\x0430" L"\x043c" L"\x0438" L"\x043a" L"\x043e" L"\x0432",
     },
     { // uk
         L"Click2Screen",
@@ -442,6 +446,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\x0412" L"\x0435" L"\x0440" L"\x0441" L"\x0456" L"\x044f" L" %s",
         L"\x0421" L"\x0442" L"\x0430" L"\x043d",
         L"\x0417" L"\x0430" L"\x043f" L"\x0443" L"\x0441" L"\x0442" L"\x0438" L"\x0442" L"\x0438" L" Click2Screen " L"\x043f" L"\x0456" L"\x0441" L"\x043b" L"\x044f" L" " L"\x0432" L"\x0441" L"\x0442" L"\x0430" L"\x043d" L"\x043e" L"\x0432" L"\x043b" L"\x0435" L"\x043d" L"\x043d" L"\x044f",
+        L"\x041f" L"\x043e" L"\x043a" L"\x0430" L"\x0437" L"\x0443" L"\x0432" L"\x0430" L"\x0442" L"\x0438" L" " L"\x0441" L"\x043f" L"\x043e" L"\x0432" L"\x0456" L"\x0449" L"\x0435" L"\x043d" L"\x043d" L"\x044f" L" " L"\x0432" L" " L"\x043e" L"\x0431" L"\x043b" L"\x0430" L"\x0441" L"\x0442" L"\x0456" L" " L"\x0441" L"\x043f" L"\x043e" L"\x0432" L"\x0456" L"\x0449" L"\x0435" L"\x043d" L"\x044c",
+        L"\x0417" L"\x0430" L"\x043f" L"\x0438" L"\x0441" L"\x0443" L"\x0432" L"\x0430" L"\x0442" L"\x0438" L" " L"\x0437" L"\x0432" L"\x0443" L"\x043a" L" " L"\x0437" L" " L"\x0434" L"\x0438" L"\x043d" L"\x0430" L"\x043c" L"\x0456" L"\x043a" L"\x0456" L"\x0432",
     },
     { // be
         L"Click2Screen",
@@ -583,6 +589,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\x0412" L"\x0435" L"\x0440" L"\x0441" L"\x0456" L"\x044f" L" %s",
         L"\x0421" L"\x0442" L"\x0430" L"\x043d",
         L"\x0417" L"\x0430" L"\x043f" L"\x0443" L"\x0441" L"\x0446" L"\x0456" L"\x0446" L"\x044c" L" Click2Screen " L"\x043f" L"\x0430" L"\x0441" L"\x043b" L"\x044f" L" " L"\x045e" L"\x0441" L"\x0442" L"\x0430" L"\x043b" L"\x044f" L"\x0432" L"\x0430" L"\x043d" L"\x043d" L"\x044f",
+        L"\x041f" L"\x0430" L"\x043a" L"\x0430" L"\x0437" L"\x0432" L"\x0430" L"\x0446" L"\x044c" L" " L"\x0430" L"\x043f" L"\x0430" L"\x0432" L"\x044f" L"\x0448" L"\x0447" L"\x044d" L"\x043d" L"\x043d" L"\x0456" L" " L"\x045e" L" " L"\x0432" L"\x043e" L"\x0431" L"\x043b" L"\x0430" L"\x0441" L"\x0446" L"\x0456" L" " L"\x0430" L"\x043f" L"\x0430" L"\x0432" L"\x044f" L"\x0448" L"\x0447" L"\x044d" L"\x043d" L"\x043d" L"\x044f" L"\x045e",
+        L"\x0417" L"\x0430" L"\x043f" L"\x0456" L"\x0441" L"\x0432" L"\x0430" L"\x0446" L"\x044c" L" " L"\x0433" L"\x0443" L"\x043a" L" " L"\x0437" L" " L"\x0434" L"\x044b" L"\x043d" L"\x0430" L"\x043c" L"\x0456" L"\x043a" L"\x0430" L"\x045e",
     },
     { // de
         L"Click2Screen",
@@ -724,6 +732,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Version %s",
         L"Status",
         L"Click2Screen nach der Installation starten",
+        L"Benachrichtigungen im Infobereich anzeigen",
+        L"Ton von den Lautsprechern aufnehmen",
     },
     { // fr
         L"Click2Screen",
@@ -865,6 +875,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Version %s",
         L"\x00c9" L"tat",
         L"Lancer Click2Screen apr" L"\x00e8" L"s l'installation",
+        L"Afficher les notifications dans la zone de notification",
+        L"Enregistrer le son des haut-parleurs",
     },
     { // es
         L"Click2Screen",
@@ -1006,6 +1018,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Versi" L"\x00f3" L"n %s",
         L"Estado",
         L"Iniciar Click2Screen tras la instalaci" L"\x00f3" L"n",
+        L"Mostrar notificaciones en el " L"\x00e1" L"rea de notificaciones",
+        L"Grabar el sonido de los altavoces",
     },
     { // it
         L"Click2Screen",
@@ -1147,6 +1161,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Versione %s",
         L"Stato",
         L"Avvia Click2Screen dopo l'installazione",
+        L"Mostra le notifiche nell'area di notifica",
+        L"Registra l'audio degli altoparlanti",
     },
     { // pt
         L"Click2Screen",
@@ -1288,6 +1304,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Vers" L"\x00e3" L"o %s",
         L"Estado",
         L"Iniciar o Click2Screen ap" L"\x00f3" L"s a instala" L"\x00e7" L"\x00e3" L"o",
+        L"Mostrar notifica" L"\x00e7" L"\x00f5" L"es na " L"\x00e1" L"rea de notifica" L"\x00e7" L"\x00e3" L"o",
+        L"Gravar o som dos alto-falantes",
     },
     { // pl
         L"Click2Screen",
@@ -1429,6 +1447,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Wersja %s",
         L"Stan",
         L"Uruchom Click2Screen po instalacji",
+        L"Pokazuj powiadomienia w obszarze powiadomie" L"\x0144",
+        L"Nagrywaj d" L"\x017a" L"wi" L"\x0119" L"k z g" L"\x0142" L"o" L"\x015b" L"nik" L"\x00f3" L"w",
     },
     { // nl
         L"Click2Screen",
@@ -1570,6 +1590,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Versie %s",
         L"Status",
         L"Click2Screen starten na de installatie",
+        L"Meldingen weergeven in het systeemvak",
+        L"Geluid van de luidsprekers opnemen",
     },
     { // tr
         L"Click2Screen",
@@ -1711,6 +1733,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"S" L"\x00fc" L"r" L"\x00fc" L"m %s",
         L"Durum",
         L"Kurulumdan sonra Click2Screen'i ba" L"\x015f" L"lat",
+        L"Bildirim alan" L"\x0131" L"nda bildirimleri g" L"\x00f6" L"ster",
+        L"Hoparl" L"\x00f6" L"rlerden gelen sesi kaydet",
     },
     { // id
         L"Click2Screen",
@@ -1852,6 +1876,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Versi %s",
         L"Status",
         L"Jalankan Click2Screen setelah pemasangan",
+        L"Tampilkan notifikasi di area notifikasi",
+        L"Rekam suara dari speaker",
     },
     { // vi
         L"Click2Screen",
@@ -1993,6 +2019,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"Phi" L"\x00ea" L"n b" L"\x1ea3" L"n %s",
         L"Tr" L"\x1ea1" L"ng th" L"\x00e1" L"i",
         L"Ch" L"\x1ea1" L"y Click2Screen sau khi c" L"\x00e0" L"i " L"\x0111" L"\x1eb7" L"t",
+        L"Hi" L"\x1ec3" L"n th" L"\x1ecb" L" th" L"\x00f4" L"ng b" L"\x00e1" L"o trong khu v" L"\x1ef1" L"c th" L"\x00f4" L"ng b" L"\x00e1" L"o",
+        L"Ghi " L"\x00e2" L"m thanh t" L"\x1eeb" L" loa",
     },
     { // zh
         L"Click2Screen",
@@ -2134,6 +2162,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\x7248" L"\x672c" L" %s",
         L"\x72b6" L"\x6001",
         L"\x5b89" L"\x88c5" L"\x540e" L"\x542f" L"\x52a8" L" Click2Screen",
+        L"\x5728" L"\x901a" L"\x77e5" L"\x533a" L"\x57df" L"\x663e" L"\x793a" L"\x901a" L"\x77e5",
+        L"\x5f55" L"\x5236" L"\x626c" L"\x58f0" L"\x5668" L"\x7684" L"\x58f0" L"\x97f3",
     },
     { // ja
         L"Click2Screen",
@@ -2275,6 +2305,8 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\x30d0" L"\x30fc" L"\x30b8" L"\x30e7" L"\x30f3" L" %s",
         L"\x72b6" L"\x614b",
         L"\x30a4" L"\x30f3" L"\x30b9" L"\x30c8" L"\x30fc" L"\x30eb" L"\x5f8c" L"\x306b" L" Click2Screen " L"\x3092" L"\x8d77" L"\x52d5" L"\x3059" L"\x308b",
+        L"\x901a" L"\x77e5" L"\x9818" L"\x57df" L"\x306b" L"\x901a" L"\x77e5" L"\x3092" L"\x8868" L"\x793a" L"\x3059" L"\x308b",
+        L"\x30b9" L"\x30d4" L"\x30fc" L"\x30ab" L"\x30fc" L"\x306e" L"\x97f3" L"\x3092" L"\x9332" L"\x97f3" L"\x3059" L"\x308b",
     },
     { // ko
         L"Click2Screen",
@@ -2416,5 +2448,7 @@ static const wchar_t* const kStrings[kLangCount][139] = {
         L"\xbc84" L"\xc804" L" %s",
         L"\xc0c1" L"\xd0dc",
         L"\xc124" L"\xce58" L" " L"\xd6c4" L" Click2Screen " L"\xc2e4" L"\xd589",
+        L"\xc54c" L"\xb9bc" L" " L"\xc601" L"\xc5ed" L"\xc5d0" L" " L"\xc54c" L"\xb9bc" L" " L"\xd45c" L"\xc2dc",
+        L"\xc2a4" L"\xd53c" L"\xcee4" L" " L"\xc18c" L"\xb9ac" L" " L"\xb179" L"\xc74c",
     },
 };

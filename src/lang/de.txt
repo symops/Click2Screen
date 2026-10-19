@@ -137,3 +137,5 @@ Audiooptionen
 Version %s
 Status
 Click2Screen nach der Installation starten
+Benachrichtigungen im Infobereich anzeigen
+Ton von den Lautsprechern aufnehmen

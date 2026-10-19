@@ -137,3 +137,5 @@ Ses seçenekleri
 Sürüm %s
 Durum
 Kurulumdan sonra Click2Screen'i başlat
+Bildirim alanında bildirimleri göster
+Hoparlörlerden gelen sesi kaydet

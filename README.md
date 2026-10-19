@@ -19,13 +19,14 @@ watermarks and online components are deliberately not reproduced.
 | **Delay and countdown** | 0–10 s (a drop-down list) before a recording or a screenshot: big red digits 3 – 2 – 1 in the middle of the chosen area (of every monitor for the whole desktop) and a short mechanical click each second, made after the original's one (the only sound; it can be switched off). The red frame blinks while a screenshot is being made too. |
 | **Time limit** | Stop a recording after hours / minutes / seconds. |
 | **Microphone** | The default microphone, mono 16-bit, 44.1 kHz → AAC or MP3 in the MP4; muted while paused. If it cannot be opened the video is recorded without sound (a message says so). |
+| **Speakers** | "Record sound from the speakers" (on by default): what the default playback device plays (WASAPI loopback), mixed with the microphone into the same track. While nothing plays the track is silence; if the device cannot be captured the recording goes on without it. |
 | **Pointer** | Drawn into recordings and screenshots. In a **recording**, with "include the pointer" on, a translucent yellow circle follows the pointer ("highlight the pointer", on by default) and every click makes a wave — left button blue, right red, middle purple. Screenshots never get the circle. Hold the **left Shift** to draw a thin red line behind the pointer: it is in the video and on the screen at once, each point goes 10 seconds after it was drawn (the oldest first), and the **right Shift** wipes all the lines immediately. |
 | **Video formats** | MP4 with H.264 ("best" or "fast"), MP4 with H.265 / HEVC (when Windows has the encoder), WMV (Windows Media Video + Windows Media Audio), AVI (Motion-JPEG + PCM sound, written by the program itself) and animated GIF (no sound, at most 960 × 540 and 15 frames a second). Every format ships with Windows: no codec packs. |
 | **Quality** | Video quality high / medium / low (bit rate follows the frame size and the frame rate), 10–60 fps, audio quality high / medium / low. The frame is at most 1920×1080 (the aspect is kept), both sides even. |
 | **Files** | Name template `File $D.$M.$Y $H-$N-$S`, `Img####` (the `#` run is a sequence number), `%USERNAME%`; never overwrites; "open the folder and select the file" after capture. |
 | **Tray** | No taskbar button: the program lives in the tray. Closing or minimizing the window keeps the program (and the hotkeys) there; click = start / pause, right click = menu. Starts with Windows in the tray if you want (`/tray`, also `/t`, `-t`, `--tray`). |
 | **Look** | As small and flat as the original: one 206 × 62 window (a dark caption and a row of six icons — three screenshots, three recordings — and a menu), a dark 230 × 29 strip with the time, the size, "F11: Stop", Start / Pause and Stop while recording, a red frame around the recorded area. No advertising, no watermark, no premium offers, no network. |
-| **Settings** | Options window (General, Video and audio, Images, File name, Language); export / import to an `.ini` (UTF-16; the language is not part of it); "Restore default". |
+| **Settings** | Options window (General — delay, autostart, pointer, highlight, folder, sounds, notifications in the notification area (on by default), microphone —, Video and audio, Images, File name, Language); export / import to an `.ini` (UTF-16; the language is not part of it); "Restore default". |
 | **Languages** | 17: English, Русский, Українська, Беларуская, Deutsch, Français, Español, Italiano, Português (Brasil), Polski, Nederlands, Türkçe, Bahasa Indonesia, Tiếng Việt, 中文(简体), 日本語, 한국어 — the Windows language by default. |
 | **DPI** | Per-monitor high DPI; the windows rescale when they move to another monitor. |
 
@@ -120,7 +121,6 @@ timestamps, over 1 MB a log becomes `*.old.log`. A crash writes the module and t
 * Windows 10 or later (the program also runs on Windows 8.1 without the panel being hidden from the picture).
 * GDI capture: no DRM-protected video, and a few games with exclusive full screen show black.
 * The H.264 / AAC / MP3 encoders are those of Windows; "N" editions of Windows need the Media Feature Pack.
-* The microphone only (no loopback of what the computer plays).
 
 ## Author
 

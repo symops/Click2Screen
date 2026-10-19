@@ -137,3 +137,5 @@ Audio options
 Version %s
 Status
 Start Click2Screen after installation
+Show notifications in the notification area
+Record sound from the speakers

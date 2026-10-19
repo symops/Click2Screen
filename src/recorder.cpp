@@ -57,6 +57,7 @@ struct Recorder::Impl {
     HANDLE aEvent = nullptr;
     bool timePeriod = false;
     bool nullSink = false;               // self-test only (C2S_NULLSINK): frames are counted, nothing is encoded
+    bool wantSpk = false;                // the sound of the speakers goes into the file too
     FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
     int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
@@ -138,25 +139,54 @@ struct Recorder::Impl {
         }
     }
 
+    // The sound: the microphone (waveIn) and the speakers (WASAPI loopback) are queued, and the mix is written in step with
+    // the media clock (the pauses are not in it): what a device has not delivered yet is silence, so a quiet speaker, which
+    // delivers nothing, does not let the sound drift away from the picture.
     void AudioLoop()
     {
-        while (!stopFlag) {
-            WaitForSingleObject(aEvent, 100);
-            for (int i = 0; i < kAudioBufs; ++i) {
-                WAVEHDR& hd = hdr[i];
-                if (!(hd.dwFlags & WHDR_DONE)) continue;
-                DWORD bytes = hd.dwBytesRecorded;
-                if (bytes && !paused && !stopFlag) {
-                    LONGLONG ts = audioSamples * 10000000LL / kAudioRate;
-                    LONGLONG dur = (LONGLONG)(bytes / 2) * 10000000LL / kAudioRate;
-                    if (!WriteSample(aStream, hd.lpData, bytes, ts, dur)) { failed = 1; return; }
-                    audioSamples += bytes / 2;
-                }
-                hd.dwFlags &= ~WHDR_DONE;
-                hd.dwBytesRecorded = 0;
-                if (!stopFlag) waveInAddBuffer(hwi, &hd, sizeof(WAVEHDR));
-            }
+        HRESULT hrCom = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+        SpeakerCapture* spk = nullptr;
+        if (wantSpk) {
+            spk = new SpeakerCapture;
+            if (spk->Open()) Log(L"sound: the speakers are captured");
+            else { Log(L"sound: no loopback capture of the speakers here"); delete spk; spk = nullptr; }
         }
+        Fifo16 micQ, spkQ;
+        static const int kChunk = 4096;
+        int16_t tmp[8192], a[kChunk], b[kChunk], mixed[kChunk];
+        while (!stopFlag) {
+            if (aEvent) WaitForSingleObject(aEvent, 20); else Sleep(20);
+            if (hwi) {
+                for (int i = 0; i < kAudioBufs; ++i) {
+                    WAVEHDR& hd = hdr[i];
+                    if (!(hd.dwFlags & WHDR_DONE)) continue;
+                    if (hd.dwBytesRecorded) micQ.Push((const int16_t*)hd.lpData, (int)(hd.dwBytesRecorded / 2));
+                    hd.dwFlags &= ~WHDR_DONE;
+                    hd.dwBytesRecorded = 0;
+                    if (!stopFlag) waveInAddBuffer(hwi, &hd, sizeof(WAVEHDR));
+                }
+            }
+            if (spk) { int n; while ((n = spk->Pull(tmp, 8192)) > 0) spkQ.Push(tmp, n); }
+            if (paused) { micQ.Clear(); spkQ.Clear(); continue; }
+            LONGLONG shouldHave = MediaTime() * kAudioRate / 10000000LL;
+            LONGLONG want = shouldHave - audioSamples;
+            if (want < kAudioRate / 100) continue;                          // less than 10 ms: later
+            if (want > kAudioRate / 2) want = kAudioRate / 2;
+            micQ.TrimTo((int)want + kAudioRate * 15 / 100);                 // a source that runs ahead is cut, not queued for ever
+            spkQ.TrimTo((int)want + kAudioRate * 15 / 100);
+            while (want > 0 && !stopFlag) {
+                int n = want > kChunk ? kChunk : (int)want;
+                micQ.Pop(a, n); spkQ.Pop(b, n);
+                AudioMix(a, b, n, mixed);
+                LONGLONG ts = audioSamples * 10000000LL / kAudioRate;
+                LONGLONG dur = (LONGLONG)n * 10000000LL / kAudioRate;
+                if (!WriteSample(aStream, mixed, n * 2, ts, dur)) { failed = 1; break; }
+                audioSamples += n; want -= n;
+            }
+            if (failed) break;
+        }
+        delete spk;
+        if (SUCCEEDED(hrCom)) CoUninitialize();
     }
 
     static DWORD WINAPI VThread(LPVOID a)
@@ -300,8 +330,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
 
     if (fmt == VC_AVI || fmt == VC_GIF) {             // our own sinks: no Media Foundation involved
         wchar_t why[160] = L"", warn[200] = L"";
-        bool wantAudio = fmt == VC_AVI && p.cfg.mic;
-        if (wantAudio && !d.OpenAudio()) { _snwprintf(warn, 200, L"%s", T(S_ERR_AUDIO)); wantAudio = false; }
+        const bool wantAudio = fmt == VC_AVI && (p.cfg.mic || p.cfg.loopback);
+        d.wantSpk = fmt == VC_AVI && p.cfg.loopback;
+        if (fmt == VC_AVI && p.cfg.mic && !d.OpenAudio()) _snwprintf(warn, 200, L"%s", T(S_ERR_AUDIO));     // the microphone: a message when it is refused
         d.hasAudio = wantAudio;
         d.vStream = 0; d.aStream = 1;
         d.alt = fmt == VC_AVI ? CreateAviSink(p.path, d.w, d.h, d.fps, p.cfg.videoQuality, wantAudio, why, 160)
@@ -317,7 +348,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         d.wall0 = Qpc100ns(d.freq);
         d.stopFlag = d.paused = d.failed = d.limit = 0;
         d.started = true;
-        if (d.hasAudio) { waveInStart(d.hwi); d.aThread = CreateThread(nullptr, 0, Impl::AThread, &d, 0, nullptr); }
+        if (d.hasAudio) { if (d.hwi) waveInStart(d.hwi); d.aThread = CreateThread(nullptr, 0, Impl::AThread, &d, 0, nullptr); }
         d.vThread = CreateThread(nullptr, 0, Impl::VThread, &d, 0, nullptr);
         if (err && warn[0]) { wcsncpy(err, warn, errLen - 1); err[errLen - 1] = 0; }
         return true;
@@ -375,8 +406,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
 
     // Audio (optional): AAC or MP3 from a 16-bit mono microphone stream.
     wchar_t warn[200] = L"";
-    if (p.cfg.mic) {
+    if (p.cfg.mic || p.cfg.loopback) {
         bool ok = false;
+        d.wantSpk = p.cfg.loopback;
         static const int aacBps[3] = { 24000, 16000, 12000 };
         static const int mp3Bps[3] = { 16000, 12000, 8000 };
         int q = p.cfg.audioQuality < 0 ? 0 : p.cfg.audioQuality > 2 ? 2 : p.cfg.audioQuality;
@@ -396,9 +428,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             if (ao) ao->Release();
             if (ai) ai->Release();
         }
-        if (ok && d.OpenAudio()) d.hasAudio = true;
-        else _snwprintf(warn, 200, L"%s", T(S_ERR_AUDIO));
-        if (ok && !d.hasAudio) { /* the audio stream stays unused; the writer finalizes fine without samples */ }
+        bool micOk = !p.cfg.mic || (ok && d.OpenAudio());                  // the microphone: a message when it is refused
+        if (ok) d.hasAudio = true;                                          // the stream exists; the mix is silence where a source gives nothing
+        if (!micOk) _snwprintf(warn, 200, L"%s", T(S_ERR_AUDIO));
     }
 
     hr = d.sw->BeginWriting();
@@ -409,7 +441,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     d.stopFlag = d.paused = d.failed = d.limit = 0;
     d.started = true;
     if (d.hasAudio) {
-        waveInStart(d.hwi);
+        if (d.hwi) waveInStart(d.hwi);
         d.aThread = CreateThread(nullptr, 0, Impl::AThread, &d, 0, nullptr);
     }
     d.vThread = CreateThread(nullptr, 0, Impl::VThread, &d, 0, nullptr);

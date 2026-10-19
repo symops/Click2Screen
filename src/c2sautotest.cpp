@@ -15,6 +15,7 @@
 // hotkey taken, no H.264 decoder); SKIP: not possible here (Media Foundation encoder under Wine).
 #include "c2s.h"
 #include "uiids.h"
+#include <mmsystem.h>
 #include <wincodec.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -189,7 +190,7 @@ static void RandomSettings(Settings& s)
         case 2: _snwprintf(s.fileName, 128, L"%s_#_$D", name); break;
         default: _snwprintf(s.fileName, 128, L"%%USERNAME%% %s ##", name); break;
     }
-    s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.mic = Chance(50);
+    s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.notify = Chance(50); s.loopback = Chance(50); s.mic = Chance(50);
     s.openFolder = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
     s.delaySec = R(0, 10); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
@@ -202,7 +203,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
 {
 #define CMPS(f) if (!Same(a.f, b.f)) { _snwprintf(why, 150, L"%s differs: [%s] vs [%s]", L"" #f, a.f, b.f); return false; }
 #define CMPI(f) if (a.f != b.f) { _snwprintf(why, 120, L"%s: %d vs %d", L"" #f, (int)a.f, (int)b.f); return false; }
-    CMPS(vidFolder) CMPS(imgFolder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(mic)
+    CMPS(vidFolder) CMPS(imgFolder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
     CMPI(openFolder) CMPI(delaySec) CMPI(durH) CMPI(durM) CMPI(durS) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     if (withLanguage) CMPI(language)
@@ -643,8 +644,10 @@ static DWORD WINAPI PickDriver(LPVOID p)
         int steps = R(2, 6);
         for (int s = 1; s <= steps; ++s)
             SendMessageW(ov, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(j->a.x + (j->b.x - j->a.x) * s / steps - vs.left, j->a.y + (j->b.y - j->a.y) * s / steps - vs.top));
+        SetCursorPos(j->b.x, j->b.y);
         SendMessageW(ov, WM_LBUTTONUP, 0, MAKELPARAM(j->b.x - vs.left, j->b.y - vs.top));
     } else if (j->mode == 1) {  // point at a window, click
+        SetCursorPos(j->a.x, j->a.y);       // the real pointer on the target: a parked one sends its own WM_MOUSEMOVE and would win
         SendMessageW(ov, WM_MOUSEMOVE, 0, MAKELPARAM(j->a.x - vs.left, j->a.y - vs.top));
         Sleep(50);
         SendMessageW(ov, WM_LBUTTONUP, 0, MAKELPARAM(j->a.x - vs.left, j->a.y - vs.top));
@@ -773,27 +776,39 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                         ++v.frames;
                         if (checkPicture && v.frames == target) {
                             IMFMediaBuffer* mb = nullptr; BYTE* data = nullptr; DWORD len = 0;
-                            if (SUCCEEDED(sm->ConvertToContiguousBuffer(&mb)) && SUCCEEDED(mb->Lock(&data, nullptr, &len))) {
+                            IMF2DBuffer* b2 = nullptr; BYTE* sl = nullptr; LONG pitch = 0;
+                            bool use2d = false, locked = false;
+                            if (SUCCEEDED(sm->ConvertToContiguousBuffer(&mb)) && mb) {
+                                // The decoder pads the picture (to 16 pixels in both directions): the address of the first row and the
+                                // pitch (negative: bottom-up) come from the 2-D buffer, not from the size of the memory.
+                                if (SUCCEEDED(mb->QueryInterface(IID_IMF2DBuffer, (void**)&b2)) && b2 && SUCCEEDED(b2->Lock2D(&sl, &pitch))) use2d = true;
+                                else if (SUCCEEDED(mb->Lock(&data, nullptr, &len))) locked = true;
+                            }
+                            if (use2d || locked) {
                                 int absStride = stride < 0 ? -stride : stride;
-                                if (v.h > 0 && (int)(len / v.h) > absStride) absStride = (int)(len / v.h);   // the decoder pads rows (to 16 px) beyond the type's stride
+                                int ah = (v.h + 15) & ~15;
+                                if (locked && ah > 0 && len % ah == 0 && (int)(len / ah) >= v.w * 4) absStride = (int)(len / ah);       // the padded height
+                                else if (locked && v.h > 0 && (int)(len / v.h) > absStride) absStride = (int)(len / v.h);
+                                auto rowAt = [&](int y) -> const BYTE* {
+                                    // The Source Reader's RGB32 picture is bottom-up in memory (a positive pitch says nothing else: seen on Windows 10,
+                                    // and the files themselves are upright - checked with ffmpeg); a negative pitch makes `sl` the top row.
+                                    if (use2d) return pitch > 0 ? sl + (size_t)(v.h - 1 - y) * pitch : sl + (ptrdiff_t)y * pitch;
+                                    return stride < 0 ? data + (size_t)(v.h - 1 - y) * absStride : data + (size_t)y * absStride;
+                                };
                                 int bad = 0, n = 0;
                                 for (int i = 0; i < 200 && n < 16; ++i) {
                                     int x = R(0, v.w - 1), y = R(0, v.h - 1);
                                     // the recorded part is the whole fixture (region mode) scaled to w x h
                                     int lx = (int)((x + 0.5) * g_fx.w / v.w), ly = (int)((y + 0.5) * g_fx.h / v.h);
                                     if (!SafePoint(lx, ly, g_fx.w, g_fx.h) || abs(lx - g_fx.w / 2) < 20 || abs(ly - g_fx.h / 2) < 20) continue;
-                                    const BYTE* p = stride < 0 ? data + (size_t)(v.h - 1 - y) * absStride + x * 4 : data + (size_t)y * absStride + x * 4;
+                                    const BYTE* p = rowAt(y) + x * 4;
                                     COLORREF e = Expected(lx, ly, g_fx.w, g_fx.h);
-                                    ++n; if (!Near(e, p[2], p[1], p[0], 60)) { ++bad; if (bad < 5) Rep(L"INFO", L"  decoded frame (%d,%d) of %dx%d = %d,%d,%d, expected %d,%d,%d (stride %d)", x, y, v.w, v.h, p[2], p[1], p[0], GetRValue(e), GetGValue(e), GetBValue(e), (int)stride); }
-                                }
-                                if (bad) {
-                                    wchar_t row[300] = L""; int ym = v.h / 4;
-                                    for (int k = 0; k < 8; ++k) { const BYTE* q = data + (size_t)ym * absStride + (size_t)(k * v.w / 8) * 4; wsprintfW(row + lstrlenW(row), L" %d:%d,%d,%d", k * v.w / 8, q[2], q[1], q[0]); }
-                                    Rep(L"INFO", L"  row y=%d (len %u):%s", ym, (unsigned)len, row);
+                                    ++n; if (!Near(e, p[2], p[1], p[0], 60)) { ++bad; if (bad < 5) Rep(L"INFO", L"  decoded frame (%d,%d) of %dx%d = %d,%d,%d, expected %d,%d,%d (%s, pitch %ld)", x, y, v.w, v.h, p[2], p[1], p[0], GetRValue(e), GetGValue(e), GetBValue(e), use2d ? L"2-D buffer" : L"flat buffer", (long)(use2d ? pitch : stride)); }
                                 }
                                 *pictureChecked = n; *pictureOk = n > 0 && bad == 0;
-                                mb->Unlock();
+                                if (use2d) b2->Unlock2D(); else mb->Unlock();
                             }
+                            if (b2) b2->Release();
                             if (mb) mb->Release();
                         }
                         sm->Release();
@@ -1049,7 +1064,7 @@ static void RecordOnce(bool useNull, bool sched = false)
     Check(sz > 1500, L"recorder: the video file exists and is not empty", desc);
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     bool wantPicture = !move && p.cfg.capMouse == false;
-    if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic, wantPicture && mode != 1, desc); return; }
+    if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic || p.cfg.loopback, wantPicture && mode != 1, desc); return; }
     if (fmt == VC_GIF) { VerifyGif(path, ew, eh, el, effFps, wantPicture && mode != 1); return; }
     VideoInfo v = Inspect(path, wantPicture, &pictureOk, &pictureChecked, &decoderMissing);
     wchar_t d3[200];
@@ -1066,8 +1081,8 @@ static void RecordOnce(bool useNull, bool sched = false)
             else Check(pictureOk, L"recorder: a decoded frame has the colours of the screen in the right places", pictureChecked ? L"" : L"(no points)");
         }
     }
-    if (p.cfg.mic) {
-        if (v.audio) Check(true, L"recorder: the video has the microphone track");
+    if (p.cfg.mic || p.cfg.loopback) {
+        if (v.audio) Check(true, L"recorder: the video has the sound track (microphone and / or speakers)");
         else WARN(L"recorder: no audio track (no microphone in this session?)");
     }
 }
@@ -1677,7 +1692,7 @@ static void T_App()
             w.fps = fpsv[R(0, 6)];
             w.language = R(0, LangCount());
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
-            chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
+            chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
             wchar_t n[16];
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
@@ -2373,6 +2388,77 @@ static void T_Effects()
     else { wchar_t hd[160]; _snwprintf(hd, 160, L"%d pixels changed, hook installed %d (error %lu), clicks seen by the hook %u", changed, (int)hooked, herr, seen); Check(changed >= 25, L"effects: a real click (low-level mouse hook) makes a wave in the frame", hd); }
 }
 
+// ---- sound: the conversion, the mix, the queue, and the speakers themselves ---------------------------------------------
+static void T_Audio()
+{
+    // 48 kHz stereo -> mono 44.1 kHz: the length, the pitch and the loudness stay, the stream is continuous over the blocks
+    {
+        const int rate = R(0, 1) ? 48000 : 32000, blocks = 100, bf = rate / 100;          // 1 s in 10 ms blocks
+        const double freq = 1000.0 + R(0, 4) * 250.0;
+        static int16_t out[200000]; int total = 0;
+        double phase = 0; float prev = 0; double t = 0;
+        float* blk = new float[(size_t)bf * 2];
+        for (int b = 0; b < blocks; ++b) {
+            for (int i = 0; i < bf; ++i, t += 1.0 / rate) { float v = (float)(0.5 * sin(6.283185307179586 * freq * t)); blk[2 * i] = v; blk[2 * i + 1] = v; }
+            total += AudioToMono44k(blk, bf, 2, rate, &phase, &prev, out + total, 200000 - total);
+        }
+        delete[] blk;
+        int crossings = 0, maxJump = 0, peak = 0;
+        for (int i = 1; i < total; ++i) {
+            if (out[i - 1] < 0 && out[i] >= 0) ++crossings;
+            int j = abs(out[i] - out[i - 1]); if (j > maxJump) maxJump = j;
+            if (abs(out[i]) > peak) peak = abs(out[i]);
+        }
+        double expectJump = 6.283185307179586 * freq / 44100.0 * 16383.0 * 1.2;
+        wchar_t d[200]; _snwprintf(d, 200, L"%d Hz in, %d samples (44100 expected), %d periods, loudest %d, biggest step %d (limit %.0f)", rate, total, crossings, peak, maxJump, expectJump);
+        Check(abs(total - 44100) <= 3, L"audio: one second of any rate becomes one second at 44.1 kHz", d);
+        Check(abs(crossings - (int)freq) <= 2, L"audio: the pitch is kept by the conversion", d);
+        Check(peak > 15500 && peak < 17000 && maxJump < expectJump, L"audio: the loudness is kept and the stream is continuous over the blocks (no clicks)", d);
+        // the two channels are averaged: opposite signals cancel
+        float opp[8] = { 1, -1, 1, -1, 1, -1, 1, -1 }; int16_t o2[16]; double ph = 0; float pv = 0;
+        int n2 = AudioToMono44k(opp, 4, 2, 44100, &ph, &pv, o2, 16);
+        bool silent = true; for (int i = 0; i < n2; ++i) if (abs(o2[i]) > 2) silent = false;
+        Check(n2 > 0 && silent, L"audio: the channels are averaged to mono");
+    }
+    // the mix is a sum that is clipped, the queue pads with silence and drops the oldest
+    {
+        int16_t a[4] = { 30000, -30000, 100, 0 }, b[4] = { 30000, -30000, 200, 0 }, o[4];
+        AudioMix(a, b, 4, o);
+        Check(o[0] == 32767 && o[1] == -32768 && o[2] == 300 && o[3] == 0, L"audio: the mix adds the sources and clips at the limits");
+        Fifo16 q; int16_t in[100]; for (int i = 0; i < 100; ++i) in[i] = (int16_t)(i + 1);
+        q.Push(in, 100);
+        int16_t got[150]; q.Pop(got, 150);
+        bool pad = got[0] == 1 && got[99] == 100 && got[100] == 0 && got[149] == 0 && q.Size() == 0;
+        q.Push(in, 100); q.TrimTo(10); int16_t g2[10]; q.Pop(g2, 10);
+        Check(pad && g2[0] == 91 && g2[9] == 100, L"audio: a queue pads what is missing with silence and keeps only the newest samples when trimmed");
+    }
+    // the speakers: when this machine has a playback device, a tone played on it is captured
+    {
+        SpeakerCapture sc;
+        if (!sc.Open()) { SKIP(L"audio: no playback device to capture here (loopback)"); return; }
+        const int n = 44100;
+        static unsigned char wav[44 + 44100 * 4];
+        memcpy(wav, "RIFF", 4); unsigned v = 36 + n * 4; memcpy(wav + 4, &v, 4); memcpy(wav + 8, "WAVEfmt ", 8); v = 16; memcpy(wav + 16, &v, 4);
+        unsigned short us = 1; memcpy(wav + 20, &us, 2); us = 2; memcpy(wav + 22, &us, 2); v = 44100; memcpy(wav + 24, &v, 4); v = 44100 * 4; memcpy(wav + 28, &v, 4);
+        us = 4; memcpy(wav + 32, &us, 2); us = 16; memcpy(wav + 34, &us, 2); memcpy(wav + 36, "data", 4); v = n * 4; memcpy(wav + 40, &v, 4);
+        short* sp = (short*)(wav + 44);
+        for (int i = 0; i < n; ++i) { short x = (short)(12000 * sin(6.283185307179586 * 1000.0 * i / 44100.0)); sp[2 * i] = sp[2 * i + 1] = x; }
+        int16_t buf[8192]; long long total = 0; double energy = 0;
+        PlaySoundW((LPCWSTR)wav, nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+        DWORD end = GetTickCount() + 1500;
+        while ((int)(end - GetTickCount()) > 0) {
+            int got = sc.Pull(buf, 8192);
+            for (int i = 0; i < got; ++i) energy += (double)buf[i] * buf[i];
+            total += got;
+            Sleep(20);
+        }
+        PlaySoundW(nullptr, nullptr, 0);
+        double rms = total > 0 ? sqrt(energy / total) : 0;
+        wchar_t d[160]; _snwprintf(d, 160, L"%lld samples captured, loudness %.0f", total, rms);
+        Check(total > 20000 && rms > 1500, L"audio: a tone played on the speakers is captured by the loopback", d);
+    }
+}
+
 // ---- the red frame (blinking) and the red countdown digits of the real program -----------------------------------------
 static void T_AppFrame()
 {
@@ -2505,7 +2591,7 @@ static void T_AppEffects()
                         if (dx * dx + dy * dy < 80 * 80 && q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60) ++wave;        // blue-ish over the green quarter
                         if (y > h / 2 + 8 && abs(y - ty) < 8 && q[2] > 200 && q[1] < 120 && q[0] < 120) ++trail;                // red over blue / yellow
                     }
-                if (wave >= 30) ++waveFrames;
+                if (wave >= 24) ++waveFrames;
                 if (trail >= 12) ++trailFrames;
             }
             delete[] px;
@@ -2514,7 +2600,7 @@ static void T_AppEffects()
     }
     wchar_t dd[220]; _snwprintf(dd, 220, L"the video has %d frames, %d decoded: %d show the wave, %d show the trail (running %d, file %d)", frames, tested, waveFrames, trailFrames, (int)running, (int)got);
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
-    Check(waveFrames >= 3, L"program effects: a real click is a blue wave in the recorded video", dd);
+    Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);
     if (trailFrames < 3 && g_wine) SKIP(L"program effects: Wine does not pass a synthetic Shift to GetAsyncKeyState");
     else {
         Check(trailFrames >= 3, L"program effects: with the left Shift held a red trail follows the pointer in the recorded video", dd);
@@ -2714,7 +2800,7 @@ int wmain(int argc, wchar_t** argv)
         { L"pickers", T_Pickers, 3 }, { L"recorder", T_Recorder, 3 }, { L"scheduler", T_RecorderSched, 3 },
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
-        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
+        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
         { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));

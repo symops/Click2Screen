@@ -137,3 +137,5 @@ Opções de áudio
 Versão %s
 Estado
 Iniciar o Click2Screen após a instalação
+Mostrar notificações na área de notificação
+Gravar o som dos alto-falantes

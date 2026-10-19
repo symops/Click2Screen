@@ -137,3 +137,5 @@ Opsi audio
 Versi %s
 Status
 Jalankan Click2Screen setelah pemasangan
+Tampilkan notifikasi di area notifikasi
+Rekam suara dari speaker

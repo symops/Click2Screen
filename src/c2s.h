@@ -35,7 +35,7 @@ enum Str {
     S_SU_LOG_DONE, S_SU_LOG_FAIL, S_SU_LOG_KEPT, S_SU_LOG_NOSRC, S_SU_LOG_NODIR, S_SU_ASK_REMOVE,
     S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
     S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
-    S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER,
+    S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -63,6 +63,8 @@ struct Settings {
     bool capMouse;                  // pointer in recordings and screenshots
     bool highlight;                 // translucent halo around the pointer
     bool sounds;                    // countdown / shutter sounds
+    bool notify;                    // notifications (balloons) from the tray icon
+    bool loopback;                  // record the sound that goes to the speakers (mixed with the microphone)
     bool mic;                       // record audio from the default microphone
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;
@@ -142,6 +144,34 @@ public:
 };
 FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality, bool audio, wchar_t* why, int whyLen);   // Motion-JPEG + PCM
 FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, wchar_t* why, int whyLen);                            // animated, no sound
+
+// ---- sound (audiomix.cpp) ----------------------------------------------------------------------------------------
+// Mono 44.1 kHz 16 bit from interleaved float frames at any rate (`phase` / `prev` carry over between calls).
+int  AudioToMono44k(const float* in, int frames, int channels, int rate, double* phase, float* prev, int16_t* out, int cap);
+void AudioMix(const int16_t* a, const int16_t* b, int n, int16_t* out);      // a + b, clipped
+class Fifo16 {                                      // a queue of samples; Pop pads with silence
+public:
+    Fifo16(); ~Fifo16();
+    int  Size() const;
+    void Clear();
+    void Push(const int16_t* s, int n);
+    void Pop(int16_t* out, int n);
+    void TrimTo(int keep);
+private:
+    Fifo16(const Fifo16&); void operator=(const Fifo16&);
+    int16_t* m_buf; size_t m_cap, m_head, m_tail;
+};
+class SpeakerCapture {                              // WASAPI loopback of the default playback device
+public:
+    SpeakerCapture(); ~SpeakerCapture();
+    bool Open();
+    void Close();
+    bool IsOpen() const;
+    int  Pull(int16_t* out, int cap);               // what was played since the last call (mono 44.1 kHz)
+private:
+    SpeakerCapture(const SpeakerCapture&); void operator=(const SpeakerCapture&);
+    struct Impl; Impl* m;
+};
 
 // ---- recorder (recorder.cpp) -----------------------------------------------------------------------------------
 struct RecParams {

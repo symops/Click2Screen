@@ -137,3 +137,5 @@ Options audio
 Version %s
 État
 Lancer Click2Screen après l'installation
+Afficher les notifications dans la zone de notification
+Enregistrer le son des haut-parleurs
