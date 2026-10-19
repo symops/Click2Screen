@@ -62,7 +62,7 @@ int RunSelfTest(const wchar_t* outDir)
     Check(AutoBitrate(1000, 600) > 1500000 && AutoBitrate(1000, 600) < 2000000, L"AutoBitrate: between the anchors it is interpolated");
 
     // file name template
-    Check(TemplateValid(L"$Y-$M-$D at $H-$N-$S"), L"template: date and time");
+    Check(TemplateValid(L"File $D.$M.$Y $H-$N-$S"), L"template: date and time");
     Check(TemplateValid(L"Img####"), L"template: Img####");
     Check(TemplateValid(L"%USERNAME%_#"), L"template: user name and number");
     Check(!TemplateValid(L"a#b#"), L"template: two # runs rejected");
@@ -80,7 +80,7 @@ int RunSelfTest(const wchar_t* outDir)
     if (ok) { HANDLE f = CreateFileW(path, GENERIC_WRITE, 0, nullptr, CREATE_NEW, 0, nullptr); if (f != INVALID_HANDLE_VALUE) CloseHandle(f); }
     ok = BuildOutputPath(dir, L"Img####", L"png", L"SelfTestCounter", path, MAX_PATH, err, 300);
     Check(ok && wcsstr(path, L"Img0002.png"), L"BuildOutputPath: next number", path);
-    ok = BuildOutputPath(dir, L"$Y-$M-$D at $H-$N-$S", L"mp4", nullptr, path, MAX_PATH, err, 300);
+    ok = BuildOutputPath(dir, L"File $D.$M.$Y $H-$N-$S", L"mp4", nullptr, path, MAX_PATH, err, 300);
     SYSTEMTIME st; GetLocalTime(&st);
     wchar_t want[32]; _snwprintf(want, 32, L"%04d-%02d-%02d at ", st.wYear, st.wMonth, st.wDay);
     Check(ok && wcsstr(path, want), L"BuildOutputPath: date template", path);

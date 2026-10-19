@@ -336,6 +336,7 @@ int CurrentDpi() { return 96; }          // the editor asks the main program for
 static void T_Settings()
 {
     SettingsUseKey(L"Software\\Click2Screen-Autotest");
+    { Settings def; SettingsDefaults(def); Check(Same(def.fileName, L"File $D.$M.$Y $H-$N-$S"), L"settings: the default name template is File $D.$M.$Y $H-$N-$S"); }
     Settings a, b; RandomSettings(a);
     SettingsSave(a); SettingsLoad(b);
     wchar_t why[160] = L"";
@@ -375,7 +376,7 @@ static void T_Ini()
     WritePrivateProfileStringW(L"Click2Screen", L"VideoQuality", L"2", path);
     Settings c; SettingsDefaults(c);
     bool ok = SettingsImport(c, path);
-    Check(ok && c.fps == 25 && c.delaySec == 3 && Same(c.fileName, L"$Y-$M-$D at $H-$N-$S") && c.videoQuality == 2, L"ini: invalid values are ignored, valid ones applied");
+    Check(ok && c.fps == 25 && c.delaySec == 3 && Same(c.fileName, L"File $D.$M.$Y $H-$N-$S") && c.videoQuality == 2, L"ini: invalid values are ignored, valid ones applied");
     // missing file / other file
     wchar_t nope[MAX_PATH]; _snwprintf(nope, MAX_PATH, L"%s\\missing.ini", g_dir);
     Settings d; SettingsDefaults(d);
@@ -1900,6 +1901,7 @@ static void T_AppPicks()
                 int x = R(0, dw - 1), y = R(0, dh - 1);
                 if (!SafePoint(x, y, g_fx.w, g_fx.h)) continue;
                 if (LossyFmt(s.imageFormat) && (abs(x - g_fx.w / 2) < 20 || abs(y - g_fx.h / 2) < 20)) continue;     // JPEG rings at edges
+                if (s.capMouse && abs(x - (p.x - vis.left)) < 64 && abs(y - (p.y - vis.top)) < 64) continue;           // the pointer (and its halo) is in the picture where the test clicked
                 const uint8_t* q = px + ((size_t)y * dw + x) * 4;
                 COLORREF ex = Expected(x, y, g_fx.w, g_fx.h);
                 // Under Wine / Xvfb a part of the window may not be repainted yet when the dimmed picker has just gone: a
@@ -2339,6 +2341,122 @@ static void T_SetupGuiInstall()
 }
 
 
+// ---- recording effects: click waves and the Shift trail are drawn into the frame --------------------------------------
+static void T_Effects()
+{
+    MakeFixture(R(320, 520), R(260, 380));
+    RECT fr = FxScreenRect();
+    int w = g_fx.w, h = g_fx.h - 14;
+    SetCursorPos(2, 2); Pump(80);
+    FxStop();                                                   // forgets everything (no hook is installed by the test)
+    RECT rc = { fr.left, fr.top, fr.left + w, fr.top + h };
+    Grabber g0, g1;
+    if (!g0.Init(w, h) || !g1.Init(w, h)) { FAIL(L"effects: no frame to draw into"); return; }
+    // a wave on the green quarter (top right): its colour is told from what it changes there
+    int button = R(0, 2);
+    int cx = w * 3 / 4 + R(-20, 20), cy = h / 4 + R(-15, 15);
+    g0.Grab(rc, true, false, false);
+    FxTestClick(fr.left + cx, fr.top + cy, button);
+    g1.Grab(rc, true, false, true);
+    int ringN = 0, farN = 0; double dR = 0, dG = 0, dB = 0;
+    const uint8_t* a = g0.Bits(); const uint8_t* b = g1.Bits();
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            size_t o = ((size_t)(h - 1 - y) * w + x) * 4;            // the DIB is bottom-up; both frames alike
+            int r0 = a[o + 2], g_0 = a[o + 1], b0 = a[o], r1 = b[o + 2], g_1 = b[o + 1], b1 = b[o];
+            int diff = abs(r1 - r0) + abs(g_1 - g_0) + abs(b1 - b0);
+            int dx = x - cx, dy = y - cy, d2 = dx * dx + dy * dy;
+            if (diff > 30 && d2 < 30 * 30) { ++ringN; dR += r1 - r0; dG += g_1 - g_0; dB += b1 - b0; }
+            if (diff > 6 && d2 > 70 * 70) ++farN;
+        }
+    if (ringN > 0) { dR /= ringN; dG /= ringN; dB /= ringN; }
+    bool colour = button == 0 ? (dB > dR && dB > 20) : button == 1 ? (dR > dB && dR > 20) : (dB > 20 && dR > 20);
+    wchar_t dd[200]; _snwprintf(dd, 200, L"button %d, %d ring pixels, %d changed farN away, mean change %.0f,%.0f,%.0f", button, ringN, farN, dR, dG, dB);
+    Check(ringN >= 25 && farN == 0, L"effects: a click draws a wave round the pointer and nothing else", dd);
+    Check(ringN >= 25 && colour, L"effects: the wave has the colour of the button (left blue, right red, middle purple)", dd);
+    // the Shift trail: a red line behind the pointer, and a stroke older than five minutes is gone
+    FxStop();
+    int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half: blue and yellow, never red
+    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 6ULL * 60 * 1000);       // points come in time order: the old stroke first
+    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + ty, i == 0, 1000);
+    Grabber g2; g2.Init(w, h);
+    g2.Grab(rc, true, false, true);
+    int red = 0, tested = 0, oldRed = 0, oldTested = 0;
+    const uint8_t* c = g2.Bits();
+    for (int x = 40; x < 30 + 9 * 20 - 5; x += 3) {
+        size_t o = ((size_t)(h - 1 - ty) * w + x) * 4;
+        ++tested; if (Near(RGB(255, 40, 40), c[o + 2], c[o + 1], c[o], 40)) ++red;
+        size_t o2 = ((size_t)(h - 1 - oy) * w + x) * 4;
+        ++oldTested; if (Near(RGB(255, 40, 40), c[o2 + 2], c[o2 + 1], c[o2], 40)) ++oldRed;
+    }
+    wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
+    Check(tested > 5 && red * 10 >= tested * 9, L"effects: the Shift trail is a red line behind the pointer", d2);
+    Check(oldTested > 5 && oldRed == 0, L"effects: a trail older than five minutes has faded out", d2);
+    FxStop();
+    // a real click, seen by the low-level mouse hook
+    FxStart();
+    SetCursorPos(fr.left + cx, fr.top + cy); Pump(120);
+    mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0); mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+    Pump(120);
+    Grabber g3; g3.Init(w, h);
+    g3.Grab(rc, false, false, false);
+    Grabber g4; g4.Init(w, h);
+    g4.Grab(rc, true, false, true);
+    int changed = 0;
+    const uint8_t* e0 = g3.Bits(); const uint8_t* e1 = g4.Bits();
+    for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
+        if (abs(e1[o + 2] - e0[o + 2]) + abs(e1[o + 1] - e0[o + 1]) + abs(e1[o] - e0[o]) > 30) ++changed;
+    FxStop();
+    SetCursorPos(2, 2);
+    if (changed < 25 && g_wine) SKIP(L"effects: Wine does not pass a synthetic click to the low-level hook");
+    else Check(changed >= 25, L"effects: a real click (low-level mouse hook) makes a wave in the frame", changed ? L"" : L"(nothing changed)");
+}
+
+// ---- the red frame (blinking) and the red countdown digits of the real program -----------------------------------------
+static void T_AppFrame()
+{
+    MakeFixture(R(380, 700), R(260, 460));
+    Settings s; PrepareApp(s);
+    s.delaySec = 3; s.capMouse = false;
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"frame: the program did not start"); StopApp(a, false); return; }
+    RECT fr = FxScreenRect();
+    LONG ex = GetWindowLongW(a.main, GWL_EXSTYLE);
+    Check((ex & WS_EX_TOOLWINDOW) && !(ex & WS_EX_APPWINDOW), L"frame: the main window has no taskbar button (it lives in the tray)");
+    POINT p1 = { fr.left + 30, fr.top + 30 }, p2 = { fr.left + 30 + R(160, 260), fr.top + 30 + R(110, 170) };
+    int before = CountFiles(s.imgFolder);
+    PostMessageW(a.main, WM_HOTKEY, HK_REGION, 0);
+    bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
+    bool seenOn = false, seenOff = false, digit = false, centred = false, framed = false;
+    DWORD end = GetTickCount() + WMS(3600);
+    while (driven && (int)(end - GetTickCount()) > 0) {
+        HWND f = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0);
+        HWND d = FindWin(a.pi.dwProcessId, L"Click2ScreenCount", 0);
+        if (f) {
+            if (IsWindowVisible(f)) { seenOn = true; RECT r; GetWindowRect(f, &r); RECT want = { p1.x - 3, p1.y - 3, p2.x + 3, p2.y + 3 }; framed = framed || EqualRect(&r, &want) || (abs(r.left - want.left) <= 1 && abs(r.top - want.top) <= 1 && abs(r.right - want.right) <= 1 && abs(r.bottom - want.bottom) <= 1); }
+            else seenOff = true;
+        }
+        if (d && IsWindowVisible(d)) {
+            digit = true; RECT r; GetWindowRect(d, &r);
+            int mx = (r.left + r.right) / 2, my = (r.top + r.bottom) / 2, cx = (p1.x + p2.x) / 2, cy = (p1.y + p2.y) / 2;
+            centred = centred || (abs(mx - cx) <= 2 && abs(my - cy) <= 2);
+        }
+        if (seenOn && seenOff && digit && framed && centred) break;
+        if (!f && !d && CountFiles(s.imgFolder) > before) break;
+        Pump(60);
+    }
+    wchar_t file[MAX_PATH] = L"";
+    bool got = driven && WaitNewFile(s.imgFolder, before, 20000, file);
+    Pump(300);
+    HWND f2 = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0), d2 = FindWin(a.pi.dwProcessId, L"Click2ScreenCount", 0);
+    wchar_t dd[200]; _snwprintf(dd, 200, L"driven %d, on %d off %d, frame at the area %d, digit %d centred %d", (int)driven, (int)seenOn, (int)seenOff, (int)framed, (int)digit, (int)centred);
+    Check(framed, L"frame: after the region is chosen a red frame stands round it (as for a recording)", dd);
+    Check(seenOn && seenOff, L"frame: the red frame blinks", dd);
+    Check(digit && centred, L"frame: the countdown digits stand in the middle of the chosen area", dd);
+    Check(got && !f2 && !d2, L"frame: the picture is saved and the frame and the digits are gone", dd);
+    StopApp(a);
+}
+
 // ---- more about the real program ------------------------------------------------------------------------------------
 // "System language": with the automatic setting the program speaks the language of Windows (under Wine: of the locale the
 // whole test runs in - tools/wine-soak.sh picks LC_ALL at random for every run). Both processes see the same language.
@@ -2530,7 +2648,7 @@ int wmain(int argc, wchar_t** argv)
         { L"pickers", T_Pickers, 3 }, { L"editor", T_Editor, 2 }, { L"recorder", T_Recorder, 3 }, { L"scheduler", T_RecorderSched, 3 },
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
-        { L"leaks", T_Leaks, 2 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
+        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
         { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));

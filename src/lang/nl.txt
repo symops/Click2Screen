@@ -59,7 +59,7 @@ Map voor video’s:
 Map voor afbeeldingen:
 Afbeeldingsindeling:
 Sjabloon voor bestandsnaam:
-Tips: # – één cijfer van het volgnummer, $Y jaar, $M maand, $D dag, $H uur, $N minuut, $S seconde, %USERNAME% – gebruikersnaam. Voorbeeld: $Y-$M-$D at $H-$N-$S of Img####
+Tips: # – één cijfer van het volgnummer, $Y jaar, $M maand, $D dag, $H uur, $N minuut, $S seconde, %USERNAME% – gebruikersnaam. Voorbeeld: File $D.$M.$Y $H-$N-$S of Img####
 Bladeren...
 Systeemtaal
 H.264, beste kwaliteit (langzamer)

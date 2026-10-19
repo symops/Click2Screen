@@ -59,7 +59,7 @@ Videos folder:
 Pictures folder:
 Image format:
 File name template:
-Tips: # - one digit of the sequential number, $Y year, $M month, $D day, $H hour, $N minute, $S second, %USERNAME% - user name. Example: $Y-$M-$D at $H-$N-$S, or Img####
+Tips: # - one digit of the sequential number, $Y year, $M month, $D day, $H hour, $N minute, $S second, %USERNAME% - user name. Example: File $D.$M.$Y $H-$N-$S, or Img####
 Browse...
 System language
 H.264, best quality (slower)

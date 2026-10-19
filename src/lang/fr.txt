@@ -59,7 +59,7 @@ Dossier des vidéos :
 Dossier des images :
 Format d’image :
 Modèle de nom de fichier :
-Conseils : # – un chiffre du numéro d’ordre, $Y année, $M mois, $D jour, $H heure, $N minute, $S seconde, %USERNAME% – nom d’utilisateur. Exemple : $Y-$M-$D at $H-$N-$S ou Img####
+Conseils : # – un chiffre du numéro d’ordre, $Y année, $M mois, $D jour, $H heure, $N minute, $S seconde, %USERNAME% – nom d’utilisateur. Exemple : File $D.$M.$Y $H-$N-$S ou Img####
 Parcourir...
 Langue du système
 H.264, meilleure qualité (plus lent)

@@ -56,7 +56,7 @@ void SettingsDefaults(Settings& s)
     memset(&s, 0, sizeof(s));
     KnownFolder(FOLDERID_Videos, L"Click2Screen", s.vidFolder, MAX_PATH);
     KnownFolder(FOLDERID_Pictures, L"Click2Screen", s.imgFolder, MAX_PATH);
-    wcscpy(s.fileName, L"$Y-$M-$D at $H-$N-$S");
+    wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = false; s.sounds = true; s.mic = true;
     s.openFolder = true; s.openEditor = false; s.runAtStartup = false;

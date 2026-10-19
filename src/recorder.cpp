@@ -129,7 +129,7 @@ struct Recorder::Impl {
                 RECT r;
                 if (WindowVisibleRect(p.hwnd, &r) && r.right - r.left > 1 && r.bottom - r.top > 1) src = r;
             }
-            if (!grab.Grab(src, p.cfg.capMouse, p.cfg.highlight)) { Sleep(5); continue; }
+            if (!grab.Grab(src, p.cfg.capMouse, p.cfg.highlight, true)) { Sleep(5); continue; }
             LONGLONG ts = mt;
             if (ts <= lastVideoTs) ts = lastVideoTs + 1;
             lastVideoTs = ts;

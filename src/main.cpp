@@ -7,6 +7,8 @@
 #include <commdlg.h>
 #include <stdio.h>
 #include <wchar.h>
+#include <math.h>
+#include <mmsystem.h>
 
 // ---------------------------------------------------------------------------------------------------------------
 namespace {
@@ -18,7 +20,9 @@ HFONT  g_font, g_fontBold;
 HICON  g_icon, g_iconSmall;
 Settings g_cfg;
 State  g_state = ST_IDLE;
-Recorder* g_rec = nullptr;
+Recorder* g_recs[16];          // one recorder per recorded area: the whole desktop gives one file for each monitor
+int    g_nrecs;
+wchar_t g_outPaths[16][MAX_PATH];
 RecParams g_target;
 wchar_t g_outPath[MAX_PATH];
 int    g_countdown;
@@ -26,6 +30,17 @@ bool   g_trayAdded, g_hideAsked, g_mainWasVisible = true, g_busyShot;
 UINT   g_msgTaskbar;
 NOTIFYICONDATAW g_nid;
 const wchar_t* kMainClass = L"Click2ScreenMain";
+
+void FrameShow(const RECT& rc);
+void FrameHide();
+void FramePlace(const RECT& rc);
+void FrameBlink();
+void CountdownShow(int n, const RECT* areas, int count);
+void CountdownHide();
+int RecordAreas(RECT* out);
+int MonitorRects(RECT* out, int cap);
+RECT TargetRect();
+void RegisterOverlayClasses();
 
 UINT g_dpi = 96;                 // DPI of the monitor the main window is on (WM_DPICHANGED keeps it current)
 int Sc(int v) { return MulDiv(v, (int)g_dpi, 96); }
@@ -51,7 +66,35 @@ void SetStatus(const wchar_t* text)
     if (g_main) SetWindowTextW(GetDlgItem(g_main, IDC_STATUS), text);
 }
 
-void Beep(bool tick) { if (g_cfg.sounds) MessageBeep(tick ? MB_OK : MB_ICONASTERISK); }
+// The only sound of the original is a short click (about 8.3 kHz, dying away in some 20 ms) on every second of the delay.
+// It is made here, as 44.1 kHz stereo PCM in memory (no sound files).
+const int kTickFrames = 6208;
+unsigned char g_tickWav[44 + kTickFrames * 4];
+bool g_tickBuilt;
+void BuildTick()
+{
+    unsigned char* w = g_tickWav;
+    unsigned dataBytes = kTickFrames * 4;
+    memcpy(w, "RIFF", 4); unsigned v = 36 + dataBytes; memcpy(w + 4, &v, 4); memcpy(w + 8, "WAVEfmt ", 8);
+    v = 16; memcpy(w + 16, &v, 4);
+    unsigned short us = 1; memcpy(w + 20, &us, 2); us = 2; memcpy(w + 22, &us, 2);
+    v = 44100; memcpy(w + 24, &v, 4); v = 44100 * 4; memcpy(w + 28, &v, 4);
+    us = 4; memcpy(w + 32, &us, 2); us = 16; memcpy(w + 34, &us, 2);
+    memcpy(w + 36, "data", 4); memcpy(w + 40, &dataBytes, 4);
+    short* s = (short*)(w + 44);
+    for (int i = 0; i < kTickFrames; ++i) {
+        double t = i / 44100.0 - 0.0100;                         // the click starts 10 ms in
+        double a = t < 0 ? 0 : 30000.0 * exp(-t / 0.0055) * sin(6.283185307179586 * 8318.0 * t);
+        s[2 * i] = s[2 * i + 1] = (short)a;
+    }
+    g_tickBuilt = true;
+}
+void Beep(bool tick)
+{
+    if (!g_cfg.sounds || !tick) return;                          // only the countdown ticks (as the original)
+    if (!g_tickBuilt) BuildTick();
+    PlaySoundW((LPCWSTR)g_tickWav, nullptr, SND_MEMORY | SND_ASYNC | SND_NODEFAULT);
+}
 
 void Balloon(const wchar_t* title, const wchar_t* text)
 {
@@ -112,7 +155,7 @@ void ShowMain(bool show)
 const COLORREF kCapTop = RGB(70, 80, 101), kCapBot = RGB(39, 45, 56), kBody = RGB(238, 250, 255), kBlue = RGB(8, 115, 197),
                kGlyph = RGB(54, 62, 78), kStripTop = RGB(40, 45, 57), kStripBot = RGB(71, 80, 101), kStripSep = RGB(82, 91, 108),
                kStripInk = RGB(177, 180, 187), kRecRed = RGB(203, 62, 58);
-const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3, kCountW = 64;
+const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3;
 
 void Box(HDC dc, int x, int y, int w, int h, COLORREF c)       // a rectangle in 96-dpi units at the pixel origin (ox, oy) set by the caller
 {
@@ -251,12 +294,13 @@ void SetCell(HWND parent, int id, const wchar_t* text)
 void UpdatePanel()
 {
     if (!g_panel) return;
-    double sec = g_rec ? g_rec->ElapsedSec() : 0.0;
+    double sec = g_nrecs ? g_recs[0]->ElapsedSec() : 0.0;
     wchar_t buf[96];
     if (g_state == ST_COUNTDOWN) _snwprintf(buf, 96, L"%d", g_countdown);          // 3 - 2 - 1, a tick every second
     else TimeText((int)sec, false, buf);
     SetCell(g_panel, IDC_P_TIME, buf);
-    double mb = g_rec && g_state != ST_ARMED && g_state != ST_COUNTDOWN ? g_rec->FileBytes() / 1048576.0 : 0.0;
+    double mb = 0.0;
+    if (g_nrecs && g_state != ST_ARMED && g_state != ST_COUNTDOWN) { uint64_t bytes = 0; for (int i = 0; i < g_nrecs; ++i) bytes += g_recs[i]->FileBytes(); mb = bytes / 1048576.0; }
     _snwprintf(buf, 96, L"%d Mb", (int)mb);
     SetCell(g_panel, IDC_P_SIZE, buf);
     const wchar_t* b = T(S_START);
@@ -273,28 +317,53 @@ void UpdatePanel()
 
 void FinishRecording(bool ok, bool userStop);
 
+void DeleteRecs()
+{
+    for (int i = 0; i < g_nrecs; ++i) { delete g_recs[i]; g_recs[i] = nullptr; }
+    g_nrecs = 0;
+}
+
 void BeginRecord()
 {
     Log(L"record: starting");
     wchar_t err[300] = L"";
     g_target.cfg = g_cfg;
     if (!VideoFormatAvailable(g_cfg.videoCodec)) g_target.cfg.videoCodec = VC_H264_BEST;   // e.g. HEVC chosen on another computer
-    if (!BuildOutputPath(g_cfg.vidFolder, g_cfg.fileName, VideoFormatExt(g_target.cfg.videoCodec), L"VidCounter", g_outPath, MAX_PATH, err, 300)) {
-        Warn(err); g_state = ST_ARMED; UpdatePanel(); return;
+    // The whole desktop is one file for each monitor (like the screenshots); a region or a window is one file.
+    RECT areas[16]; int n = 1;
+    if (g_modeDesktop) { n = MonitorRects(areas, 16); if (n < 1) { areas[0] = g_target.rc; n = 1; } }
+    else areas[0] = g_target.rc;
+    DeleteRecs();
+    for (int i = 0; i < n; ++i) {
+        if (!BuildOutputPath(g_cfg.vidFolder, g_cfg.fileName, VideoFormatExt(g_target.cfg.videoCodec), L"VidCounter", g_outPaths[i], MAX_PATH, err, 300)) {
+            Warn(err); break;
+        }
+        RecParams rp = g_target;
+        rp.rc = areas[i];
+        if (i > 0) rp.cfg.mic = false;                           // one microphone: its sound goes into the first file
+        wcscpy(rp.path, g_outPaths[i]);
+        Recorder* r = new Recorder;
+        wchar_t e2[300] = L"";
+        if (!r->Start(rp, e2, 300)) {
+            Warn(e2[0] ? e2 : T(S_ERR_CAPTURE));
+            delete r;
+            break;
+        }
+        if (e2[0]) Warn(e2);                                    // the microphone was not available
+        g_recs[g_nrecs++] = r;
+        Log(L"record: started, %dx%d -> %s", r->Width(), r->Height(), g_outPaths[i]);
     }
-    wcscpy(g_target.path, g_outPath);
-    if (!g_rec) g_rec = new Recorder;
-    err[0] = 0;
-    if (!g_rec->Start(g_target, err, 300)) {
-        Warn(err[0] ? err : T(S_ERR_CAPTURE));
-        delete g_rec; g_rec = nullptr;
+    if (g_nrecs != n) {                                          // one of them did not start: none is recorded
+        for (int i = 0; i < g_nrecs; ++i) { g_recs[i]->Stop(); DeleteFileW(g_outPaths[i]); }
+        DeleteRecs();
         g_state = ST_ARMED; UpdatePanel(); return;
     }
-    if (err[0]) Warn(err);       // the microphone was not available
+    wcscpy(g_outPath, g_outPaths[n - 1]);
     g_state = ST_RECORDING;
-    Log(L"record: started, %dx%d -> %s", g_rec->Width(), g_rec->Height(), g_outPath);
     Beep(false);
     SetTimer(g_panel, TIMER_UI, 250, nullptr);
+    CountdownHide();
+    FxStart();                                                   // click waves and the Shift trail
     UpdatePanel();
 }
 
@@ -304,34 +373,42 @@ void ClosePanel()
         KillTimer(g_panel, TIMER_UI); KillTimer(g_panel, TIMER_COUNTDOWN);
         DestroyWindow(g_panel); g_panel = nullptr;
     }
-    if (g_frame) { DestroyWindow(g_frame); g_frame = nullptr; }
+    FrameHide();
+    CountdownHide();
+    FxStop();
     UnregisterHotKey(g_main, HK_STOP);
 }
 
 void FinishRecording(bool ok, bool userStop)
 {
     (void)userStop;
-    bool saved = false;
-    if (g_rec) {
-        if (g_rec->Active()) saved = g_rec->Stop();
-        delete g_rec; g_rec = nullptr;
+    int n = g_nrecs, savedCount = 0;
+    bool saved[16] = {};
+    for (int i = 0; i < n; ++i) {
+        if (g_recs[i]->Active()) saved[i] = g_recs[i]->Stop();
+        if (ok && saved[i]) ++savedCount;
     }
-    bool hadFile = ok && saved;
-    Log(L"record: finished (saved=%d) %s", (int)hadFile, g_outPath);
+    DeleteRecs();
+    Log(L"record: finished (saved %d of %d) %s", savedCount, n, g_outPath);
     g_state = ST_IDLE;
     ClosePanel();
     TrayTip();
-    if (hadFile) {
+    const wchar_t* last = nullptr;
+    for (int i = 0; i < n; ++i) {
+        if (ok && saved[i]) last = g_outPaths[i];
+        else if (ok && g_outPaths[i][0]) {
+            wchar_t msg[MAX_PATH + 100];
+            _snwprintf(msg, MAX_PATH + 100, T(S_ERR_SAVE), g_outPaths[i]);
+            Warn(msg);
+        }
+    }
+    if (last) {
         Beep(false);
         wchar_t msg[MAX_PATH + 40];
-        _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), g_outPath);
+        _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), last);
         SetStatus(msg);
         Balloon(T(S_APP), msg);
-        if (g_cfg.openFolder) ShowInExplorer(g_outPath);
-    } else if (g_outPath[0] && ok) {
-        wchar_t msg[MAX_PATH + 100];
-        _snwprintf(msg, MAX_PATH + 100, T(S_ERR_SAVE), g_outPath);
-        Warn(msg);
+        if (g_cfg.openFolder) ShowInExplorer(last);
     }
     if (g_mainWasVisible) ShowMain(true);
 }
@@ -340,7 +417,7 @@ void StopRecording(bool userStop)
 {
     if (g_state == ST_IDLE) return;
     if (g_state == ST_ARMED || g_state == ST_COUNTDOWN) {       // nothing recorded yet
-        if (g_rec) { delete g_rec; g_rec = nullptr; }
+        DeleteRecs();
         g_state = ST_IDLE; ClosePanel(); TrayTip();
         if (g_mainWasVisible) ShowMain(true);
         return;
@@ -356,11 +433,12 @@ void StartPressed()
             g_state = ST_COUNTDOWN; g_countdown = g_cfg.delaySec;
             SetTimer(g_panel, TIMER_COUNTDOWN, 1000, nullptr);
             Beep(true);
+            { RECT ar[16]; int an = RecordAreas(ar); CountdownShow(g_countdown, ar, an); }
             UpdatePanel();
         } else BeginRecord();
         break;
-    case ST_RECORDING: g_rec->SetPaused(true); g_state = ST_PAUSED; UpdatePanel(); break;
-    case ST_PAUSED:    g_rec->SetPaused(false); g_state = ST_RECORDING; UpdatePanel(); break;
+    case ST_RECORDING: for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(true); g_state = ST_PAUSED; UpdatePanel(); break;
+    case ST_PAUSED:    for (int i = 0; i < g_nrecs; ++i) g_recs[i]->SetPaused(false); g_state = ST_RECORDING; UpdatePanel(); break;
     default: break;
     }
 }
@@ -400,14 +478,7 @@ void PlaceOverlay()
     if (!g_panel) return;
     RECT rc = TargetRect();
     int fw = Sc(kFrameW);
-    if (g_frame) {
-        int w = rc.right - rc.left + 2 * fw, h = rc.bottom - rc.top + 2 * fw;
-        HRGN outer = CreateRectRgn(0, 0, w, h), inner = CreateRectRgn(fw, fw, w - fw, h - fw);
-        CombineRgn(outer, outer, inner, RGN_DIFF);
-        DeleteObject(inner);
-        SetWindowRgn(g_frame, outer, TRUE);
-        SetWindowPos(g_frame, HWND_TOPMOST, rc.left - fw, rc.top - fw, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    }
+    if (g_frame) FramePlace(rc);
     int w = Sc(kStripW), h = Sc(kStripH);
     HMONITOR mon = MonitorFromRect(&rc, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi; mi.cbSize = sizeof(mi); GetMonitorInfoW(mon, &mi);
@@ -435,6 +506,15 @@ void RoundWindow(HWND w, int wpx, int hpx, int radius)         // the lower corn
     DeleteObject(top);
     SetWindowRgn(w, low, TRUE);
 }
+
+LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
+LRESULT CALLBACK CountProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
+void RegisterOverlayClasses();
+void FrameShow(const RECT& rc);
+void FrameHide();
+void FramePlace(const RECT& rc);
+void CountdownHide();
+int MonitorRects(RECT* out, int cap);
 
 LRESULT CALLBACK FrameProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 {
@@ -479,9 +559,9 @@ LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_TIMER:
         if (wp == TIMER_COUNTDOWN) {
             if (--g_countdown <= 0) { KillTimer(hw, TIMER_COUNTDOWN); BeginRecord(); }
-            else { Beep(true); UpdatePanel(); }
+            else { Beep(true); { RECT ar[16]; int an = RecordAreas(ar); CountdownShow(g_countdown, ar, an); } UpdatePanel(); }
         } else if (wp == TIMER_UI) {
-            if (g_rec && (g_rec->LimitReached() || g_rec->Failed())) { FinishRecording(true, false); return 0; }
+            for (int i = 0; i < g_nrecs; ++i) if (g_recs[i]->LimitReached() || g_recs[i]->Failed()) { FinishRecording(true, false); return 0; }
             if (g_target.hwnd) PlaceOverlay();                       // a followed window moves
             UpdatePanel();
         }
@@ -495,16 +575,7 @@ void ShowPanel()
 {
     if (g_state == ST_IDLE) return;                 // no panel without a recording to control
     if (g_panel) { ShowWindow(g_panel, SW_SHOWNA); return; }
-    static bool reg = false;
-    if (!reg) {
-        WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
-        wc.lpfnWndProc = PanelProc; wc.hInstance = g_inst; wc.lpszClassName = L"Click2ScreenPanel";
-        wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = g_icon;
-        RegisterClassW(&wc);
-        wc.lpfnWndProc = FrameProc; wc.lpszClassName = C2S_CLASS_FRAME; wc.hIcon = nullptr;
-        RegisterClassW(&wc);
-        reg = true;
-    }
+    RegisterOverlayClasses();
     int w = Sc(kStripW), h = Sc(kStripH);
     g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP | WS_CLIPCHILDREN,
                               0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
@@ -519,10 +590,7 @@ void ShowPanel()
                                  Sc(cell[i]) + 1, 0, Sc(cell[i + 1]) - Sc(cell[i]) - 1, h, g_panel, (HMENU)(INT_PTR)ids[i], g_inst, nullptr);
         SendMessageW(c, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
     }
-    if (!g_modeDesktop) {
-        g_frame = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, C2S_CLASS_FRAME, L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr, g_inst, nullptr);
-        if (g_frame) ExcludeFromCapture(g_frame);
-    }
+    if (!g_modeDesktop) FrameShow(TargetRect());
     UpdatePanel();
     PlaceOverlay();
     ShowWindow(g_panel, SW_SHOWNA);
@@ -574,55 +642,123 @@ void PumpFor(int ms)
     }
 }
 
-// The countdown before a screenshot: a small dark strip with the number (3, 2, 1) at the bottom of the main screen,
-// like the recording strip; it is excluded from the picture and gone before the picture is taken.
-HWND g_count;
+// The countdown: big red digits (3, 2, 1) in the centre of the chosen area (of every monitor for the whole desktop).
+// The windows are see-through and click-through, excluded from the picture, and gone before it is taken.
+const COLORREF kDigitKey = RGB(1, 2, 3), kDigitRed = RGB(230, 30, 30);
+HWND g_digit[16];
+int g_nDigit;
 LRESULT CALLBACK CountProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 {
     if (m == WM_NCCREATE) return DefWindowProcW(hw, m, wp, lp);
     if (m == WM_ERASEBKGND) return 1;
     if (m == WM_PAINT) {
         PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
-        FillStrip(dc, 0, Sc(kCountW));
+        RECT r; GetClientRect(hw, &r);
+        Box(dc, 0, 0, r.right, r.bottom, kDigitKey);
         wchar_t t[16]; GetWindowTextW(hw, t, 16);
-        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(253, 253, 253));
-        HGDIOBJ of = SelectObject(dc, g_fontBold);
-        RECT r = { 0, 0, Sc(kCountW), Sc(kStripH) };
+        HFONT f = CreateFontW(-(int)(r.bottom * 0.82), 0, 0, 0, FW_BOLD, 0, 0, 0, DEFAULT_CHARSET, 0, 0, ANTIALIASED_QUALITY, 0, L"Segoe UI");
+        HGDIOBJ of = SelectObject(dc, f);
+        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, kDigitRed);
         DrawTextW(dc, t, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
-        SelectObject(dc, of);
+        SelectObject(dc, of); DeleteObject(f);
         EndPaint(hw, &ps);
         return 0;
     }
     return DefWindowProcW(hw, m, wp, lp);
 }
 
-void CountdownShow(int n)
+void CountdownShow(int n, const RECT* areas, int count)
 {
-    static bool reg = false;
-    if (!reg) {
-        WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
-        wc.lpfnWndProc = CountProc; wc.hInstance = g_inst; wc.lpszClassName = L"Click2ScreenCount"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
-        RegisterClassW(&wc); reg = true;
-    }
+    RegisterOverlayClasses();
     wchar_t t[16]; _snwprintf(t, 16, L"%d", n);
-    if (!g_count) {
-        int w = Sc(kCountW), h = Sc(kStripH);
-        POINT origin = { 0, 0 };
-        MONITORINFO pm; pm.cbSize = sizeof(pm); GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);
-        g_count = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenCount", t, WS_POPUP,
-                                  (pm.rcWork.left + pm.rcWork.right - w) / 2, pm.rcWork.bottom - h - Sc(20), w, h, nullptr, nullptr, g_inst, nullptr);
-        if (!g_count) return;
-        ExcludeFromCapture(g_count);
-        RoundWindow(g_count, w, h, Sc(8));
-        ShowWindow(g_count, SW_SHOWNA);
-    } else SetWindowTextW(g_count, t);
-    InvalidateRect(g_count, nullptr, FALSE);
-    UpdateWindow(g_count);
+    if (count > 16) count = 16;
+    for (int i = 0; i < count; ++i) {
+        int aw = areas[i].right - areas[i].left, ah = areas[i].bottom - areas[i].top;
+        int sz = (aw < ah ? aw : ah) / 3;
+        if (sz < Sc(70)) sz = Sc(70);
+        if (sz > Sc(220)) sz = Sc(220);
+        if (i >= g_nDigit) {
+            g_digit[i] = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenCount", t, WS_POPUP,
+                                         0, 0, sz, sz, nullptr, nullptr, g_inst, nullptr);
+            if (!g_digit[i]) continue;
+            SetLayeredWindowAttributes(g_digit[i], kDigitKey, 0, LWA_COLORKEY);
+            ExcludeFromCapture(g_digit[i]);
+            g_nDigit = i + 1;
+        }
+        SetWindowTextW(g_digit[i], t);
+        SetWindowPos(g_digit[i], HWND_TOPMOST, (areas[i].left + areas[i].right - sz) / 2, (areas[i].top + areas[i].bottom - sz) / 2, sz, sz, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        InvalidateRect(g_digit[i], nullptr, FALSE);
+        UpdateWindow(g_digit[i]);
+    }
 }
 
 void CountdownHide()
 {
-    if (g_count) { DestroyWindow(g_count); g_count = nullptr; PumpFor(60); }
+    for (int i = 0; i < g_nDigit; ++i) if (g_digit[i]) { DestroyWindow(g_digit[i]); g_digit[i] = nullptr; }
+    g_nDigit = 0;
+}
+
+// The area a recording / countdown refers to: the recorded rectangle, or every monitor for the whole desktop.
+int RecordAreas(RECT* out)
+{
+    if (g_modeDesktop) { int n = MonitorRects(out, 16); if (n > 0) return n; }
+    out[0] = TargetRect();
+    return 1;
+}
+
+void RegisterOverlayClasses()
+{
+    static bool reg = false;
+    if (reg) return;
+    reg = true;
+    WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
+    wc.lpfnWndProc = PanelProc; wc.hInstance = g_inst; wc.lpszClassName = L"Click2ScreenPanel";
+    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = g_icon;
+    RegisterClassW(&wc);
+    wc.lpfnWndProc = FrameProc; wc.lpszClassName = C2S_CLASS_FRAME; wc.hIcon = nullptr;
+    RegisterClassW(&wc);
+    wc.lpfnWndProc = CountProc; wc.lpszClassName = L"Click2ScreenCount";
+    RegisterClassW(&wc);
+}
+
+// The red frame round the chosen area (recording and screenshots), blinking twice a second as in the original.
+bool g_frameOn;
+void FramePlace(const RECT& rc)
+{
+    if (!g_frame) return;
+    int fw = Sc(kFrameW);
+    int w = rc.right - rc.left + 2 * fw, h = rc.bottom - rc.top + 2 * fw;
+    HRGN outer = CreateRectRgn(0, 0, w, h), inner = CreateRectRgn(fw, fw, w - fw, h - fw);
+    CombineRgn(outer, outer, inner, RGN_DIFF);
+    DeleteObject(inner);
+    SetWindowRgn(g_frame, outer, TRUE);
+    SetWindowPos(g_frame, HWND_TOPMOST, rc.left - fw, rc.top - fw, w, h, SWP_NOACTIVATE | (g_frameOn ? SWP_SHOWWINDOW : SWP_HIDEWINDOW));
+}
+
+void FrameShow(const RECT& rc)
+{
+    RegisterOverlayClasses();
+    if (!g_frame) {
+        g_frame = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, C2S_CLASS_FRAME, L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr, g_inst, nullptr);
+        if (!g_frame) return;
+        ExcludeFromCapture(g_frame);
+        SetTimer(g_main, TIMER_BLINK, 500, nullptr);
+    }
+    g_frameOn = true;
+    FramePlace(rc);
+}
+
+void FrameHide()
+{
+    if (g_frame) { KillTimer(g_main, TIMER_BLINK); DestroyWindow(g_frame); g_frame = nullptr; }
+    g_frameOn = false;
+}
+
+void FrameBlink()
+{
+    if (!g_frame) return;
+    g_frameOn = !g_frameOn;
+    ShowWindow(g_frame, g_frameOn ? SW_SHOWNA : SW_HIDE);
 }
 
 struct MonList { RECT r[16]; int n; };
@@ -665,7 +801,8 @@ void Shot(Mode mode)
     }
     else if (!ChooseTarget(mode, &rects[0], &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
     else if (wasVisible) ShowMain(false);
-    for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i); PumpFor(1000); }
+    if (mode != M_DESKTOP) FrameShow(rects[0]);              // the red frame round the chosen area (as for a recording)
+    for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i, rects, count); PumpFor(1000); }
     CountdownHide();
     if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
     if (mode != M_DESKTOP) PumpFor(300);          // let the screen show the desktop again, not the dimmed picker
@@ -674,6 +811,7 @@ void Shot(Mode mode)
     Log(L"shot: capturing %d area(s)", count);
     for (int i = 0; i < count; ++i) { bmps[i] = CaptureRect(rects[i], g_cfg.capMouse, g_cfg.highlight); if (bmps[i]) ++got; }
     Log(L"shot: captured %d of %d", got, count);
+    FrameHide();
     if (wasVisible) ShowMain(true);
     if (got == 0) { Warn(T(S_ERR_CAPTURE)); g_busyShot = false; return; }
     wchar_t path[MAX_PATH] = L"", last[MAX_PATH] = L"";
@@ -1184,6 +1322,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         CreateMainControls(hw);
         return 0;
     case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
+    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); return 0;
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); PaintMain(hw, dc); EndPaint(hw, &ps); return 0; }
     case WM_DRAWITEM: DrawMainItem((const DRAWITEMSTRUCT*)lp); return TRUE;
@@ -1207,7 +1346,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case IDC_MENU: ShowMainMenu(); break;
-        case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;
+        case IDC_MIN: ShowWindow(hw, SW_HIDE); break;           // no taskbar button: the program lives in the tray
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
         case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
         case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
@@ -1278,7 +1417,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         return 0;
     case WM_QUERYENDSESSION: return TRUE;
     case WM_ENDSESSION:
-        if (wp && g_rec && g_rec->Active()) g_rec->Stop();
+        if (wp) for (int i = 0; i < g_nrecs; ++i) if (g_recs[i]->Active()) g_recs[i]->Stop();
         return 0;
     }
     return DefWindowProcW(hw, m, wp, lp);
@@ -1339,7 +1478,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     // A window of its own look: no system caption (the program draws the 28-unit one), 206 x 62 units, rounded corners.
     RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int ww = Sc(kMainW), wh = Sc(kMainH);
-    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
+    CreateWindowExW(WS_EX_TOOLWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
     RoundMain();

@@ -128,7 +128,7 @@ static void BuildHalo(HDC ref, HDC& dc, HBITMAP& bmp, HBITMAP& old)
         }
 }
 
-bool Grabber::Grab(const RECT& src, bool mouse, bool highlight)
+bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
 {
     int sw = src.right - src.left, sh = src.bottom - src.top;
     if (!m_dc || sw <= 0 || sh <= 0) return false;
@@ -142,6 +142,7 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight)
         SetBrushOrgEx(m_dc, 0, 0, nullptr);
         ok = StretchBlt(m_dc, 0, 0, m_w, m_h, scr, src.left, src.top, sw, sh, SRCCOPY | CAPTUREBLT);
     }
+    if (ok && mouse && fx) FxDraw(m_dc, src, m_w, m_h);                 // under the pointer and its highlight
     if (ok && mouse) {
         CURSORINFO ci; memset(&ci, 0, sizeof(ci)); ci.cbSize = sizeof(ci);
         if (GetCursorInfo(&ci) && (ci.flags & CURSOR_SHOWING) && ci.hCursor) {

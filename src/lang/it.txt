@@ -59,7 +59,7 @@ Cartella dei video:
 Cartella delle immagini:
 Formato immagine:
 Modello del nome file:
-Suggerimenti: # – una cifra del numero progressivo, $Y anno, $M mese, $D giorno, $H ora, $N minuto, $S secondo, %USERNAME% – nome utente. Esempio: $Y-$M-$D at $H-$N-$S oppure Img####
+Suggerimenti: # – una cifra del numero progressivo, $Y anno, $M mese, $D giorno, $H ora, $N minuto, $S secondo, %USERNAME% – nome utente. Esempio: File $D.$M.$Y $H-$N-$S oppure Img####
 Sfoglia...
 Lingua di sistema
 H.264, qualità migliore (più lento)

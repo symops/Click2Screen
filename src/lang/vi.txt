@@ -59,7 +59,7 @@ Thư mục video:
 Thư mục ảnh:
 Định dạng ảnh:
 Mẫu tên tệp:
-Mẹo: # – một chữ số của số thứ tự, $Y năm, $M tháng, $D ngày, $H giờ, $N phút, $S giây, %USERNAME% – tên người dùng. Ví dụ: $Y-$M-$D at $H-$N-$S hoặc Img####
+Mẹo: # – một chữ số của số thứ tự, $Y năm, $M tháng, $D ngày, $H giờ, $N phút, $S giây, %USERNAME% – tên người dùng. Ví dụ: File $D.$M.$Y $H-$N-$S hoặc Img####
 Duyệt...
 Ngôn ngữ hệ thống
 H.264, chất lượng tốt nhất (chậm hơn)

@@ -59,7 +59,7 @@ Ordner für Videos:
 Ordner für Bilder:
 Bildformat:
 Dateinamenvorlage:
-Tipps: # – eine Ziffer der laufenden Nummer, $Y Jahr, $M Monat, $D Tag, $H Stunde, $N Minute, $S Sekunde, %USERNAME% – Benutzername. Beispiel: $Y-$M-$D at $H-$N-$S oder Img####
+Tipps: # – eine Ziffer der laufenden Nummer, $Y Jahr, $M Monat, $D Tag, $H Stunde, $N Minute, $S Sekunde, %USERNAME% – Benutzername. Beispiel: File $D.$M.$Y $H-$N-$S oder Img####
 Durchsuchen...
 Systemsprache
 H.264, beste Qualität (langsamer)

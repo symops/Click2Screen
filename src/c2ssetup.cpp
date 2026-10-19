@@ -416,7 +416,7 @@ void BuildControls()
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
     LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_BOLD; lf.lfHeight = lf.lfHeight * 2;
     g_fontTitle = CreateFontIndirectW(&lf);
-    // 600 x 490 units, laid out as Speak2Mic / Show2Cam: a white header (icon, name, subtitle, version · author, the language
+    // 600 x 452 units, laid out as Speak2Mic / Show2Cam: a white header (icon, name, subtitle, version · author, the language
     // list in its right corner), a status group, the buttons, the log, the install folder, the boxes, Close.
     Add(L"STATIC", L"", SS_LEFT, 100, 12, 340, 36, IDC_TITLE, g_fontTitle);
     HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 450, 14, 138, 300, IDC_LANG);
@@ -424,25 +424,25 @@ void BuildControls()
     SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
     Add(L"STATIC", L"", SS_LEFT, 100, 50, 480, 20, IDC_SUB);
     Add(L"STATIC", L"", SS_LEFT, 100, 71, 480, 19, IDC_VERSION);
-    Add(L"BUTTON", L"", BS_GROUPBOX, 12, 106, 576, 104, IDC_GROUP);
-    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 26, 130, 550, 20, IDC_STATE);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 322, 222, 144, 30, IDC_INSTALL);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 222, 116, 30, IDC_REMOVE);
-    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 12, 264, 576, 95, IDC_LOG);
-    Add(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE, 17, 367, 150, 20, IDC_PATHLBL);
-    Add(L"EDIT", g_dir, WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 169, 366, 320, 22, IDC_PATH);      // changed only with Browse
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 495, 364, 96, 26, IDC_BROWSE);
+    Add(L"BUTTON", L"", BS_GROUPBOX, 12, 106, 576, 46, IDC_GROUP);
+    Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 26, 126, 550, 20, IDC_STATE);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 322, 162, 144, 30, IDC_INSTALL);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 162, 116, 30, IDC_REMOVE);
+    Add(L"EDIT", L"", WS_TABSTOP | WS_VSCROLL | WS_BORDER | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL, 12, 204, 576, 112, IDC_LOG);
+    Add(L"STATIC", L"", SS_LEFT | SS_CENTERIMAGE, 17, 327, 150, 20, IDC_PATHLBL);
+    Add(L"EDIT", g_dir, WS_BORDER | ES_AUTOHSCROLL | ES_READONLY, 169, 326, 320, 22, IDC_PATH);      // changed only with Browse
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 495, 324, 96, 26, IDC_BROWSE);
     SendMessageW(Ctl(IDC_PATH), EM_SETLIMITTEXT, 200, 0);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 404, 270, 22, IDC_DESKTOP);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 404, 280, 22, IDC_START);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 428, 270, 22, IDC_RUNAFTER);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 428, 280, 22, IDC_AUTO);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 360, 270, 22, IDC_DESKTOP);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 360, 280, 22, IDC_START);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 14, 384, 270, 22, IDC_RUNAFTER);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 384, 280, 22, IDC_AUTO);
     CheckDlgButton(hw, IDC_DESKTOP, g_wantDesktop ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_START, g_wantStart ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_AUTO, g_wantAuto ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_RUNAFTER, g_wantRun ? BST_CHECKED : BST_UNCHECKED);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 12, 449, 144, 30, IDC_LAUNCH);
-    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 449, 116, 30, IDC_CLOSE);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 12, 414, 144, 30, IDC_LAUNCH);
+    Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 414, 116, 30, IDC_CLOSE);
     // The list has no label in the window (the language is told by its own names); the label stays for screen readers and tests.
     CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT, 0, 0, Sc(10), Sc(10), hw, (HMENU)(INT_PTR)IDC_LANGLBL, g_inst, nullptr);
     Refresh();
@@ -582,7 +582,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     wc.lpfnWndProc = Proc; wc.hInstance = inst; wc.lpszClassName = L"Click2ScreenSetup";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    RECT r = { 0, 0, Sc(600), Sc(490) };
+    RECT r = { 0, 0, Sc(600), Sc(452) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     HWND w = CreateWindowExW(0, L"Click2ScreenSetup", L"Click2Screen", style, CW_USEDEFAULT, CW_USEDEFAULT,

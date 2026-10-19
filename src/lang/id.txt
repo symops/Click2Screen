@@ -59,7 +59,7 @@ Folder video:
 Folder gambar:
 Format gambar:
 Templat nama berkas:
-Tips: # – satu digit nomor urut, $Y tahun, $M bulan, $D hari, $H jam, $N menit, $S detik, %USERNAME% – nama pengguna. Contoh: $Y-$M-$D at $H-$N-$S atau Img####
+Tips: # – satu digit nomor urut, $Y tahun, $M bulan, $D hari, $H jam, $N menit, $S detik, %USERNAME% – nama pengguna. Contoh: File $D.$M.$Y $H-$N-$S atau Img####
 Telusuri...
 Bahasa sistem
 H.264, kualitas terbaik (lebih lambat)

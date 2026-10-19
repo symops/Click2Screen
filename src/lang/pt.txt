@@ -59,7 +59,7 @@ Pasta de vídeos:
 Pasta de imagens:
 Formato da imagem:
 Modelo do nome do arquivo:
-Dicas: # – um dígito do número sequencial, $Y ano, $M mês, $D dia, $H hora, $N minuto, $S segundo, %USERNAME% – nome do usuário. Exemplo: $Y-$M-$D at $H-$N-$S ou Img####
+Dicas: # – um dígito do número sequencial, $Y ano, $M mês, $D dia, $H hora, $N minuto, $S segundo, %USERNAME% – nome do usuário. Exemplo: File $D.$M.$Y $H-$N-$S ou Img####
 Procurar...
 Idioma do sistema
 H.264, melhor qualidade (mais lento)

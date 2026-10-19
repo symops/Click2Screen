@@ -102,7 +102,7 @@ public:
     ~Grabber();
     bool Init(int outW, int outH);
     // Copies the screen rectangle `src` into the bitmap (scaled to the output size), then the pointer.
-    bool Grab(const RECT& src, bool mouse, bool highlight);
+    bool Grab(const RECT& src, bool mouse, bool highlight, bool fx = false);   // fx: click waves and the Shift trail (recordings)
     uint8_t* Bits() const { return m_bits; }
     int  Width() const { return m_w; }
     int  Height() const { return m_h; }
@@ -112,6 +112,12 @@ private:
     HDC m_dc; HBITMAP m_bmp, m_old; uint8_t* m_bits; int m_w, m_h;
     HDC m_halo; HBITMAP m_haloBmp, m_haloOld;
 };
+// ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), a red trail while Shift is held
+void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
+void FxStop();
+void FxDraw(HDC dc, const RECT& src, int outW, int outH);
+void FxTestClick(int x, int y, int button);        // (autotest) a click at a screen point, now
+void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs);   // (autotest) a trail point of that age
 // One-shot screenshot of a screen rectangle (full size). The caller owns the bitmap.
 HBITMAP CaptureRect(const RECT& rc, bool mouse, bool highlight);
 // Window rectangle as the user sees it (without the invisible resize borders on Windows 10/11).

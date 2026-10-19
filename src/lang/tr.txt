@@ -59,7 +59,7 @@ Video klasörü:
 Resim klasörü:
 Resim biçimi:
 Dosya adı şablonu:
-İpuçları: # – sıra numarasının bir basamağı, $Y yıl, $M ay, $D gün, $H saat, $N dakika, $S saniye, %USERNAME% – kullanıcı adı. Örnek: $Y-$M-$D at $H-$N-$S veya Img####
+İpuçları: # – sıra numarasının bir basamağı, $Y yıl, $M ay, $D gün, $H saat, $N dakika, $S saniye, %USERNAME% – kullanıcı adı. Örnek: File $D.$M.$Y $H-$N-$S veya Img####
 Gözat...
 Sistem dili
 H.264, en iyi kalite (daha yavaş)

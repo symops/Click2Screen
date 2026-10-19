@@ -59,7 +59,7 @@ Folder wideo:
 Folder obrazów:
 Format obrazu:
 Wzorzec nazwy pliku:
-Wskazówki: # – jedna cyfra numeru kolejnego, $Y rok, $M miesiąc, $D dzień, $H godzina, $N minuta, $S sekunda, %USERNAME% – nazwa użytkownika. Przykład: $Y-$M-$D at $H-$N-$S lub Img####
+Wskazówki: # – jedna cyfra numeru kolejnego, $Y rok, $M miesiąc, $D dzień, $H godzina, $N minuta, $S sekunda, %USERNAME% – nazwa użytkownika. Przykład: File $D.$M.$Y $H-$N-$S lub Img####
 Przeglądaj...
 Język systemu
 H.264, najlepsza jakość (wolniej)
