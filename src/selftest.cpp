@@ -82,7 +82,7 @@ int RunSelfTest(const wchar_t* outDir)
     Check(ok && wcsstr(path, L"Img0002.png"), L"BuildOutputPath: next number", path);
     ok = BuildOutputPath(dir, L"File $D.$M.$Y $H-$N-$S", L"mp4", nullptr, path, MAX_PATH, err, 300);
     SYSTEMTIME st; GetLocalTime(&st);
-    wchar_t want[32]; _snwprintf(want, 32, L"%04d-%02d-%02d at ", st.wYear, st.wMonth, st.wDay);
+    wchar_t want[32]; _snwprintf(want, 32, L"File %02d.%02d.%04d ", st.wDay, st.wMonth, st.wYear);
     Check(ok && wcsstr(path, want), L"BuildOutputPath: date template", path);
 
     // screenshots
