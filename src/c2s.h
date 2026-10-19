@@ -67,7 +67,7 @@ struct Settings {
     bool notify;                    // notifications (balloons) from the tray icon
     bool loopback;                  // record the sound that goes to the speakers (mixed with the microphone)
     bool mic;                       // record audio from the default microphone
-    int  hotkey[4];                 // global hotkeys: desktop, region, window screenshot, stop recording; (MOD_* << 16) | VK, 0 = off
+    int  hotkey[7];                 // global hotkeys: desktop, region, window screenshot, stop recording, desktop, region, window recording; (MOD_* << 16) | VK, 0 = off
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..10)
@@ -87,8 +87,8 @@ void SettingsUseKey(const wchar_t* key);                       // another regist
 bool SettingsExport(const Settings& s, const wchar_t* path);   // .ini, UTF-16; the language is not exported
 bool SettingsImport(Settings& s, const wchar_t* path);         // false: no such file / no Click2Screen section
 bool TemplateValid(const wchar_t* tpl);
-// Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording.
-enum { HKI_COUNT = 4 };
+// Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording, 4 desktop, 5 region, 6 window recording.
+enum { HKI_COUNT = 7 };
 int  HotkeyDefault(int index);
 bool HotkeyUsable(int code);                                  // a key that may be registered (0 = off is not usable)
 void HotkeyName(int code, wchar_t* out, int cap);             // "Ctrl+Alt+PrintScreen"; "" for 0

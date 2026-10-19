@@ -1179,7 +1179,9 @@ static void T_HotkeyKeys()
     Check(a && b && c && d && e, L"hotkeys: the names read Ctrl+Alt+Shift+Win+Key and nothing for \"off\"");
     Settings def; SettingsDefaults(def);
     Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_ALT | MOD_SHIFT, '4') &&
-          def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11, L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4, Alt+Shift+5 and F11");
+          def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11 && def.hotkey[4] == code(MOD_ALT | MOD_SHIFT, '1') &&
+          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3'),
+          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings and F11");
     bool allUsable = true; for (int i = 0; i < HKI_COUNT; ++i) if (!HotkeyUsable(def.hotkey[i])) allUsable = false;
     Check(allUsable, L"hotkeys: every default is a usable combination");
 
@@ -1619,7 +1621,7 @@ static void AppSettings(Settings& s, int language)
     s.mic = false;
 }
 
-static int HkIndexOf(int id) { return id == IDC_SHOT_DESKTOP ? 0 : id == IDC_SHOT_REGION ? 1 : id == IDC_SHOT_WINDOW ? 2 : -1; }
+static int HkIndexOf(int id) { return id == IDC_SHOT_DESKTOP ? 0 : id == IDC_SHOT_REGION ? 1 : id == IDC_SHOT_WINDOW ? 2 : id == IDC_REC_DESKTOP ? 4 : id == IDC_REC_REGION ? 5 : id == IDC_REC_WINDOW ? 6 : -1; }
 
 // What the program writes on a button: the text of the language with the hotkey in use in the brackets of the second line.
 static void ExpectedButtonText(Str s, int hkIndex, const int* hk, wchar_t* out, int cap)
@@ -1715,7 +1717,7 @@ static void T_App()
     // a recording through the panel
     {
         LangSelect(language);
-        PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+        if (Chance(50)) PostMessageW(a.main, WM_HOTKEY, HK_REC_DESKTOP, 0); else PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);       // the hotkey or the button
         HWND panel = FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
         Check(panel != nullptr, L"program: Record desktop opens the recording panel");
         if (panel) {
@@ -1830,14 +1832,15 @@ static void T_App()
                     Sleep(300);
                     int taken = 0, wrongFree = 0, freedOld = 0, wrongNew = 0, wrongOld = 0;
                     Settings def; SettingsDefaults(def);
-                    for (int i = 0; i < 3; ++i) {                         // the stop key is registered only while a recording is on
+                    for (int i = 0; i < HKI_COUNT; ++i) {                 // the stop key is registered only while a recording is on
+                        if (i == 3) continue;
                         if (w.hotkey[i] && !(g_wine && (w.hotkey[i] & 0xFFFF) == VK_SNAPSHOT)) {
                             if (RegisterHotKey(hw2, 50 + i, (UINT)w.hotkey[i] >> 16, (UINT)w.hotkey[i] & 0xFFFF)) { UnregisterHotKey(hw2, 50 + i); ++wrongFree; ++wrongNew; } else ++taken;
                         }
                         if (g_wine && (def.hotkey[i] & 0xFFFF) == VK_SNAPSHOT) continue;      // Wine refuses Ctrl+PrintScreen to everybody
-                        bool oldStillUsed = false; for (int j = 0; j < 3; ++j) if (w.hotkey[j] == def.hotkey[i]) oldStillUsed = true;
+                        bool oldStillUsed = false; for (int j = 0; j < HKI_COUNT; ++j) if (w.hotkey[j] == def.hotkey[i]) oldStillUsed = true;
                         if (!oldStillUsed) {
-                            if (RegisterHotKey(hw2, 60 + i, (UINT)def.hotkey[i] >> 16, (UINT)def.hotkey[i] & 0xFFFF)) { UnregisterHotKey(hw2, 60 + i); ++freedOld; } else { ++wrongFree; ++wrongOld; wchar_t hn[60]; HotkeyName(def.hotkey[i], hn, 60); Rep(L"INFO", L"  old hotkey %s still taken (new hotkeys %d %d %d)", hn, w.hotkey[0], w.hotkey[1], w.hotkey[2]); }
+                            if (RegisterHotKey(hw2, 60 + i, (UINT)def.hotkey[i] >> 16, (UINT)def.hotkey[i] & 0xFFFF)) { UnregisterHotKey(hw2, 60 + i); ++freedOld; } else { ++wrongFree; ++wrongOld; wchar_t hn[60]; HotkeyName(def.hotkey[i], hn, 60); Rep(L"INFO", L"  old hotkey %s still taken", hn); }
                         }
                     }
                     DestroyWindow(hw2);

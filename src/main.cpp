@@ -1344,15 +1344,17 @@ bool OptionsDialog()
 
     // page 5: hotkeys (the actions of the main window and the stop of a recording)
     {
-        static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP };
-        for (int i = 0; i < HKI_COUNT; ++i) {
+        static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP, S_REC_DESKTOP, S_REC_REGION, S_REC_WINDOW };
+        static const int order[HKI_COUNT] = { 0, 1, 2, 4, 5, 6, 3 };               // the screenshots, the recordings, then the stop key
+        for (int row = 0; row < HKI_COUNT; ++row) {
+            int i = order[row];
             wchar_t t[120]; wcsncpy(t, T(labels[i]), 119); t[119] = 0;
             for (wchar_t* c = t; *c; ++c) if (*c == L'\n') { *c = 0; break; }         // "Capture desktop\n(Ctrl+PrintScreen)": the name only
-            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 63 + i * 34, 250, 16, 0);
-            HWND e = edit(5, O_HK0 + i, 293, 60 + i * 34, 200, ES_READONLY | ES_CENTER);
+            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 51 + row * 27, 250, 16, 0);
+            HWND e = edit(5, O_HK0 + i, 293, 48 + row * 27, 200, ES_READONLY | ES_CENTER);
             SetPropW(e, L"c2s.hkprev", (HANDLE)SetWindowLongPtrW(e, GWLP_WNDPROC, (LONG_PTR)HkProc));
         }
-        add(5, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 208, 460, 40, 0);
+        add(5, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 244, 460, 38, 0);
     }
 
     // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
@@ -1417,7 +1419,8 @@ void LayoutMainText()
         {IDC_MENU, S_OPTIONS} };
     for (auto& i : t) {
         wchar_t txt[160]; wcsncpy(txt, T(i.s), 159); txt[159] = 0;
-        int hk = i.id == IDC_SHOT_DESKTOP ? 0 : i.id == IDC_SHOT_REGION ? 1 : i.id == IDC_SHOT_WINDOW ? 2 : -1;
+        int hk = i.id == IDC_SHOT_DESKTOP ? 0 : i.id == IDC_SHOT_REGION ? 1 : i.id == IDC_SHOT_WINDOW ? 2 :
+                 i.id == IDC_REC_DESKTOP ? 4 : i.id == IDC_REC_REGION ? 5 : i.id == IDC_REC_WINDOW ? 6 : -1;
         if (hk >= 0) {                                                // "Capture desktop\n(Ctrl+PrintScreen)": the brackets show the hotkey in use
             wchar_t* nl = wcschr(txt, L'\n');
             wchar_t n[80]; HotkeyName(g_cfg.hotkey[hk], n, 80);
@@ -1522,13 +1525,14 @@ void RebuildMain(UINT dpi, const RECT* suggested)
 
 void RegisterHotkeys()
 {
-    static const int ids[3] = { HK_DESKTOP, HK_REGION, HK_WINDOW };
     wchar_t bad[160] = L"";
-    for (int i = 0; i < 3; ++i) {
-        UnregisterHotKey(g_main, ids[i]);
+    for (int i = 0; i < HKI_COUNT; ++i) {
+        if (i == 3) continue;                                              // the stop key is registered while a recording is on
+        int id = i + 1;
+        UnregisterHotKey(g_main, id);
         if (!g_cfg.hotkey[i]) continue;                                    // switched off in the options
         UINT mod = ((UINT)g_cfg.hotkey[i] >> 16) | MOD_NOREPEAT, vk = (UINT)g_cfg.hotkey[i] & 0xFFFF;
-        if (!RegisterHotKey(g_main, ids[i], mod, vk)) {
+        if (!RegisterHotKey(g_main, id, mod, vk)) {
             wchar_t n[80]; HotkeyName(g_cfg.hotkey[i], n, 80);
             if (bad[0]) wcscat(bad, L", ");
             wcscat(bad, n);
@@ -1603,6 +1607,9 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case HK_REGION: Shot(M_REGION); break;
         case HK_WINDOW: Shot(M_WINDOW); break;
         case HK_STOP: StopRecording(true); break;
+        case HK_REC_DESKTOP: if (g_state == ST_IDLE) Arm(M_DESKTOP); break;      // while a recording is on the keys do nothing
+        case HK_REC_REGION: if (g_state == ST_IDLE) Arm(M_REGION); break;
+        case HK_REC_WINDOW: if (g_state == ST_IDLE) Arm(M_WINDOW); break;
         }
         return 0;
     case WM_C2S_TRAY:
@@ -1640,7 +1647,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         ClosePanel();
         if (g_trayAdded) { TrayRemove(&g_nid); g_trayAdded = false; }
         Log(L"exit: tray icon removed");
-        UnregisterHotKey(hw, HK_DESKTOP); UnregisterHotKey(hw, HK_REGION); UnregisterHotKey(hw, HK_WINDOW); UnregisterHotKey(hw, HK_STOP);
+        for (int i = 1; i <= HKI_COUNT; ++i) UnregisterHotKey(hw, i);
         Log(L"exit: leaving the message loop");
         PostQuitMessage(0);
         return 0;
