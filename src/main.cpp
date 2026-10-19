@@ -659,7 +659,7 @@ void Arm(Mode mode)
 {
     Log(L"arm: mode %d, state %d", (int)mode, (int)g_state);
     if (g_state != ST_IDLE) { Warn(T(S_ERR_ALREADY)); return; }
-    g_mainWasVisible = g_main && IsWindowVisible(g_main);
+    g_mainWasVisible = g_main && IsWindowVisible(g_main) && !IsIconic(g_main);          // a window the user has minimized stays minimized
     RECT rc; HWND hw;
     if (!ChooseTarget(mode, &rc, &hw)) { if (g_mainWasVisible) ShowMain(true); return; }
     if (rc.right - rc.left < 16 || rc.bottom - rc.top < 16) { Warn(T(S_ERR_REGION_SMALL)); if (g_mainWasVisible) ShowMain(true); return; }
@@ -939,7 +939,7 @@ void Shot(Mode mode)
     if (g_busyShot) return;
     if (g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_COUNTDOWN) return;   // hotkeys during a recording are ignored
     g_busyShot = true;
-    bool wasVisible = g_main && IsWindowVisible(g_main);
+    bool wasVisible = g_main && IsWindowVisible(g_main) && !IsIconic(g_main);
     RECT rects[16]; int count = 1; HWND hw = nullptr;
     wchar_t err[300];
     if (!EnsureFolder(g_cfg.imgFolder, err, 300)) { Warn(err); g_busyShot = false; return; }
@@ -1620,7 +1620,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_COMMAND:
         switch (LOWORD(wp)) {
         case IDC_MENU: ShowMainMenu(); break;
-        case IDC_MIN: ShowWindow(hw, SW_HIDE); break;           // no taskbar button: the program lives in the tray
+        case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;       // an ordinary minimize: the window waits on the taskbar (one click or Alt+Tab brings it back)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
         case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
         case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
@@ -1680,7 +1680,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_C2S_QUIT: DestroyWindow(hw); return 0;
     case WM_CLOSE:
         if (g_state != ST_IDLE) { ShowWindow(hw, SW_HIDE); return 0; }
-        ShowWindow(hw, SW_HIDE);          // the hotkeys keep working from the tray; "Exit" in its menu quits
+        ShowWindow(hw, SW_HIDE);          // closing sends the window to the tray (no taskbar button); the hotkeys keep working, "Exit" in the tray menu quits
         return 0;
     case WM_DESTROY:
         Log(L"exit: main window destroyed, state %d", (int)g_state);
@@ -1755,7 +1755,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     // A window of its own look: no system caption (the program draws the 28-unit one), 206 x 62 units, rounded corners.
     RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int ww = Sc(kMainW), wh = Sc(kMainH);
-    CreateWindowExW(WS_EX_TOOLWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
+    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
     { BOOL off = TRUE; DwmSetWindowAttribute(g_main, 3 /*DWMWA_TRANSITIONS_FORCEDISABLED*/, &off, sizeof(off)); }   // hides at once (the picker and the screenshots do not wait for a fade-out)

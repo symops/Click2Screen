@@ -2641,7 +2641,29 @@ static void T_AppFrame()
     if (!StartApp(a, s)) { FAIL(L"frame: the program did not start"); StopApp(a, false); return; }
     RECT fr = FxScreenRect();
     LONG ex = GetWindowLongW(a.main, GWL_EXSTYLE);
-    Check((ex & WS_EX_TOOLWINDOW) && !(ex & WS_EX_APPWINDOW), L"frame: the main window has no taskbar button (it lives in the tray)");
+    Check(!(ex & WS_EX_TOOLWINDOW) && (ex & WS_EX_APPWINDOW), L"frame: the main window has a taskbar button while it is shown");
+    {   // Minimize waits on the taskbar and a screenshot leaves it there; Close sends the window to the tray
+        PostMessageW(a.main, WM_COMMAND, IDC_MIN, 0);
+        DWORD me = GetTickCount() + WMS(3000);
+        while (!IsIconic(a.main) && (int)(me - GetTickCount()) > 0) Sleep(50);
+        bool minimized = IsIconic(a.main) != 0 && IsWindowVisible(a.main);
+        Check(minimized, L"frame: Minimize minimizes the main window to the taskbar (it stays shown, not hidden to the tray)");
+        int shots = CountFiles(s.imgFolder);
+        PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
+        DWORD se = GetTickCount() + WMS(10000);
+        while (CountFiles(s.imgFolder) <= shots && (int)(se - GetTickCount()) > 0) Sleep(100);
+        Sleep(500);
+        Check(CountFiles(s.imgFolder) > shots && IsIconic(a.main), L"frame: a screenshot taken while the window is minimized does not bring it back");
+        ShowWindow(a.main, SW_RESTORE); Sleep(300);
+        PostMessageW(a.main, WM_COMMAND, IDC_CLOSE, 0);
+        DWORD ce = GetTickCount() + WMS(3000);
+        while (IsWindowVisible(a.main) && (int)(ce - GetTickCount()) > 0) Sleep(50);
+        Check(!IsWindowVisible(a.main) && AppAlive(a), L"frame: Close hides the main window to the tray and the program keeps running");
+        PostMessageW(a.main, WM_C2S_SHOW, 0, 0);
+        DWORD re = GetTickCount() + WMS(3000);
+        while (!IsWindowVisible(a.main) && (int)(re - GetTickCount()) > 0) Sleep(50);
+        Check(IsWindowVisible(a.main) && !IsIconic(a.main), L"frame: the tray brings the window back");
+    }
     POINT p1 = { fr.left + 30, fr.top + 30 }, p2 = { fr.left + 30 + R(160, 260), fr.top + 30 + R(110, 170) };
     int before = CountFiles(s.imgFolder);
     PostMessageW(a.main, WM_HOTKEY, HK_REGION, 0);
