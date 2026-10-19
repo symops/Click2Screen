@@ -144,3 +144,6 @@ Parar a gravação
 Clique em um campo e pressione a nova combinação. Backspace a apaga (o atalho fica desativado).
 A mesma combinação foi atribuída a duas ações.
 nenhum
+Linhas vermelhas na tela (ligar / desligar)
+Desenho ativado: segure o Shift esquerdo e mova o mouse; o Shift direito apaga tudo.
+Desenho desativado.

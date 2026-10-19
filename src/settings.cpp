@@ -75,6 +75,7 @@ int HotkeyDefault(int i)
     case 4: return ((MOD_ALT | MOD_SHIFT) << 16) | '1';
     case 5: return ((MOD_ALT | MOD_SHIFT) << 16) | '2';
     case 6: return ((MOD_ALT | MOD_SHIFT) << 16) | '3';
+    case 7: return (MOD_CONTROL << 16) | VK_F12;
     default: return VK_F11;
     }
 }
@@ -120,7 +121,7 @@ void HotkeyName(int code, wchar_t* out, int cap)
 }
 
 static const wchar_t* const kHotkeyNames[HKI_COUNT] = { L"HotkeyDesktop", L"HotkeyRegion", L"HotkeyWindow", L"HotkeyStop",
-                                                         L"HotkeyRecDesktop", L"HotkeyRecRegion", L"HotkeyRecWindow" };
+                                                         L"HotkeyRecDesktop", L"HotkeyRecRegion", L"HotkeyRecWindow", L"HotkeyDraw" };
 
 void SettingsLoad(Settings& s)
 {

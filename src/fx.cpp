@@ -23,6 +23,7 @@ int g_nClicks;
 Pt* g_trail;
 size_t g_nTrail, g_head, g_capTrail;
 bool g_shiftWas;
+bool g_shiftBlock;                       // the left Shift was already down when the drawing was switched on: ignored until released
 unsigned g_version;                                         // changes whenever the trail does (the on-screen copy redraws then)
 int g_keyOverride = -1;                                  // (the autotest) -1: the real keys; bit 0 left Shift, bit 1 right Shift
 bool g_btnWas[3];
@@ -127,6 +128,7 @@ void FxStart()
     Lock();
     g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false; ++g_version;
     Unlock();
+    { bool l = false, r = false; ReadShifts(&l, &r); g_shiftBlock = l; }
     if (!g_hook) { g_hook = SetWindowsHookExW(WH_MOUSE_LL, MouseProc, GetModuleHandleW(nullptr), 0); g_hookErr = g_hook ? 0 : GetLastError(); }
     g_hookCalls = 0;
 }
@@ -165,6 +167,35 @@ void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)
 }
 
 // Called for every video frame (the frame is already in `dc`): samples Shift / the pointer, draws the trail and the waves.
+// The left Shift draws the trail, the right Shift wipes all of it at once.
+static void SampleTrail(ULONGLONG now)
+{
+    bool shiftL = false, shiftR = false;
+    ReadShifts(&shiftL, &shiftR);
+    if (g_shiftBlock) { if (!shiftL) g_shiftBlock = false; else shiftL = false; }       // a Shift still held from the hotkey that switched the drawing on
+    bool shift = shiftL && !shiftR;
+    if (shiftR) {
+        Lock();
+        if (g_nTrail > g_head) { g_head = g_nTrail = 0; ++g_version; }
+        Unlock();
+    }
+    if (shift) {
+        POINT p;
+        if (GetCursorPos(&p)) {
+            bool brk = !g_shiftWas;
+            bool same = false;
+            Lock();
+            if (!brk && g_nTrail > g_head) same = g_trail[g_nTrail - 1].x == p.x && g_trail[g_nTrail - 1].y == p.y;
+            Unlock();
+            if (!same) AddPoint(p.x, p.y, now, brk);
+        }
+    }
+    g_shiftWas = shift;
+
+}
+
+void FxSample() { SampleTrail(GetTickCount64()); }
+
 void FxDraw(HDC dc, const RECT& src, int outW, int outH)
 {
     ULONGLONG now = GetTickCount64();
@@ -190,27 +221,7 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
         g_btnWas[b] = down;
     }
 
-    // The left Shift draws the trail, the right Shift wipes all of it at once.
-    bool shiftL = false, shiftR = false;
-    ReadShifts(&shiftL, &shiftR);
-    bool shift = shiftL && !shiftR;
-    if (shiftR) {
-        Lock();
-        if (g_nTrail > g_head) { g_head = g_nTrail = 0; ++g_version; }
-        Unlock();
-    }
-    if (shift) {
-        POINT p;
-        if (GetCursorPos(&p)) {
-            bool brk = !g_shiftWas;
-            bool same = false;
-            Lock();
-            if (!brk && g_nTrail > g_head) same = g_trail[g_nTrail - 1].x == p.x && g_trail[g_nTrail - 1].y == p.y;
-            Unlock();
-            if (!same) AddPoint(p.x, p.y, now, brk);
-        }
-    }
-    g_shiftWas = shift;
+    SampleTrail(now);
 
     Lock();
     Prune(now);                                                                      // the oldest points fade out first

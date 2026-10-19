@@ -19,7 +19,7 @@ static const wchar_t* const kLangNames[kLangCount] = {
     L"\x65e5" L"\x672c" L"\x8a9e",
     L"\xd55c" L"\xad6d" L"\xc5b4",
 };
-static const wchar_t* const kStrings[kLangCount][146] = {
+static const wchar_t* const kStrings[kLangCount][149] = {
     { // en
         L"Click2Screen",
         L"Record desktop",
@@ -167,6 +167,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Click a field and press the new combination. Backspace clears it (the hotkey is then off).",
         L"The same combination is assigned to two actions.",
         L"none",
+        L"Red lines on the screen (on / off)",
+        L"Drawing is on: hold the left Shift and move the mouse; the right Shift erases everything.",
+        L"Drawing is off.",
     },
     { // ru
         L"Click2Screen",
@@ -315,6 +318,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\x0429" L"\x0451" L"\x043b" L"\x043a" L"\x043d" L"\x0438" L"\x0442" L"\x0435" L" " L"\x043f" L"\x043e" L" " L"\x043f" L"\x043e" L"\x043b" L"\x044e" L" " L"\x0438" L" " L"\x043d" L"\x0430" L"\x0436" L"\x043c" L"\x0438" L"\x0442" L"\x0435" L" " L"\x043d" L"\x043e" L"\x0432" L"\x043e" L"\x0435" L" " L"\x0441" L"\x043e" L"\x0447" L"\x0435" L"\x0442" L"\x0430" L"\x043d" L"\x0438" L"\x0435" L". Backspace " L"\x043e" L"\x0447" L"\x0438" L"\x0449" L"\x0430" L"\x0435" L"\x0442" L" " L"\x0435" L"\x0433" L"\x043e" L" (" L"\x0433" L"\x043e" L"\x0440" L"\x044f" L"\x0447" L"\x0430" L"\x044f" L" " L"\x043a" L"\x043b" L"\x0430" L"\x0432" L"\x0438" L"\x0448" L"\x0430" L" " L"\x043e" L"\x0442" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0430" L"\x0435" L"\x0442" L"\x0441" L"\x044f" L").",
         L"\x041e" L"\x0434" L"\x043d" L"\x043e" L" " L"\x0438" L" " L"\x0442" L"\x043e" L" " L"\x0436" L"\x0435" L" " L"\x0441" L"\x043e" L"\x0447" L"\x0435" L"\x0442" L"\x0430" L"\x043d" L"\x0438" L"\x0435" L" " L"\x043d" L"\x0430" L"\x0437" L"\x043d" L"\x0430" L"\x0447" L"\x0435" L"\x043d" L"\x043e" L" " L"\x0434" L"\x0432" L"\x0443" L"\x043c" L" " L"\x0434" L"\x0435" L"\x0439" L"\x0441" L"\x0442" L"\x0432" L"\x0438" L"\x044f" L"\x043c" L".",
         L"\x043d" L"\x0435" L"\x0442",
+        L"\x041a" L"\x0440" L"\x0430" L"\x0441" L"\x043d" L"\x044b" L"\x0435" L" " L"\x043b" L"\x0438" L"\x043d" L"\x0438" L"\x0438" L" " L"\x043d" L"\x0430" L" " L"\x044d" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x0435" L" (" L"\x0432" L"\x043a" L"\x043b" L" / " L"\x0432" L"\x044b" L"\x043a" L"\x043b" L")",
+        L"\x0420" L"\x0438" L"\x0441" L"\x043e" L"\x0432" L"\x0430" L"\x043d" L"\x0438" L"\x0435" L" " L"\x0432" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0435" L"\x043d" L"\x043e" L": " L"\x0443" L"\x0434" L"\x0435" L"\x0440" L"\x0436" L"\x0438" L"\x0432" L"\x0430" L"\x0439" L"\x0442" L"\x0435" L" " L"\x043b" L"\x0435" L"\x0432" L"\x044b" L"\x0439" L" Shift " L"\x0438" L" " L"\x0434" L"\x0432" L"\x0438" L"\x0433" L"\x0430" L"\x0439" L"\x0442" L"\x0435" L" " L"\x043c" L"\x044b" L"\x0448" L"\x044c" L"\x044e" L"; " L"\x043f" L"\x0440" L"\x0430" L"\x0432" L"\x044b" L"\x0439" L" Shift " L"\x0441" L"\x0442" L"\x0438" L"\x0440" L"\x0430" L"\x0435" L"\x0442" L" " L"\x0432" L"\x0441" L"\x0451" L".",
+        L"\x0420" L"\x0438" L"\x0441" L"\x043e" L"\x0432" L"\x0430" L"\x043d" L"\x0438" L"\x0435" L" " L"\x0432" L"\x044b" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0435" L"\x043d" L"\x043e" L".",
     },
     { // uk
         L"Click2Screen",
@@ -463,6 +469,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\x041a" L"\x043b" L"\x0430" L"\x0446" L"\x043d" L"\x0456" L"\x0442" L"\x044c" L" " L"\x043f" L"\x043e" L" " L"\x043f" L"\x043e" L"\x043b" L"\x044e" L" " L"\x0439" L" " L"\x043d" L"\x0430" L"\x0442" L"\x0438" L"\x0441" L"\x043d" L"\x0456" L"\x0442" L"\x044c" L" " L"\x043d" L"\x043e" L"\x0432" L"\x0435" L" " L"\x043f" L"\x043e" L"\x0454" L"\x0434" L"\x043d" L"\x0430" L"\x043d" L"\x043d" L"\x044f" L". Backspace " L"\x043e" L"\x0447" L"\x0438" L"\x0449" L"\x0430" L"\x0454" L" " L"\x0439" L"\x043e" L"\x0433" L"\x043e" L" (" L"\x0433" L"\x0430" L"\x0440" L"\x044f" L"\x0447" L"\x0443" L" " L"\x043a" L"\x043b" L"\x0430" L"\x0432" L"\x0456" L"\x0448" L"\x0443" L" " L"\x0432" L"\x0438" L"\x043c" L"\x043a" L"\x043d" L"\x0435" L"\x043d" L"\x043e" L").",
         L"\x041e" L"\x0434" L"\x043d" L"\x0435" L" " L"\x0439" L" " L"\x0442" L"\x0435" L" " L"\x0441" L"\x0430" L"\x043c" L"\x0435" L" " L"\x043f" L"\x043e" L"\x0454" L"\x0434" L"\x043d" L"\x0430" L"\x043d" L"\x043d" L"\x044f" L" " L"\x043f" L"\x0440" L"\x0438" L"\x0437" L"\x043d" L"\x0430" L"\x0447" L"\x0435" L"\x043d" L"\x043e" L" " L"\x0434" L"\x0432" L"\x043e" L"\x043c" L" " L"\x0434" L"\x0456" L"\x044f" L"\x043c" L".",
         L"\x043d" L"\x0435" L"\x043c" L"\x0430" L"\x0454",
+        L"\x0427" L"\x0435" L"\x0440" L"\x0432" L"\x043e" L"\x043d" L"\x0456" L" " L"\x043b" L"\x0456" L"\x043d" L"\x0456" L"\x0457" L" " L"\x043d" L"\x0430" L" " L"\x0435" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x0456" L" (" L"\x0443" L"\x0432" L"\x0456" L"\x043c" L"\x043a" L". / " L"\x0432" L"\x0438" L"\x043c" L"\x043a" L".)",
+        L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x0432" L"\x0430" L"\x043d" L"\x043d" L"\x044f" L" " L"\x0443" L"\x0432" L"\x0456" L"\x043c" L"\x043a" L"\x043d" L"\x0435" L"\x043d" L"\x043e" L": " L"\x0443" L"\x0442" L"\x0440" L"\x0438" L"\x043c" L"\x0443" L"\x0439" L"\x0442" L"\x0435" L" " L"\x043b" L"\x0456" L"\x0432" L"\x0438" L"\x0439" L" Shift " L"\x0456" L" " L"\x0440" L"\x0443" L"\x0445" L"\x0430" L"\x0439" L"\x0442" L"\x0435" L" " L"\x043c" L"\x0438" L"\x0448" L"\x0435" L"\x044e" L"; " L"\x043f" L"\x0440" L"\x0430" L"\x0432" L"\x0438" L"\x0439" L" Shift " L"\x0441" L"\x0442" L"\x0438" L"\x0440" L"\x0430" L"\x0454" L" " L"\x0432" L"\x0441" L"\x0435" L".",
+        L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x0432" L"\x0430" L"\x043d" L"\x043d" L"\x044f" L" " L"\x0432" L"\x0438" L"\x043c" L"\x043a" L"\x043d" L"\x0435" L"\x043d" L"\x043e" L".",
     },
     { // be
         L"Click2Screen",
@@ -611,6 +620,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\x041f" L"\x0441" L"\x0442" L"\x0440" L"\x044b" L"\x043a" L"\x043d" L"\x0456" L"\x0446" L"\x0435" L" " L"\x043f" L"\x0430" L" " L"\x043f" L"\x043e" L"\x043b" L"\x0456" L" " L"\x0456" L" " L"\x043d" L"\x0430" L"\x0446" L"\x0456" L"\x0441" L"\x043d" L"\x0456" L"\x0446" L"\x0435" L" " L"\x043d" L"\x043e" L"\x0432" L"\x0430" L"\x0435" L" " L"\x0441" L"\x043f" L"\x0430" L"\x043b" L"\x0443" L"\x0447" L"\x044d" L"\x043d" L"\x043d" L"\x0435" L". Backspace " L"\x0430" L"\x0447" L"\x044b" L"\x0448" L"\x0447" L"\x0430" L"\x0435" L" " L"\x044f" L"\x0433" L"\x043e" L" (" L"\x0433" L"\x0430" L"\x0440" L"\x0430" L"\x0447" L"\x0430" L"\x044f" L" " L"\x043a" L"\x043b" L"\x0430" L"\x0432" L"\x0456" L"\x0448" L"\x0430" L" " L"\x0430" L"\x0434" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0430" L"\x0435" L"\x0446" L"\x0446" L"\x0430" L").",
         L"\x0410" L"\x0434" L"\x043d" L"\x043e" L" " L"\x0456" L" " L"\x0442" L"\x043e" L"\x0435" L" " L"\x0436" L" " L"\x0441" L"\x043f" L"\x0430" L"\x043b" L"\x0443" L"\x0447" L"\x044d" L"\x043d" L"\x043d" L"\x0435" L" " L"\x043f" L"\x0440" L"\x044b" L"\x0437" L"\x043d" L"\x0430" L"\x0447" L"\x0430" L"\x043d" L"\x0430" L" " L"\x0434" L"\x0432" L"\x0443" L"\x043c" L" " L"\x0434" L"\x0437" L"\x0435" L"\x044f" L"\x043d" L"\x043d" L"\x044f" L"\x043c" L".",
         L"\x043d" L"\x044f" L"\x043c" L"\x0430",
+        L"\x0427" L"\x044b" L"\x0440" L"\x0432" L"\x043e" L"\x043d" L"\x044b" L"\x044f" L" " L"\x043b" L"\x0456" L"\x043d" L"\x0456" L"\x0456" L" " L"\x043d" L"\x0430" L" " L"\x044d" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x0435" L" (" L"\x0443" L"\x043a" L"\x043b" L". / " L"\x0432" L"\x044b" L"\x043a" L".)",
+        L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x043d" L"\x0430" L"\x043a" L" " L"\x0443" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0430" L"\x043d" L"\x044b" L": " L"\x0442" L"\x0440" L"\x044b" L"\x043c" L"\x0430" L"\x0439" L"\x0446" L"\x0435" L" " L"\x043b" L"\x0435" L"\x0432" L"\x044b" L" Shift " L"\x0456" L" " L"\x0440" L"\x0443" L"\x0445" L"\x0430" L"\x0439" L"\x0446" L"\x0435" L" " L"\x043c" L"\x044b" L"\x0448" L"\x0448" L"\x0443" L"; " L"\x043f" L"\x0440" L"\x0430" L"\x0432" L"\x044b" L" Shift " L"\x0441" L"\x0446" L"\x0456" L"\x0440" L"\x0435" L" " L"\x045e" L"\x0441" L"\x0451" L".",
+        L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x043d" L"\x0430" L"\x043a" L" " L"\x0432" L"\x044b" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0430" L"\x043d" L"\x044b" L".",
     },
     { // de
         L"Click2Screen",
@@ -759,6 +771,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Klicken Sie auf ein Feld und dr" L"\x00fc" L"cken Sie die neue Kombination. R" L"\x00fc" L"cktaste l" L"\x00f6" L"scht sie (die Tastenkombination ist dann aus).",
         L"Dieselbe Kombination ist zwei Aktionen zugewiesen.",
         L"keine",
+        L"Rote Linien auf dem Bildschirm (an / aus)",
+        L"Zeichnen ist an: linke Umschalttaste halten und die Maus bewegen; die rechte l" L"\x00f6" L"scht alles.",
+        L"Zeichnen ist aus.",
     },
     { // fr
         L"Click2Screen",
@@ -907,6 +922,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Cliquez dans un champ et appuyez sur la nouvelle combinaison. Retour arri" L"\x00e8" L"re l'efface (le raccourci est alors d" L"\x00e9" L"sactiv" L"\x00e9" L").",
         L"La m" L"\x00ea" L"me combinaison est attribu" L"\x00e9" L"e " L"\x00e0" L" deux actions.",
         L"aucun",
+        L"Lignes rouges " L"\x00e0" L" l'" L"\x00e9" L"cran (activer / d" L"\x00e9" L"sactiver)",
+        L"Dessin activ" L"\x00e9" L" : maintenez la touche Maj gauche et bougez la souris ; Maj droite efface tout.",
+        L"Dessin d" L"\x00e9" L"sactiv" L"\x00e9" L".",
     },
     { // es
         L"Click2Screen",
@@ -1055,6 +1073,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Haga clic en un campo y pulse la nueva combinaci" L"\x00f3" L"n. Retroceso la borra (el atajo queda desactivado).",
         L"La misma combinaci" L"\x00f3" L"n est" L"\x00e1" L" asignada a dos acciones.",
         L"ninguno",
+        L"L" L"\x00ed" L"neas rojas en la pantalla (activar / desactivar)",
+        L"Dibujo activado: mantenga la tecla May" L"\x00fa" L"s izquierda y mueva el rat" L"\x00f3" L"n; la derecha lo borra todo.",
+        L"Dibujo desactivado.",
     },
     { // it
         L"Click2Screen",
@@ -1203,6 +1224,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Fai clic su un campo e premi la nuova combinazione. Backspace la cancella (la scorciatoia viene disattivata).",
         L"La stessa combinazione " L"\x00e8" L" assegnata a due azioni.",
         L"nessuna",
+        L"Linee rosse sullo schermo (attiva / disattiva)",
+        L"Disegno attivo: tieni premuto Maiusc sinistro e muovi il mouse; Maiusc destro cancella tutto.",
+        L"Disegno disattivato.",
     },
     { // pt
         L"Click2Screen",
@@ -1351,6 +1375,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Clique em um campo e pressione a nova combina" L"\x00e7" L"\x00e3" L"o. Backspace a apaga (o atalho fica desativado).",
         L"A mesma combina" L"\x00e7" L"\x00e3" L"o foi atribu" L"\x00ed" L"da a duas a" L"\x00e7" L"\x00f5" L"es.",
         L"nenhum",
+        L"Linhas vermelhas na tela (ligar / desligar)",
+        L"Desenho ativado: segure o Shift esquerdo e mova o mouse; o Shift direito apaga tudo.",
+        L"Desenho desativado.",
     },
     { // pl
         L"Click2Screen",
@@ -1499,6 +1526,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Kliknij pole i naci" L"\x015b" L"nij now" L"\x0105" L" kombinacj" L"\x0119" L". Backspace j" L"\x0105" L" usuwa (skr" L"\x00f3" L"t zostaje wy" L"\x0142" L"\x0105" L"czony).",
         L"Ta sama kombinacja jest przypisana do dw" L"\x00f3" L"ch dzia" L"\x0142" L"a" L"\x0144" L".",
         L"brak",
+        L"Czerwone linie na ekranie (w" L"\x0142" L"\x0105" L"cz / wy" L"\x0142" L"\x0105" L"cz)",
+        L"Rysowanie w" L"\x0142" L"\x0105" L"czone: przytrzymaj lewy Shift i poruszaj mysz" L"\x0105" L"; prawy Shift kasuje wszystko.",
+        L"Rysowanie wy" L"\x0142" L"\x0105" L"czone.",
     },
     { // nl
         L"Click2Screen",
@@ -1647,6 +1677,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Klik op een veld en druk op de nieuwe combinatie. Backspace wist haar (de sneltoets is dan uit).",
         L"Dezelfde combinatie is aan twee acties toegewezen.",
         L"geen",
+        L"Rode lijnen op het scherm (aan / uit)",
+        L"Tekenen staat aan: houd de linker Shift ingedrukt en beweeg de muis; de rechter Shift wist alles.",
+        L"Tekenen staat uit.",
     },
     { // tr
         L"Click2Screen",
@@ -1795,6 +1828,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Bir alana t" L"\x0131" L"klay" L"\x0131" L"p yeni tu" L"\x015f" L" birle" L"\x015f" L"imine bas" L"\x0131" L"n. Geri Al tu" L"\x015f" L"u onu siler (k" L"\x0131" L"sayol kapan" L"\x0131" L"r).",
         L"Ayn" L"\x0131" L" tu" L"\x015f" L" birle" L"\x015f" L"imi iki eyleme atanm" L"\x0131" L"\x015f" L".",
         L"yok",
+        L"Ekranda k" L"\x0131" L"rm" L"\x0131" L"z" L"\x0131" L" " L"\x00e7" L"izgiler (a" L"\x00e7" L" / kapat)",
+        L"\x00c7" L"izim a" L"\x00e7" L"\x0131" L"k: sol Shift'e bas" L"\x0131" L"l" L"\x0131" L" tutup fareyi hareket ettirin; sa" L"\x011f" L" Shift her " L"\x015f" L"eyi siler.",
+        L"\x00c7" L"izim kapal" L"\x0131" L".",
     },
     { // id
         L"Click2Screen",
@@ -1943,6 +1979,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Klik sebuah kolom lalu tekan kombinasi baru. Backspace menghapusnya (pintasan menjadi nonaktif).",
         L"Kombinasi yang sama ditetapkan untuk dua tindakan.",
         L"tidak ada",
+        L"Garis merah di layar (hidup / mati)",
+        L"Menggambar aktif: tahan Shift kiri dan gerakkan mouse; Shift kanan menghapus semuanya.",
+        L"Menggambar nonaktif.",
     },
     { // vi
         L"Click2Screen",
@@ -2091,6 +2130,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"Nh" L"\x1ea5" L"p v" L"\x00e0" L"o " L"\x00f4" L" r" L"\x1ed3" L"i nh" L"\x1ea5" L"n t" L"\x1ed5" L" h" L"\x1ee3" L"p ph" L"\x00ed" L"m m" L"\x1edb" L"i. Backspace s" L"\x1ebd" L" x" L"\x00f3" L"a t" L"\x1ed5" L" h" L"\x1ee3" L"p (ph" L"\x00ed" L"m t" L"\x1eaf" L"t b" L"\x1ecb" L" t" L"\x1eaf" L"t).",
         L"C" L"\x00f9" L"ng m" L"\x1ed9" L"t t" L"\x1ed5" L" h" L"\x1ee3" L"p ph" L"\x00ed" L"m " L"\x0111" L"\x01b0" L"\x1ee3" L"c g" L"\x00e1" L"n cho hai thao t" L"\x00e1" L"c.",
         L"kh" L"\x00f4" L"ng c" L"\x00f3",
+        L"N" L"\x00e9" L"t " L"\x0111" L"\x1ecf" L" tr" L"\x00ea" L"n m" L"\x00e0" L"n h" L"\x00ec" L"nh (b" L"\x1ead" L"t / t" L"\x1eaf" L"t)",
+        L"\x0110" L"\x00e3" L" b" L"\x1ead" L"t v" L"\x1ebd" L": gi" L"\x1eef" L" Shift tr" L"\x00e1" L"i v" L"\x00e0" L" di chu" L"\x1ed9" L"t; Shift ph" L"\x1ea3" L"i x" L"\x00f3" L"a t" L"\x1ea5" L"t c" L"\x1ea3" L".",
+        L"\x0110" L"\x00e3" L" t" L"\x1eaf" L"t v" L"\x1ebd" L".",
     },
     { // zh
         L"Click2Screen",
@@ -2239,6 +2281,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\x5355" L"\x51fb" L"\x8f93" L"\x5165" L"\x6846" L"\x5e76" L"\x6309" L"\x4e0b" L"\x65b0" L"\x7684" L"\x7ec4" L"\x5408" L"\x952e" L"\x3002" L"\x6309" L" Backspace " L"\x53ef" L"\x6e05" L"\x9664" L"(" L"\x5feb" L"\x6377" L"\x952e" L"\x968f" L"\x5373" L"\x5173" L"\x95ed" L")" L"\x3002",
         L"\x540c" L"\x4e00" L"\x7ec4" L"\x5408" L"\x952e" L"\x88ab" L"\x5206" L"\x914d" L"\x7ed9" L"\x4e86" L"\x4e24" L"\x4e2a" L"\x64cd" L"\x4f5c" L"\x3002",
         L"\x65e0",
+        L"\x5c4f" L"\x5e55" L"\x4e0a" L"\x7684" L"\x7ea2" L"\x7ebf" L"(" L"\x5f00" L" / " L"\x5173" L")",
+        L"\x7ed8" L"\x56fe" L"\x5df2" L"\x5f00" L"\x542f" L":" L"\x6309" L"\x4f4f" L"\x5de6" L" Shift " L"\x5e76" L"\x79fb" L"\x52a8" L"\x9f20" L"\x6807" L";" L"\x53f3" L" Shift " L"\x6e05" L"\x9664" L"\x5168" L"\x90e8" L"\x3002",
+        L"\x7ed8" L"\x56fe" L"\x5df2" L"\x5173" L"\x95ed" L"\x3002",
     },
     { // ja
         L"Click2Screen",
@@ -2387,6 +2432,9 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\x6b04" L"\x3092" L"\x30af" L"\x30ea" L"\x30c3" L"\x30af" L"\x3057" L"\x3066" L"\x65b0" L"\x3057" L"\x3044" L"\x7d44" L"\x307f" L"\x5408" L"\x308f" L"\x305b" L"\x3092" L"\x62bc" L"\x3057" L"\x307e" L"\x3059" L"\x3002" L"Backspace " L"\x3067" L"\x6d88" L"\x53bb" L"\x3057" L"\x307e" L"\x3059" L"(" L"\x30b7" L"\x30e7" L"\x30fc" L"\x30c8" L"\x30ab" L"\x30c3" L"\x30c8" L"\x306f" L"\x7121" L"\x52b9" L"\x306b" L"\x306a" L"\x308a" L"\x307e" L"\x3059" L")" L"\x3002",
         L"\x540c" L"\x3058" L"\x7d44" L"\x307f" L"\x5408" L"\x308f" L"\x305b" L"\x304c" L" 2 " L"\x3064" L"\x306e" L"\x64cd" L"\x4f5c" L"\x306b" L"\x5272" L"\x308a" L"\x5f53" L"\x3066" L"\x3089" L"\x308c" L"\x3066" L"\x3044" L"\x307e" L"\x3059" L"\x3002",
         L"\x306a" L"\x3057",
+        L"\x753b" L"\x9762" L"\x306e" L"\x8d64" L"\x7dda" L"(" L"\x30aa" L"\x30f3" L" / " L"\x30aa" L"\x30d5" L")",
+        L"\x63cf" L"\x753b" L"\x30aa" L"\x30f3" L":" L"\x5de6" L" Shift " L"\x3092" L"\x62bc" L"\x3057" L"\x306a" L"\x304c" L"\x3089" L"\x30de" L"\x30a6" L"\x30b9" L"\x3092" L"\x52d5" L"\x304b" L"\x3057" L"\x307e" L"\x3059" L"\x3002" L"\x53f3" L" Shift " L"\x3067" L"\x3059" L"\x3079" L"\x3066" L"\x6d88" L"\x53bb" L"\x3057" L"\x307e" L"\x3059" L"\x3002",
+        L"\x63cf" L"\x753b" L"\x30aa" L"\x30d5" L"\x3002",
     },
     { // ko
         L"Click2Screen",
@@ -2535,5 +2583,8 @@ static const wchar_t* const kStrings[kLangCount][146] = {
         L"\xc785" L"\xb825" L"\xb780" L"\xc744" L" " L"\xd074" L"\xb9ad" L"\xd558" L"\xace0" L" " L"\xc0c8" L" " L"\xc870" L"\xd569" L"\xc744" L" " L"\xb204" L"\xb974" L"\xc138" L"\xc694" L". Backspace" L"\xb294" L" " L"\xc9c0" L"\xc6c1" L"\xb2c8" L"\xb2e4" L"(" L"\xb2e8" L"\xcd95" L"\xd0a4" L"\xac00" L" " L"\xaebc" L"\xc9d1" L"\xb2c8" L"\xb2e4" L").",
         L"\xac19" L"\xc740" L" " L"\xc870" L"\xd569" L"\xc774" L" " L"\xb450" L" " L"\xb3d9" L"\xc791" L"\xc5d0" L" " L"\xc9c0" L"\xc815" L"\xb418" L"\xc5b4" L" " L"\xc788" L"\xc2b5" L"\xb2c8" L"\xb2e4" L".",
         L"\xc5c6" L"\xc74c",
+        L"\xd654" L"\xba74" L"\xc758" L" " L"\xbe68" L"\xac04" L" " L"\xc120" L"(" L"\xcf1c" L"\xae30" L" / " L"\xb044" L"\xae30" L")",
+        L"\xadf8" L"\xb9ac" L"\xae30" L" " L"\xcf1c" L"\xc9d0" L": " L"\xc67c" L"\xcabd" L" Shift" L"\xb97c" L" " L"\xb204" L"\xb978" L" " L"\xcc44" L" " L"\xb9c8" L"\xc6b0" L"\xc2a4" L"\xb97c" L" " L"\xc6c0" L"\xc9c1" L"\xc774" L"\xc138" L"\xc694" L". " L"\xc624" L"\xb978" L"\xcabd" L" Shift" L"\xb294" L" " L"\xbaa8" L"\xb450" L" " L"\xc9c0" L"\xc6c1" L"\xb2c8" L"\xb2e4" L".",
+        L"\xadf8" L"\xb9ac" L"\xae30" L" " L"\xaebc" L"\xc9d0" L".",
     },
 };

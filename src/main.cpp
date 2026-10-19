@@ -16,6 +16,7 @@ namespace {
 
 HINSTANCE g_inst;
 HWND   g_main, g_panel, g_frame, g_tip;
+bool   g_draw;                     // the red-line drawing is switched on (with or without a recording)
 bool   g_frameBlink;               // the red frame blinks only while a recording runs or a screenshot is being made
 bool   g_modeDesktop;             // the recording covers the whole desktop: no frame, the panel sits at the bottom
 HFONT  g_font, g_fontBold;
@@ -45,6 +46,7 @@ RECT TargetRect();
 void RegisterOverlayClasses();
 void TrailOverlayHide();
 void TrailOverlayUpdate();
+void DrawResume();
 LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 
 UINT g_dpi = 96;                 // DPI of the monitor the main window is on (WM_DPICHANGED keeps it current)
@@ -422,6 +424,7 @@ void ClosePanel()
     TrailOverlayHide();
     FxStop();
     UnregisterHotKey(g_main, HK_STOP);
+    if (g_draw) DrawResume();
 }
 
 void FinishRecording(bool ok, bool userStop)
@@ -1110,6 +1113,24 @@ void OptCollect(OptState* o, Settings& s)
 
 void ShowPage(OptState* o, int page);
 
+// "Restore default" sets back the settings of the page that is open, the other pages stay as they are.
+void OptRestorePage(OptState* o)
+{
+    Settings cur = o->s; OptCollect(o, cur);
+    Settings d; SettingsDefaults(d);
+    switch (o->sel) {
+    case 0: cur.runAtStartup = d.runAtStartup; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.openFolder = d.openFolder;
+            cur.sounds = d.sounds; cur.notify = d.notify; cur.loopback = d.loopback; cur.mic = d.mic; cur.delaySec = d.delaySec; break;
+    case 1: cur.videoCodec = d.videoCodec; cur.audioCodec = d.audioCodec; cur.videoQuality = d.videoQuality; cur.audioQuality = d.audioQuality;
+            cur.fps = d.fps; cur.durH = d.durH; cur.durM = d.durM; cur.durS = d.durS; wcscpy(cur.vidFolder, d.vidFolder); break;
+    case 2: cur.imageFormat = d.imageFormat; wcscpy(cur.imgFolder, d.imgFolder); break;
+    case 3: wcscpy(cur.fileName, d.fileName); break;
+    case 4: cur.language = d.language; break;
+    case 5: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
+    }
+    o->s = cur; OptLoad(o);
+}
+
 bool OptStore(OptState* o)
 {
     HWND d = o->dlg; Settings s = o->s;
@@ -1239,7 +1260,7 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case O_BRIMG: BrowseFolder(hw, O_IMGFOLDER); break;
         case O_EXPORT: OptExport(o); break;
         case O_IMPORT: OptImport(o); break;
-        case O_DEFAULTS: { Settings cur = o->s; OptCollect(o, cur); Settings d; SettingsDefaults(d); d.language = cur.language; o->s = d; OptLoad(o); } break;
+        case O_DEFAULTS: OptRestorePage(o); break;
         }
         return 0;
     case WM_CLOSE: o->done = true; return 0;
@@ -1344,14 +1365,14 @@ bool OptionsDialog()
 
     // page 5: hotkeys (the actions of the main window and the stop of a recording)
     {
-        static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP, S_REC_DESKTOP, S_REC_REGION, S_REC_WINDOW };
-        static const int order[HKI_COUNT] = { 0, 1, 2, 4, 5, 6, 3 };               // the screenshots, the recordings, then the stop key
+        static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP, S_REC_DESKTOP, S_REC_REGION, S_REC_WINDOW, S_HK_DRAW };
+        static const int order[HKI_COUNT] = { 0, 1, 2, 4, 5, 6, 3, 7 };            // the screenshots, the recordings, the stop key, the drawing
         for (int row = 0; row < HKI_COUNT; ++row) {
             int i = order[row];
             wchar_t t[120]; wcsncpy(t, T(labels[i]), 119); t[119] = 0;
             for (wchar_t* c = t; *c; ++c) if (*c == L'\n') { *c = 0; break; }         // "Capture desktop\n(Ctrl+PrintScreen)": the name only
-            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 51 + row * 27, 250, 16, 0);
-            HWND e = edit(5, O_HK0 + i, 293, 48 + row * 27, 200, ES_READONLY | ES_CENTER);
+            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 51 + row * 24, 250, 16, 0);
+            HWND e = edit(5, O_HK0 + i, 293, 48 + row * 24, 200, ES_READONLY | ES_CENTER);
             SetPropW(e, L"c2s.hkprev", (HANDLE)SetWindowLongPtrW(e, GWLP_WNDPROC, (LONG_PTR)HkProc));
         }
         add(5, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 244, 460, 38, 0);
@@ -1523,6 +1544,25 @@ void RebuildMain(UINT dpi, const RECT* suggested)
     RoundMain();
 }
 
+// The red-line drawing without a recording: the same trail (left Shift draws, right Shift wipes, points live 10 s), shown on the
+// screen by the see-through window. A recording that is on has the effects running already; they stay when the drawing is
+// switched off, and a recording that ends leaves the drawing on.
+bool RecordingEffectsOn() { return g_panel && (g_state == ST_RECORDING || g_state == ST_PAUSED); }
+
+void DrawResume()
+{
+    FxStart();
+    SetTimer(g_main, TIMER_TRAIL, 40, nullptr);
+}
+
+void DrawSwitch()
+{
+    g_draw = !g_draw;
+    if (g_draw) { if (!RecordingEffectsOn()) DrawResume(); }
+    else if (!RecordingEffectsOn()) { TrailOverlayHide(); FxStop(); }
+    Balloon(T(S_APP), T(g_draw ? S_DRAW_ON : S_DRAW_OFF));
+}
+
 void RegisterHotkeys()
 {
     wchar_t bad[160] = L"";
@@ -1558,7 +1598,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         CreateMainControls(hw);
         return 0;
     case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
-    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); else if (wp == TIMER_TRAIL) TrailOverlayUpdate(); return 0;
+    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); else if (wp == TIMER_TRAIL) { FxSample(); TrailOverlayUpdate(); } return 0;
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); PaintMain(hw, dc); EndPaint(hw, &ps); return 0; }
     case WM_DRAWITEM: DrawMainItem((const DRAWITEMSTRUCT*)lp); return TRUE;
@@ -1610,6 +1650,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case HK_REC_DESKTOP: if (g_state == ST_IDLE) Arm(M_DESKTOP); break;      // while a recording is on the keys do nothing
         case HK_REC_REGION: if (g_state == ST_IDLE) Arm(M_REGION); break;
         case HK_REC_WINDOW: if (g_state == ST_IDLE) Arm(M_WINDOW); break;
+        case HK_DRAW: DrawSwitch(); break;
         }
         return 0;
     case WM_C2S_TRAY:

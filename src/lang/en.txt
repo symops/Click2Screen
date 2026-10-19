@@ -144,3 +144,6 @@ Stop recording
 Click a field and press the new combination. Backspace clears it (the hotkey is then off).
 The same combination is assigned to two actions.
 none
+Red lines on the screen (on / off)
+Drawing is on: hold the left Shift and move the mouse; the right Shift erases everything.
+Drawing is off.

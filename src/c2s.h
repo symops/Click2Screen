@@ -36,7 +36,7 @@ enum Str {
     S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
     S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
-    S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE,
+    S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -67,7 +67,7 @@ struct Settings {
     bool notify;                    // notifications (balloons) from the tray icon
     bool loopback;                  // record the sound that goes to the speakers (mixed with the microphone)
     bool mic;                       // record audio from the default microphone
-    int  hotkey[7];                 // global hotkeys: desktop, region, window screenshot, stop recording, desktop, region, window recording; (MOD_* << 16) | VK, 0 = off
+    int  hotkey[8];                 // global hotkeys: desktop, region, window screenshot, stop recording, desktop, region, window recording, drawing; (MOD_* << 16) | VK, 0 = off
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..10)
@@ -87,8 +87,8 @@ void SettingsUseKey(const wchar_t* key);                       // another regist
 bool SettingsExport(const Settings& s, const wchar_t* path);   // .ini, UTF-16; the language is not exported
 bool SettingsImport(Settings& s, const wchar_t* path);         // false: no such file / no Click2Screen section
 bool TemplateValid(const wchar_t* tpl);
-// Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording, 4 desktop, 5 region, 6 window recording.
-enum { HKI_COUNT = 7 };
+// Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording, 4 desktop, 5 region, 6 window recording, 7 the red-line drawing on / off.
+enum { HKI_COUNT = 8 };
 int  HotkeyDefault(int index);
 bool HotkeyUsable(int code);                                  // a key that may be registered (0 = off is not usable)
 void HotkeyName(int code, wchar_t* out, int cap);             // "Ctrl+Alt+PrintScreen"; "" for 0
@@ -123,6 +123,7 @@ private:
 // ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), a red trail while Shift is held
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
+void FxSample();                                   // reads the Shift keys: the left one adds trail points, the right one wipes the trail (FxDraw does it for every frame)
 void FxDraw(HDC dc, const RECT& src, int outW, int outH);
 int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version);   // the visible trail (the on-screen copy)
 void FxTestKeys(int keys);                         // (autotest) -1 the real keys; bit 0 left Shift, bit 1 right Shift

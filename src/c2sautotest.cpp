@@ -1180,8 +1180,8 @@ static void T_HotkeyKeys()
     Settings def; SettingsDefaults(def);
     Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_ALT | MOD_SHIFT, '4') &&
           def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11 && def.hotkey[4] == code(MOD_ALT | MOD_SHIFT, '1') &&
-          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3'),
-          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings and F11");
+          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3') && def.hotkey[7] == code(MOD_CONTROL, VK_F12),
+          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings, F11 and Ctrl+F12 for the drawing");
     bool allUsable = true; for (int i = 0; i < HKI_COUNT; ++i) if (!HotkeyUsable(def.hotkey[i])) allUsable = false;
     Check(allUsable, L"hotkeys: every default is a usable combination");
 
@@ -1764,6 +1764,36 @@ static void T_App()
         }
     }
 
+    // the drawing hotkey switches the drawing on and off; the program stays alive and answers
+    {
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(300);
+        bool onAlive = AppAlive(a);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(300);
+        Check(onAlive && AppAlive(a), L"program: the drawing hotkey can be switched on and off");
+    }
+    // "Restore default" sets back the page that is open only
+    {
+        PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
+        HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
+        Check(o != nullptr, L"program: Options opens (restore default test)");
+        if (o) {
+            Settings d; SettingsDefaults(d);
+            SendMessageW(GetDlgItem(o, O_SOUNDS), BM_SETCHECK, d.sounds ? BST_UNCHECKED : BST_CHECKED, 0);       // a general setting, changed
+            SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, d.fps == 10 ? 6 : 0, 0);                              // a video setting, changed
+            SendMessageW(GetDlgItem(o, O_HK0), WM_KEYDOWN, VK_BACK, 0);                                           // a hotkey, switched off
+            PostMessageW(o, WM_COMMAND, O_DEFAULTS, 0); Sleep(300); Pump(100);                                    // the general page is open
+            bool generalBack = (SendMessageW(GetDlgItem(o, O_SOUNDS), BM_GETCHECK, 0, 0) == BST_CHECKED) == d.sounds;
+            int fpsIdx = (int)SendMessageW(GetDlgItem(o, O_FPS), CB_GETCURSEL, 0, 0);
+            wchar_t hk0[80]; WinText(GetDlgItem(o, O_HK0), hk0, 80);
+            wchar_t dd[200]; _snwprintf(dd, 200, L"general back to default: %d, the video setting is item %d, the hotkey field says [%s]", generalBack, fpsIdx, hk0);
+            Check(generalBack, L"program: Restore default sets back the settings of the open page", dd);
+            Check(fpsIdx == (d.fps == 10 ? 6 : 0), L"program: Restore default leaves the other pages as they are", dd);
+            Check(wcscmp(hk0, T(S_HK_NONE)) == 0, L"program: Restore default leaves the hotkeys page as it is", dd);
+            PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
+            DWORD cend = GetTickCount() + WMS(8000);
+            while (IsWindow(o) && (int)(cend - GetTickCount()) > 0) Sleep(50);
+        }
+    }
     // the options window changes the settings the program keeps
     {
         PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
@@ -2480,6 +2510,26 @@ static void T_Effects()
         Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the left Shift draws the trail", kd);
         Check(redR == 0, L"effects: the right Shift wipes all the lines at once", kd);
         Check(redB == 0, L"effects: with both Shifts held nothing is drawn (the right one wins)", kd);
+    }
+    // the drawing without a recording: FxSample reads the Shift keys itself (the program calls it from a timer)
+    {
+        POINT pt[4096]; unsigned char br[4096]; unsigned ver = 0;
+        FxTestKeys(1);                                                   // the left Shift is still held from the hotkey that switched the drawing on
+        FxStart();
+        for (int i = 0; i < 6; ++i) { SetCursorPos(fr.left + 40 + i * 12, fr.top + ty); Pump(15); FxSample(); }
+        int held = FxTrailSnapshot(pt, br, 4096, &ver);
+        FxTestKeys(0);                                                   // released: now the next press draws
+        FxSample();
+        FxTestKeys(1);
+        for (int i = 0; i < 10; ++i) { SetCursorPos(fr.left + 40 + i * 12, fr.top + ty + 20); Pump(15); FxSample(); }
+        int drawn = FxTrailSnapshot(pt, br, 4096, &ver);
+        FxTestKeys(2); FxSample();
+        int wiped = FxTrailSnapshot(pt, br, 4096, &ver);
+        FxTestKeys(-1); FxStop(); SetCursorPos(2, 2);
+        wchar_t dd[160]; _snwprintf(dd, 160, L"held from the hotkey: %d points, then drawn: %d, after the right Shift: %d", held, drawn, wiped);
+        Check(held == 0, L"drawing: a Shift still held from the hotkey draws nothing until it is released", dd);
+        Check(drawn >= 6, L"drawing: without a recording the left Shift adds trail points", dd);
+        Check(wiped == 0, L"drawing: the right Shift wipes the lines", dd);
     }
     // the yellow circle round the pointer is for recordings only: a screenshot never has it
     {

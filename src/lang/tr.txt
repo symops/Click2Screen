@@ -144,3 +144,6 @@ Kaydı durdur
 Bir alana tıklayıp yeni tuş birleşimine basın. Geri Al tuşu onu siler (kısayol kapanır).
 Aynı tuş birleşimi iki eyleme atanmış.
 yok
+Ekranda kırmızı çizgiler (aç / kapat)
+Çizim açık: sol Shift'e basılı tutup fareyi hareket ettirin; sağ Shift her şeyi siler.
+Çizim kapalı.

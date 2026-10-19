@@ -144,3 +144,6 @@ Detener la grabación
 Haga clic en un campo y pulse la nueva combinación. Retroceso la borra (el atajo queda desactivado).
 La misma combinación está asignada a dos acciones.
 ninguno
+Líneas rojas en la pantalla (activar / desactivar)
+Dibujo activado: mantenga la tecla Mayús izquierda y mueva el ratón; la derecha lo borra todo.
+Dibujo desactivado.

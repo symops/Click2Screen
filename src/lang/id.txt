@@ -144,3 +144,6 @@ Hentikan perekaman
 Klik sebuah kolom lalu tekan kombinasi baru. Backspace menghapusnya (pintasan menjadi nonaktif).
 Kombinasi yang sama ditetapkan untuk dua tindakan.
 tidak ada
+Garis merah di layar (hidup / mati)
+Menggambar aktif: tahan Shift kiri dan gerakkan mouse; Shift kanan menghapus semuanya.
+Menggambar nonaktif.
