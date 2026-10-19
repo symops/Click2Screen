@@ -139,3 +139,8 @@ Status
 Click2Screen starten na de installatie
 Meldingen weergeven in het systeemvak
 Geluid van de luidsprekers opnemen
+Sneltoetsen
+Opname stoppen
+Klik op een veld en druk op de nieuwe combinatie. Backspace wist haar (de sneltoets is dan uit).
+Dezelfde combinatie is aan twee acties toegewezen.
+geen

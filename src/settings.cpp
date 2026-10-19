@@ -60,10 +60,63 @@ void SettingsDefaults(Settings& s)
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
     s.openFolder = true; s.runAtStartup = false;
+    for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
     s.delaySec = 3; s.durH = s.durM = s.durS = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
     s.fps = 25; s.language = 0;
 }
+
+int HotkeyDefault(int i)
+{
+    switch (i) {
+    case 0: return (MOD_CONTROL << 16) | VK_SNAPSHOT;
+    case 1: return ((MOD_ALT | MOD_SHIFT) << 16) | '4';
+    case 2: return ((MOD_ALT | MOD_SHIFT) << 16) | '5';
+    default: return VK_F11;
+    }
+}
+
+bool HotkeyUsable(int code)
+{
+    if (code <= 0) return false;
+    unsigned mod = ((unsigned)code >> 16) & 0xFFFF, vk = (unsigned)code & 0xFFFF;
+    if (mod & ~(unsigned)(MOD_ALT | MOD_CONTROL | MOD_SHIFT | MOD_WIN)) return false;
+    bool alone = (vk >= VK_F1 && vk <= VK_F24) || vk == VK_SNAPSHOT || vk == VK_PAUSE || vk == VK_SCROLL;   // keys that need no modifier
+    bool known = alone || (vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z') || (vk >= VK_NUMPAD0 && vk <= VK_DIVIDE) ||
+                 (vk >= 0xBA && vk <= 0xC0) || (vk >= 0xDB && vk <= 0xDF) || (vk >= VK_PRIOR && vk <= VK_DOWN) ||
+                 vk == VK_INSERT || vk == VK_DELETE || vk == VK_SPACE || vk == VK_RETURN || vk == VK_TAB || vk == VK_BACK;
+    if (!known) return false;
+    return alone || mod != 0;                                             // a plain letter would take the key from every program
+}
+
+void HotkeyName(int code, wchar_t* out, int cap)
+{
+    out[0] = 0;
+    if (code <= 0 || cap < 2) return;
+    unsigned mod = ((unsigned)code >> 16) & 0xFFFF, vk = (unsigned)code & 0xFFFF;
+    wchar_t k[40] = L"";
+    if (vk >= VK_F1 && vk <= VK_F24) _snwprintf(k, 40, L"F%u", vk - VK_F1 + 1);
+    else if ((vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z')) { k[0] = (wchar_t)vk; k[1] = 0; }
+    else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) _snwprintf(k, 40, L"Num %u", vk - VK_NUMPAD0);
+    else {
+        static const struct { unsigned vk; const wchar_t* n; } names[] = {
+            { VK_SNAPSHOT, L"PrintScreen" }, { VK_PAUSE, L"Pause" }, { VK_SCROLL, L"ScrollLock" }, { VK_SPACE, L"Space" },
+            { VK_RETURN, L"Enter" }, { VK_TAB, L"Tab" }, { VK_BACK, L"Backspace" }, { VK_DELETE, L"Delete" }, { VK_INSERT, L"Insert" },
+            { VK_HOME, L"Home" }, { VK_END, L"End" }, { VK_PRIOR, L"PageUp" }, { VK_NEXT, L"PageDown" },
+            { VK_LEFT, L"Left" }, { VK_RIGHT, L"Right" }, { VK_UP, L"Up" }, { VK_DOWN, L"Down" },
+            { VK_MULTIPLY, L"Num *" }, { VK_ADD, L"Num +" }, { VK_SUBTRACT, L"Num -" }, { VK_DECIMAL, L"Num ." }, { VK_DIVIDE, L"Num /" } };
+        for (auto& n : names) if (n.vk == vk) { wcscpy(k, n.n); break; }
+        if (!k[0]) {
+            UINT sc = MapVirtualKeyW(vk, MAPVK_VK_TO_VSC);
+            if (!sc || !GetKeyNameTextW((LONG)(sc << 16), k, 40)) _snwprintf(k, 40, L"0x%02X", vk);
+        }
+    }
+    _snwprintf(out, cap, L"%s%s%s%s%s", (mod & MOD_CONTROL) ? L"Ctrl+" : L"", (mod & MOD_ALT) ? L"Alt+" : L"",
+               (mod & MOD_SHIFT) ? L"Shift+" : L"", (mod & MOD_WIN) ? L"Win+" : L"", k);
+    out[cap - 1] = 0;
+}
+
+static const wchar_t* const kHotkeyNames[HKI_COUNT] = { L"HotkeyDesktop", L"HotkeyRegion", L"HotkeyWindow", L"HotkeyStop" };
 
 void SettingsLoad(Settings& s)
 {
@@ -93,6 +146,10 @@ void SettingsLoad(Settings& s)
     s.audioQuality = Clamp((int)GetDw(k, L"AudioQuality", d.audioQuality), 0, 2);
     s.fps          = Clamp((int)GetDw(k, L"Fps", d.fps), 5, 60);
     s.language     = Clamp((int)GetDw(k, L"Language", d.language), 0, LangCount());
+    for (int i = 0; i < HKI_COUNT; ++i) {                              // 0 = switched off; anything else must be a key that can be registered
+        int c = (int)GetDw(k, kHotkeyNames[i], d.hotkey[i]);
+        s.hotkey[i] = c == 0 || HotkeyUsable(c) ? c : d.hotkey[i];
+    }
     RegCloseKey(k);
     if (!TemplateValid(s.fileName)) wcscpy(s.fileName, d.fileName);
 }
@@ -123,6 +180,7 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"AudioQuality", s.audioQuality);
     PutDw(k, L"Fps", s.fps);
     PutDw(k, L"Language", s.language);
+    for (int i = 0; i < HKI_COUNT; ++i) PutDw(k, kHotkeyNames[i], s.hotkey[i]);
     RegCloseKey(k);
 }
 
@@ -312,6 +370,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"EnableSound", s.sounds);
     IniInt(path, L"Notifications", s.notify);
     IniInt(path, L"RecordSpeakers", s.loopback);
+    for (int i = 0; i < HKI_COUNT; ++i) IniInt(path, kHotkeyNames[i], s.hotkey[i]);
     IniInt(path, L"EnableMicRec", s.mic);
     IniInt(path, L"OpenOutFolder", s.openFolder);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
@@ -361,6 +420,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"EnableSound", 0, 1, &v)) s.sounds = v != 0;
     if (IniGetInt(path, L"Notifications", 0, 1, &v)) s.notify = v != 0;
     if (IniGetInt(path, L"RecordSpeakers", 0, 1, &v)) s.loopback = v != 0;
+    for (int i = 0; i < HKI_COUNT; ++i) if (IniGetInt(path, kHotkeyNames[i], 0, 0x7FFFFFFF, &v) && (v == 0 || HotkeyUsable(v))) s.hotkey[i] = v;
     if (IniGetInt(path, L"EnableMicRec", 0, 1, &v)) s.mic = v != 0;
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;

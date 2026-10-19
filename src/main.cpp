@@ -350,12 +350,14 @@ void UpdatePanel()
     SetCell(g_panel, IDC_P_START, b);
     EnableWindow(GetDlgItem(g_panel, IDC_P_START), g_state != ST_COUNTDOWN);
     EnableWindow(GetDlgItem(g_panel, IDC_P_STOP), g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_ARMED || g_state == ST_COUNTDOWN);
-    _snwprintf(buf, 96, L"F11: %s", T(S_STOP));
+    { wchar_t hk[80]; HotkeyName(g_cfg.hotkey[3], hk, 80); if (hk[0]) _snwprintf(buf, 96, L"%s: %s", hk, T(S_STOP)); else _snwprintf(buf, 96, L"%s", T(S_STOP)); }
     SetCell(g_panel, IDC_P_HINT, buf);
     TrayTip();
 }
 
 void FinishRecording(bool ok, bool userStop);
+void RegisterStopHotkey();
+void RegisterHotkeys();
 
 void DeleteRecs()
 {
@@ -666,7 +668,7 @@ void Arm(Mode mode)
     g_outPath[0] = 0;
     ShowMain(false);
     g_state = ST_ARMED;
-    if (!RegisterHotKey(g_main, HK_STOP, MOD_NOREPEAT, VK_F11)) { /* F11 taken: the panel button and the tray still work */ }
+    RegisterStopHotkey();
     ShowPanel();
     TrayTip();
 }
@@ -987,8 +989,47 @@ void Shot(Mode mode)
 }
 
 // ---- options -----------------------------------------------------------------------------------------------------
-const int kPages = 5;
-struct OptState { Settings s; bool ok, done; HWND dlg; HWND pg[kPages][32]; int np[kPages]; int sel; RECT tabRc[kPages]; };
+const int kPages = 6;
+struct OptState { Settings s; bool ok, done; HWND dlg; HWND pg[kPages][32]; int np[kPages]; int sel; RECT tabRc[kPages]; int hk[HKI_COUNT]; };
+
+// A hotkey field: read-only, it shows the combination and takes the next one pressed (Backspace / Delete clear it).
+void HkShow(OptState* o, int i)
+{
+    wchar_t n[80];
+    HotkeyName(o->hk[i], n, 80);
+    SetDlgItemTextW(o->dlg, O_HK0 + i, n[0] ? n : T(S_HK_NONE));
+}
+
+LRESULT CALLBACK HkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    WNDPROC prev = (WNDPROC)GetPropW(hw, L"c2s.hkprev");
+    int idx = GetDlgCtrlID(hw) - O_HK0;
+    HWND dlg = GetParent(hw);
+    OptState* o = (OptState*)GetWindowLongPtrW(dlg, GWLP_USERDATA);
+    switch (m) {
+    case WM_GETDLGCODE: return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
+    case WM_LBUTTONDOWN: SetFocus(hw); return 0;
+    case WM_CONTEXTMENU: case WM_CHAR: case WM_SYSCHAR: case WM_PASTE: case WM_CUT: case WM_CLEAR: case WM_LBUTTONDBLCLK: return 0;
+    case WM_SETFOCUS: case WM_KILLFOCUS: return CallWindowProcW(prev, hw, m, wp, lp);
+    case WM_KEYDOWN: case WM_SYSKEYDOWN: case WM_KEYUP: case WM_SYSKEYUP: {
+        if (!o || idx < 0 || idx >= HKI_COUNT) break;
+        UINT vk = (UINT)wp;
+        bool down = m == WM_KEYDOWN || m == WM_SYSKEYDOWN;
+        if (!down && vk != VK_SNAPSHOT) return 0;                         // PrintScreen reports only the release
+        if (vk == VK_SHIFT || vk == VK_CONTROL || vk == VK_MENU || vk == VK_LWIN || vk == VK_RWIN) return 0;
+        UINT mod = ((GetKeyState(VK_CONTROL) & 0x8000) ? MOD_CONTROL : 0) | ((GetKeyState(VK_MENU) & 0x8000) ? MOD_ALT : 0) |
+                   ((GetKeyState(VK_SHIFT) & 0x8000) ? MOD_SHIFT : 0) | (((GetKeyState(VK_LWIN) | GetKeyState(VK_RWIN)) & 0x8000) ? MOD_WIN : 0);
+        if (!mod && vk == VK_TAB) { SetFocus(GetNextDlgTabItem(dlg, hw, GetKeyState(VK_SHIFT) & 0x8000)); return 0; }
+        if (!mod && vk == VK_ESCAPE) { PostMessageW(dlg, WM_COMMAND, IDCANCEL, 0); return 0; }
+        if (!mod && vk == VK_RETURN) { PostMessageW(dlg, WM_COMMAND, IDOK, 0); return 0; }
+        if (!mod && (vk == VK_BACK || vk == VK_DELETE)) { o->hk[idx] = 0; HkShow(o, idx); return 0; }
+        int code = (int)((mod << 16) | vk);
+        if (HotkeyUsable(code)) { o->hk[idx] = code; HkShow(o, idx); }
+        else MessageBeep(MB_ICONWARNING);
+        return 0; }
+    }
+    return CallWindowProcW(prev, hw, m, wp, lp);
+}
 
 HWND OAdd(OptState* o, int page, HWND parent, const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id)
 {
@@ -1040,6 +1081,7 @@ void OptLoad(OptState* o)
     ComboSelectData(d, O_IMGFMT, s.imageFormat);
     SetDlgItemTextW(d, O_TPL, s.fileName);
     SendDlgItemMessageW(d, O_LANG, CB_SETCURSEL, s.language, 0);
+    for (int i = 0; i < HKI_COUNT; ++i) { o->hk[i] = s.hotkey[i]; HkShow(o, i); }
 }
 
 // The dialog's controls -> s (no checks).
@@ -1063,13 +1105,19 @@ void OptCollect(OptState* o, Settings& s)
     s.imageFormat = ComboGetData(d, O_IMGFMT, s.imageFormat);
     GetDlgItemTextW(d, O_TPL, s.fileName, 128);
     s.language = (int)SendDlgItemMessageW(d, O_LANG, CB_GETCURSEL, 0, 0); if (s.language < 0) s.language = 0;
+    for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = o->hk[i];
 }
+
+void ShowPage(OptState* o, int page);
 
 bool OptStore(OptState* o)
 {
     HWND d = o->dlg; Settings s = o->s;
     OptCollect(o, s);
     wchar_t err[300];
+    for (int i = 0; i < HKI_COUNT; ++i)
+        for (int j = i + 1; j < HKI_COUNT; ++j)
+            if (s.hotkey[i] && s.hotkey[i] == s.hotkey[j]) { ShowPage(o, 5); SetFocus(GetDlgItem(d, O_HK0 + j)); MessageBoxW(d, T(S_HK_DUP), T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false; }
     if (!TemplateValid(s.fileName)) { MessageBoxW(d, T(S_ERR_TEMPLATE), T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false; }
     // A folder that does not exist yet is created (the original only warned).
     if (!EnsureFolder(s.vidFolder, err, 300) || !EnsureFolder(s.imgFolder, err, 300)) {
@@ -1152,7 +1200,7 @@ void PaintOptions(OptState* o, HDC dc)
     RECT pg = { Sc(16), Sc(37), Sc(513), Sc(287) };
     Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
     Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
-    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG };
+    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG, S_OPT_HOTKEYS };
     SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(0, 0, 0));
     HGDIOBJ of = SelectObject(dc, g_font);
     for (int i = 0; i < kPages; ++i) {
@@ -1222,11 +1270,14 @@ bool OptionsDialog()
     HWND d = o.dlg;
     {   // the tab rectangles: the text width + 16 units, 21 units high
         HDC dc = GetDC(d); HGDIOBJ of = SelectObject(dc, g_font);
-        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG };
+        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG, S_OPT_HOTKEYS };
+        int w[kPages], sum = 0;
+        for (int i = 0; i < kPages; ++i) { SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz); w[i] = sz.cx; sum += sz.cx; }
+        int pad = Sc(16);                                                  // a long translation squeezes the padding so that all the tabs stay over the page
+        if (sum + kPages * pad > Sc(497)) pad = (Sc(497) - sum) / kPages > Sc(4) ? (Sc(497) - sum) / kPages : Sc(4);
         int x = Sc(16);
         for (int i = 0; i < kPages; ++i) {
-            SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz);
-            o.tabRc[i].left = x; o.tabRc[i].right = x + sz.cx + Sc(16); o.tabRc[i].top = Sc(16); o.tabRc[i].bottom = Sc(37);
+            o.tabRc[i].left = x; o.tabRc[i].right = x + w[i] + pad; o.tabRc[i].top = Sc(16); o.tabRc[i].bottom = Sc(37);
             x = o.tabRc[i].right;
         }
         SelectObject(dc, of); ReleaseDC(d, dc);
@@ -1291,6 +1342,19 @@ bool OptionsDialog()
     add(4, L"BUTTON", T(S_OPT_EXPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 118, 205, 22, O_EXPORT);
     add(4, L"BUTTON", T(S_OPT_IMPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 148, 205, 22, O_IMPORT);
 
+    // page 5: hotkeys (the actions of the main window and the stop of a recording)
+    {
+        static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP };
+        for (int i = 0; i < HKI_COUNT; ++i) {
+            wchar_t t[120]; wcsncpy(t, T(labels[i]), 119); t[119] = 0;
+            for (wchar_t* c = t; *c; ++c) if (*c == L'\n') { *c = 0; break; }         // "Capture desktop\n(Ctrl+PrintScreen)": the name only
+            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 63 + i * 34, 250, 16, 0);
+            HWND e = edit(5, O_HK0 + i, 293, 60 + i * 34, 200, ES_READONLY | ES_CENTER);
+            SetPropW(e, L"c2s.hkprev", (HANDLE)SetWindowLongPtrW(e, GWLP_WNDPROC, (LONG_PTR)HkProc));
+        }
+        add(5, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 208, 460, 40, 0);
+    }
+
     // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
     auto btn = [&](const wchar_t* text, DWORD style, int x, int w, int id) { MakeCtl(d, L"BUTTON", text, WS_TABSTOP | style, Sc(x), Sc(303), Sc(w), Sc(22), id); };
     btn(T(S_RESTORE_DEFAULT), BS_PUSHBUTTON, 16, 170, O_DEFAULTS);
@@ -1332,10 +1396,13 @@ bool OptionsDialog()
 // ---- main window ---------------------------------------------------------------------------------------------
 void LayoutMainText();
 
+// Settings changed: the language and the hotkeys (they are registered again; the stop key only while a recording is on).
 void ApplyLanguage()
 {
     LangSelect(g_cfg.language);
     LayoutMainText();
+    RegisterHotkeys();
+    if (g_state != ST_IDLE) RegisterStopHotkey();
     TrayTip();
 }
 
@@ -1348,7 +1415,17 @@ void LayoutMainText()
         {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW},
         {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP}, {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW},
         {IDC_MENU, S_OPTIONS} };
-    for (auto& i : t) SetWindowTextW(GetDlgItem(g_main, i.id), T(i.s));
+    for (auto& i : t) {
+        wchar_t txt[160]; wcsncpy(txt, T(i.s), 159); txt[159] = 0;
+        int hk = i.id == IDC_SHOT_DESKTOP ? 0 : i.id == IDC_SHOT_REGION ? 1 : i.id == IDC_SHOT_WINDOW ? 2 : -1;
+        if (hk >= 0) {                                                // "Capture desktop\n(Ctrl+PrintScreen)": the brackets show the hotkey in use
+            wchar_t* nl = wcschr(txt, L'\n');
+            wchar_t n[80]; HotkeyName(g_cfg.hotkey[hk], n, 80);
+            if (nl) *nl = 0;
+            if (n[0]) { wcscat(txt, L"\n("); wcscat(txt, n); wcscat(txt, L")"); }
+        }
+        SetWindowTextW(GetDlgItem(g_main, i.id), txt);
+    }
     InvalidateRect(g_main, nullptr, TRUE);
 }
 
@@ -1445,14 +1522,27 @@ void RebuildMain(UINT dpi, const RECT* suggested)
 
 void RegisterHotkeys()
 {
+    static const int ids[3] = { HK_DESKTOP, HK_REGION, HK_WINDOW };
     wchar_t bad[160] = L"";
-    struct { int id; UINT mod; UINT vk; const wchar_t* name; } hk[] = {
-        { HK_DESKTOP, MOD_CONTROL | MOD_NOREPEAT, VK_SNAPSHOT, L"Ctrl+PrintScreen" },
-        { HK_REGION,  MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, '4', L"Alt+Shift+4" },
-        { HK_WINDOW,  MOD_ALT | MOD_SHIFT | MOD_NOREPEAT, '5', L"Alt+Shift+5" } };
-    for (auto& h : hk)
-        if (!RegisterHotKey(g_main, h.id, h.mod, h.vk)) { if (bad[0]) wcscat(bad, L", "); wcscat(bad, h.name); }
+    for (int i = 0; i < 3; ++i) {
+        UnregisterHotKey(g_main, ids[i]);
+        if (!g_cfg.hotkey[i]) continue;                                    // switched off in the options
+        UINT mod = ((UINT)g_cfg.hotkey[i] >> 16) | MOD_NOREPEAT, vk = (UINT)g_cfg.hotkey[i] & 0xFFFF;
+        if (!RegisterHotKey(g_main, ids[i], mod, vk)) {
+            wchar_t n[80]; HotkeyName(g_cfg.hotkey[i], n, 80);
+            if (bad[0]) wcscat(bad, L", ");
+            wcscat(bad, n);
+        }
+    }
     if (bad[0]) { wchar_t msg[260]; _snwprintf(msg, 260, T(S_ERR_HOTKEY), bad); Balloon(T(S_APP), msg); }
+}
+
+// The stop key works while a recording is armed or running.
+void RegisterStopHotkey()
+{
+    UnregisterHotKey(g_main, HK_STOP);
+    if (!g_cfg.hotkey[3]) return;
+    RegisterHotKey(g_main, HK_STOP, ((UINT)g_cfg.hotkey[3] >> 16) | MOD_NOREPEAT, (UINT)g_cfg.hotkey[3] & 0xFFFF);   // taken by another program: the panel button and the tray still work
 }
 
 LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
@@ -1477,10 +1567,8 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         if (nm->hdr.code == TTN_GETDISPINFOW) {
             static wchar_t tip[120];
             int id = GetDlgCtrlID((HWND)nm->hdr.idFrom);
-            static const struct { int id; Str s; } t[] = { {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW},
-                {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP}, {IDC_SHOT_REGION, S_SHOT_REGION}, {IDC_SHOT_WINDOW, S_SHOT_WINDOW} };
             tip[0] = 0;
-            for (auto& i : t) if (i.id == id) { wcsncpy(tip, T(i.s), 119); tip[119] = 0; }
+            if (id >= IDC_REC_DESKTOP && id <= IDC_SHOT_WINDOW) GetWindowTextW(GetDlgItem(hw, id), tip, 120);      // the window text of the button, set by LayoutMainText
             for (wchar_t* c = tip; *c; ++c) if (*c == L'\n') *c = L' ';       // "Capture desktop (Ctrl+PrintScreen)"
             nm->lpszText = tip;
         }

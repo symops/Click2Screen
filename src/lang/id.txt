@@ -139,3 +139,8 @@ Status
 Jalankan Click2Screen setelah pemasangan
 Tampilkan notifikasi di area notifikasi
 Rekam suara dari speaker
+Pintasan
+Hentikan perekaman
+Klik sebuah kolom lalu tekan kombinasi baru. Backspace menghapusnya (pintasan menjadi nonaktif).
+Kombinasi yang sama ditetapkan untuk dua tindakan.
+tidak ada

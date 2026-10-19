@@ -177,6 +177,26 @@ static void SelData(HWND cb, int data)       // a format combo lists only the fo
     SendMessageW(cb, CB_SETCURSEL, pick, 0);
 }
 
+// Four different hotkeys, each usable or switched off. plain: function keys only (the test can press them without holding a modifier).
+static void RandomHotkeys(int* hk, bool plain)
+{
+    for (int i = 0; i < HKI_COUNT; ++i) {
+        for (;;) {
+            int c;
+            if (Chance(15)) c = 0;
+            else if (plain || Chance(30)) c = VK_F1 + R(0, 23);
+            else {
+                static const UINT mods[] = { MOD_CONTROL, MOD_ALT, MOD_SHIFT, MOD_CONTROL | MOD_ALT, MOD_ALT | MOD_SHIFT, MOD_CONTROL | MOD_SHIFT | MOD_WIN, MOD_WIN };
+                c = (int)((mods[R(0, 6)] << 16) | (Chance(50) ? 'A' + R(0, 25) : Chance(50) ? '0' + R(0, 9) : VK_SNAPSHOT));
+            }
+            bool dup = false;
+            for (int j = 0; j < i; ++j) if (c && hk[j] == c) dup = true;
+            if (dup) continue;
+            hk[i] = c; break;
+        }
+    }
+}
+
 static void RandomSettings(Settings& s)
 {
     SettingsDefaults(s);
@@ -197,6 +217,7 @@ static void RandomSettings(Settings& s)
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
     s.fps = f[R(0, 7)];
     s.language = R(0, LangCount());
+    RandomHotkeys(s.hotkey, false);
 }
 
 static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguage, wchar_t* why)
@@ -206,6 +227,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
     CMPS(vidFolder) CMPS(imgFolder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
     CMPI(openFolder) CMPI(delaySec) CMPI(durH) CMPI(durM) CMPI(durS) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
+    for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
     return true;
 }
@@ -1139,6 +1161,54 @@ static LRESULT CALLBACK HkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hw, m, wp, lp);
 }
 
+// ---- hotkeys: which combinations are accepted, how they are named, how they are stored --------------------------------------
+static void T_HotkeyKeys()
+{
+    auto code = [](UINT mod, UINT vk) { return (int)((mod << 16) | vk); };
+    Check(HotkeyUsable(code(MOD_CONTROL, VK_SNAPSHOT)) && HotkeyUsable(code(0, VK_F11)) && HotkeyUsable(code(MOD_ALT | MOD_SHIFT, '4')) &&
+          HotkeyUsable(code(MOD_WIN, 'S')) && HotkeyUsable(code(0, VK_PAUSE)), L"hotkeys: usable combinations are accepted");
+    Check(!HotkeyUsable(0) && !HotkeyUsable(code(0, 'A')) && !HotkeyUsable(code(0, '5')) && !HotkeyUsable(code(MOD_CONTROL, VK_CONTROL)) &&
+          !HotkeyUsable(code(MOD_ALT, VK_SHIFT)) && !HotkeyUsable(code(0, VK_LBUTTON)) && !HotkeyUsable(code(0x100, 'A')) && !HotkeyUsable(-5),
+          L"hotkeys: a plain letter, a modifier alone, a mouse button and unknown bits are refused");
+    wchar_t n[80];
+    HotkeyName(code(MOD_CONTROL, VK_SNAPSHOT), n, 80); bool a = Same(n, L"Ctrl+PrintScreen");
+    HotkeyName(code(MOD_ALT | MOD_SHIFT, '4'), n, 80); bool b = Same(n, L"Alt+Shift+4");
+    HotkeyName(code(0, VK_F11), n, 80); bool c = Same(n, L"F11");
+    HotkeyName(code(MOD_CONTROL | MOD_ALT | MOD_SHIFT | MOD_WIN, VK_F5), n, 80); bool d = Same(n, L"Ctrl+Alt+Shift+Win+F5");
+    HotkeyName(0, n, 80); bool e = n[0] == 0;
+    Check(a && b && c && d && e, L"hotkeys: the names read Ctrl+Alt+Shift+Win+Key and nothing for \"off\"");
+    Settings def; SettingsDefaults(def);
+    Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_ALT | MOD_SHIFT, '4') &&
+          def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11, L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4, Alt+Shift+5 and F11");
+    bool allUsable = true; for (int i = 0; i < HKI_COUNT; ++i) if (!HotkeyUsable(def.hotkey[i])) allUsable = false;
+    Check(allUsable, L"hotkeys: every default is a usable combination");
+
+    // stored values: off stays off, rubbish becomes the default
+    SettingsUseKey(L"Software\\Click2Screen-Autotest");
+    Settings a1 = def; a1.hotkey[1] = 0; a1.hotkey[3] = code(MOD_CONTROL | MOD_SHIFT, 'Q');
+    SettingsSave(a1);
+    Settings b1; SettingsLoad(b1);
+    Check(b1.hotkey[1] == 0 && b1.hotkey[3] == a1.hotkey[3] && b1.hotkey[0] == def.hotkey[0], L"hotkeys: a switched-off hotkey and a changed one survive saving");
+    HKEY k;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Click2Screen-Autotest", 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) == ERROR_SUCCESS) {
+        DWORD bad1 = 0x41, bad2 = 0xFFFFFFFF, bad3 = 0x00020000; // a plain letter, negative, a modifier without a key
+        RegSetValueExW(k, L"HotkeyDesktop", 0, REG_DWORD, (BYTE*)&bad1, 4); RegSetValueExW(k, L"HotkeyRegion", 0, REG_DWORD, (BYTE*)&bad2, 4);
+        RegSetValueExW(k, L"HotkeyWindow", 0, REG_DWORD, (BYTE*)&bad3, 4);
+        RegCloseKey(k);
+        Settings c1; SettingsLoad(c1);
+        Check(c1.hotkey[0] == def.hotkey[0] && c1.hotkey[1] == def.hotkey[1] && c1.hotkey[2] == def.hotkey[2], L"hotkeys: unusable stored values fall back to the defaults");
+    }
+    // the ini file refuses them too
+    Settings a2 = def; a2.hotkey[0] = code(MOD_ALT, 'Z');
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\hotkeys-%d.ini", g_dir, R(0, 99999));
+    if (SettingsExport(a2, path)) {
+        WritePrivateProfileStringW(L"Click2Screen", L"HotkeyRegion", L"65", path);             // a plain letter
+        Settings b2 = def; b2.hotkey[0] = 0;
+        bool im = SettingsImport(b2, path);
+        Check(im && b2.hotkey[0] == a2.hotkey[0] && b2.hotkey[1] == def.hotkey[1], L"hotkeys: the ini file keeps a usable combination and ignores an unusable one");
+    }
+}
+
 static void T_Hotkeys()
 {
     static bool reg = false;
@@ -1549,7 +1619,20 @@ static void AppSettings(Settings& s, int language)
     s.mic = false;
 }
 
-static void AppTexts(App& a, int language, const wchar_t* tag)
+static int HkIndexOf(int id) { return id == IDC_SHOT_DESKTOP ? 0 : id == IDC_SHOT_REGION ? 1 : id == IDC_SHOT_WINDOW ? 2 : -1; }
+
+// What the program writes on a button: the text of the language with the hotkey in use in the brackets of the second line.
+static void ExpectedButtonText(Str s, int hkIndex, const int* hk, wchar_t* out, int cap)
+{
+    wcsncpy(out, T(s), cap - 1); out[cap - 1] = 0;
+    if (hkIndex < 0) return;
+    wchar_t* nl = wcschr(out, L'\n');
+    if (nl) *nl = 0;
+    wchar_t n[80]; HotkeyName(hk[hkIndex], n, 80);
+    if (n[0]) { wcscat(out, L"\n("); wcscat(out, n); wcscat(out, L")"); }
+}
+
+static void AppTexts(App& a, int language, const wchar_t* tag, const int* hk)
 {
     LangSelect(language);
     struct { int id; Str s; } t[] = { {IDC_REC_DESKTOP, S_REC_DESKTOP}, {IDC_REC_REGION, S_REC_REGION}, {IDC_REC_WINDOW, S_REC_WINDOW}, {IDC_SHOT_DESKTOP, S_SHOT_DESKTOP},
@@ -1558,15 +1641,15 @@ static void AppTexts(App& a, int language, const wchar_t* tag)
     DWORD end = GetTickCount() + WMS(8000);                   // the program rebuilds its texts a moment after the change
     for (;;) {
         bad = 0;
-        for (auto& i : t) { wchar_t got[400]; WinText(GetDlgItem(a.main, i.id), got, 400); if (wcscmp(got, T(i.s))) ++bad; }
+        for (auto& i : t) { wchar_t got[400], want[400]; WinText(GetDlgItem(a.main, i.id), got, 400); ExpectedButtonText(i.s, HkIndexOf(i.id), hk, want, 400); if (wcscmp(got, want)) ++bad; }
         wchar_t title[200]; WinText(a.main, title, 200);
         if (wcscmp(title, T(S_APP))) ++bad;
         if (!bad || (int)(end - GetTickCount()) <= 0) break;
         Sleep(100);
     }
     if (bad) for (auto& i : t) {
-        wchar_t got[400]; WinText(GetDlgItem(a.main, i.id), got, 400);
-        if (wcscmp(got, T(i.s))) Rep(L"INFO", L"  control %d: [%s] expected [%s]", i.id, got, T(i.s));
+        wchar_t got[400], want[400]; WinText(GetDlgItem(a.main, i.id), got, 400); ExpectedButtonText(i.s, HkIndexOf(i.id), hk, want, 400);
+        if (wcscmp(got, want)) Rep(L"INFO", L"  control %d: [%s] expected [%s]", i.id, got, want);
     }
     wchar_t nm[160]; _snwprintf(nm, 160, L"program: the main window speaks language %d (%s)", language, tag);
     Check(bad == 0, nm);
@@ -1586,7 +1669,7 @@ static void T_App()
     if (!StartApp(a, s)) { FAIL(L"program: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
     INFO(L"program flow: language %d, delay %d s, limit %d s", language, s.delaySec, s.durS);
     LangSelect(language == 0 ? 0 : language);
-    AppTexts(a, language, L"at start");
+    AppTexts(a, language, L"at start", s.hotkey);
 
     // a second copy hands over to the first and ends
     {
@@ -1691,6 +1774,15 @@ static void T_App()
             static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
             w.fps = fpsv[R(0, 6)];
             w.language = R(0, LangCount());
+            RandomHotkeys(w.hotkey, true);                          // function keys: pressed without a modifier held
+            bool dupKeys = Chance(25);
+            if (dupKeys) { w.hotkey[1] = w.hotkey[0] = VK_F1 + R(0, 23); }
+            for (int i = 0; i < HKI_COUNT; ++i) {
+                HWND e = GetDlgItem(o, O_HK0 + i);
+                if (!e) continue;
+                SendMessageW(e, WM_KEYDOWN, VK_BACK, 0);              // off first, then the key
+                if (w.hotkey[i]) SendMessageW(e, WM_KEYDOWN, (WPARAM)w.hotkey[i], 0);
+            }
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
             chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
             wchar_t n[16];
@@ -1704,13 +1796,13 @@ static void T_App()
             _snwprintf(n, 16, L"%d", w.durS); SetText(GetDlgItem(o, O_DS), n);
             SelData(GetDlgItem(o, O_IMGFMT), w.imageFormat);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
-            bool bad = Chance(30);
-            SetText(GetDlgItem(o, O_TPL), bad ? L"a#b#" : w.fileName);
+            bool bad = Chance(30) || dupKeys;
+            SetText(GetDlgItem(o, O_TPL), bad && !dupKeys ? L"a#b#" : w.fileName);
             PostMessageW(o, WM_COMMAND, IDOK, 0);
             if (bad) {
                 bool warned = DismissBox(a.pi.dwProcessId, IDOK, 5000);
                 Sleep(300);
-                Check(warned && IsWindow(o), L"program: an invalid template is refused with a message and the window stays open");
+                Check(warned && IsWindow(o), dupKeys ? L"program: the same hotkey on two actions is refused with a message and the window stays open" : L"program: an invalid template is refused with a message and the window stays open");
                 PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
                 DWORD cend = GetTickCount() + WMS(8000);
                 while (IsWindow(o) && (int)(cend - GetTickCount()) > 0) Sleep(50);
@@ -1726,7 +1818,34 @@ static void T_App()
                 end = GetTickCount() + WMS(10000);                  // the program stores the settings just after the window closes
                 do { SettingsLoad(now); same = SettingsEqual(w, now, true, why); if (!same) Sleep(100); } while (!same && (int)(end - GetTickCount()) > 0);
                 Check(!IsWindow(o) && same, L"program: OK stores exactly what the options window showed", why);
-                AppTexts(a, w.language, L"after changing the language in Options");
+                // the program registered exactly the new hotkeys: another window cannot take them, but can take the freed ones
+                {
+                    static bool hreg = false;
+                    if (!hreg) {
+                        WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
+                        wc.lpfnWndProc = HkProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"C2SAutotestHotkeys";
+                        RegisterClassW(&wc); hreg = true;
+                    }
+                    HWND hw2 = CreateWindowExW(0, L"C2SAutotestHotkeys", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+                    Sleep(300);
+                    int taken = 0, wrongFree = 0, freedOld = 0, wrongNew = 0, wrongOld = 0;
+                    Settings def; SettingsDefaults(def);
+                    for (int i = 0; i < 3; ++i) {                         // the stop key is registered only while a recording is on
+                        if (w.hotkey[i] && !(g_wine && (w.hotkey[i] & 0xFFFF) == VK_SNAPSHOT)) {
+                            if (RegisterHotKey(hw2, 50 + i, (UINT)w.hotkey[i] >> 16, (UINT)w.hotkey[i] & 0xFFFF)) { UnregisterHotKey(hw2, 50 + i); ++wrongFree; ++wrongNew; } else ++taken;
+                        }
+                        if (g_wine && (def.hotkey[i] & 0xFFFF) == VK_SNAPSHOT) continue;      // Wine refuses Ctrl+PrintScreen to everybody
+                        bool oldStillUsed = false; for (int j = 0; j < 3; ++j) if (w.hotkey[j] == def.hotkey[i]) oldStillUsed = true;
+                        if (!oldStillUsed) {
+                            if (RegisterHotKey(hw2, 60 + i, (UINT)def.hotkey[i] >> 16, (UINT)def.hotkey[i] & 0xFFFF)) { UnregisterHotKey(hw2, 60 + i); ++freedOld; } else { ++wrongFree; ++wrongOld; wchar_t hn[60]; HotkeyName(def.hotkey[i], hn, 60); Rep(L"INFO", L"  old hotkey %s still taken (new hotkeys %d %d %d)", hn, w.hotkey[0], w.hotkey[1], w.hotkey[2]); }
+                        }
+                    }
+                    DestroyWindow(hw2);
+                    wchar_t d2[120]; _snwprintf(d2, 120, L"%d new ones taken by the program, %d new ones still free, %d old ones released, %d old ones still taken", taken, wrongNew, freedOld, wrongOld);
+                    if (g_wine && wrongNew && !wrongOld) SKIP(L"program: Wine does not report a hotkey taken by another process (%s)", d2);
+                    else Check(wrongFree == 0, L"program: after OK the new hotkeys are registered by the program and the old ones are released", d2);
+                }
+                AppTexts(a, w.language, L"after changing the language in Options", w.hotkey);
             }
         }
     }
@@ -2618,7 +2737,7 @@ static void T_AppLocale()
     App a;
     if (!StartApp(a, s)) { FAIL(L"locale: the program did not start"); StopApp(a, false); return; }
     wchar_t tag[80]; _snwprintf(tag, 80, L"automatic language, the system's is %s", LangName(LangAutoIndex()));
-    AppTexts(a, 0, tag);
+    AppTexts(a, 0, tag, s.hotkey);
     StopApp(a);
 }
 
@@ -2800,7 +2919,7 @@ int wmain(int argc, wchar_t** argv)
         { L"pickers", T_Pickers, 3 }, { L"recorder", T_Recorder, 3 }, { L"scheduler", T_RecorderSched, 3 },
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
-        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
+        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
         { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));

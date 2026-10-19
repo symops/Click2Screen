@@ -36,6 +36,7 @@ enum Str {
     S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
     S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
+    S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -66,6 +67,7 @@ struct Settings {
     bool notify;                    // notifications (balloons) from the tray icon
     bool loopback;                  // record the sound that goes to the speakers (mixed with the microphone)
     bool mic;                       // record audio from the default microphone
+    int  hotkey[4];                 // global hotkeys: desktop, region, window screenshot, stop recording; (MOD_* << 16) | VK, 0 = off
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..10)
@@ -85,6 +87,11 @@ void SettingsUseKey(const wchar_t* key);                       // another regist
 bool SettingsExport(const Settings& s, const wchar_t* path);   // .ini, UTF-16; the language is not exported
 bool SettingsImport(Settings& s, const wchar_t* path);         // false: no such file / no Click2Screen section
 bool TemplateValid(const wchar_t* tpl);
+// Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording.
+enum { HKI_COUNT = 4 };
+int  HotkeyDefault(int index);
+bool HotkeyUsable(int code);                                  // a key that may be registered (0 = off is not usable)
+void HotkeyName(int code, wchar_t* out, int cap);             // "Ctrl+Alt+PrintScreen"; "" for 0
 // Builds "<folder>\<name>.<ext>" from the template. Numbered templates (#) take the first free number from the stored
 // counter on; the counter is saved. Returns false when the folder cannot be used (err = message).
 bool BuildOutputPath(const wchar_t* folder, const wchar_t* tpl, const wchar_t* ext, const wchar_t* counterKey,

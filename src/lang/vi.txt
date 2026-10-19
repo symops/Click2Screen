@@ -139,3 +139,8 @@ Trạng thái
 Chạy Click2Screen sau khi cài đặt
 Hiển thị thông báo trong khu vực thông báo
 Ghi âm thanh từ loa
+Phím tắt
+Dừng quay
+Nhấp vào ô rồi nhấn tổ hợp phím mới. Backspace sẽ xóa tổ hợp (phím tắt bị tắt).
+Cùng một tổ hợp phím được gán cho hai thao tác.
+không có

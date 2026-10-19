@@ -139,3 +139,8 @@ Stan
 Uruchom Click2Screen po instalacji
 Pokazuj powiadomienia w obszarze powiadomień
 Nagrywaj dźwięk z głośników
+Skróty klawiszowe
+Zatrzymaj nagrywanie
+Kliknij pole i naciśnij nową kombinację. Backspace ją usuwa (skrót zostaje wyłączony).
+Ta sama kombinacja jest przypisana do dwóch działań.
+brak

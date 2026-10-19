@@ -139,3 +139,8 @@ Stato
 Avvia Click2Screen dopo l'installazione
 Mostra le notifiche nell'area di notifica
 Registra l'audio degli altoparlanti
+Scorciatoie
+Interrompi registrazione
+Fai clic su un campo e premi la nuova combinazione. Backspace la cancella (la scorciatoia viene disattivata).
+La stessa combinazione è assegnata a due azioni.
+nessuna

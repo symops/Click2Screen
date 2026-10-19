@@ -139,3 +139,8 @@ Durum
 Kurulumdan sonra Click2Screen'i başlat
 Bildirim alanında bildirimleri göster
 Hoparlörlerden gelen sesi kaydet
+Kısayollar
+Kaydı durdur
+Bir alana tıklayıp yeni tuş birleşimine basın. Geri Al tuşu onu siler (kısayol kapanır).
+Aynı tuş birleşimi iki eyleme atanmış.
+yok

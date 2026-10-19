@@ -139,3 +139,8 @@ Status
 Start Click2Screen after installation
 Show notifications in the notification area
 Record sound from the speakers
+Hotkeys
+Stop recording
+Click a field and press the new combination. Backspace clears it (the hotkey is then off).
+The same combination is assigned to two actions.
+none

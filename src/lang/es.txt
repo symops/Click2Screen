@@ -139,3 +139,8 @@ Estado
 Iniciar Click2Screen tras la instalación
 Mostrar notificaciones en el área de notificaciones
 Grabar el sonido de los altavoces
+Atajos
+Detener la grabación
+Haga clic en un campo y pulse la nueva combinación. Retroceso la borra (el atajo queda desactivado).
+La misma combinación está asignada a dos acciones.
+ninguno
