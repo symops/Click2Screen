@@ -904,8 +904,7 @@ void Shot(Mode mode)
         wcscpy(last, path);
         wchar_t msg[MAX_PATH + 40]; _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), path);
         SetStatus(msg);
-        if (g_cfg.openEditor) OpenEditor(g_main, bmps[i], path, g_cfg.imageFormat);   // takes the bitmap
-        else DeleteObject(bmps[i]);
+        DeleteObject(bmps[i]);
         bmps[i] = nullptr;
     }
     if (saved) Beep(false);
@@ -953,7 +952,7 @@ void OptLoad(OptState* o)
     HWND d = o->dlg; Settings& s = o->s;
     auto chk = [&](int id, bool v) { CheckDlgButton(d, id, v ? BST_CHECKED : BST_UNCHECKED); };
     chk(O_AUTOSTART, s.runAtStartup); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
-    chk(O_OPENEDITOR, s.openEditor); chk(O_SOUNDS, s.sounds); chk(O_MIC, s.mic);
+    chk(O_SOUNDS, s.sounds); chk(O_MIC, s.mic);
     SendDlgItemMessageW(d, O_DELAY, CB_SETCURSEL, s.delaySec < 0 ? 0 : s.delaySec > 10 ? 10 : s.delaySec, 0);
     ComboSelectData(d, O_VCODEC, s.videoCodec);
     SendDlgItemMessageW(d, O_ACODEC, CB_SETCURSEL, s.audioCodec, 0);
@@ -975,7 +974,7 @@ void OptCollect(OptState* o, Settings& s)
     HWND d = o->dlg;
     auto chk = [&](int id) { return IsDlgButtonChecked(d, id) == BST_CHECKED; };
     s.runAtStartup = chk(O_AUTOSTART); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.openFolder = chk(O_OPENFOLDER);
-    s.openEditor = chk(O_OPENEDITOR); s.sounds = chk(O_SOUNDS); s.mic = chk(O_MIC);
+    s.sounds = chk(O_SOUNDS); s.mic = chk(O_MIC);
     auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
     { int i = (int)SendDlgItemMessageW(d, O_DELAY, CB_GETCURSEL, 0, 0); s.delaySec = i < 0 ? 0 : i > 10 ? 10 : i; }
     s.videoCodec = ComboGetData(d, O_VCODEC, s.videoCodec);
@@ -1172,8 +1171,8 @@ bool OptionsDialog()
     for (int i = 0; i <= 10; ++i) { wchar_t n[8]; _snwprintf(n, 8, L"%d", i); ComboAdd(dl, n); }
     label(0, S_OPT_SECONDS, 294, 61, 150);
     static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE},
-        {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_OPEN_EDITOR, O_OPENEDITOR}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_MIC, O_MIC} };
-    for (int i = 0; i < 7; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 91 + i * 57 / 2, 460, 18, chk[i].id);
+        {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_MIC, O_MIC} };
+    for (int i = 0; i < 6; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 91 + i * 57 / 2, 460, 18, chk[i].id);
 
     // page 1: video (left column) and audio (right column)
     label(1, S_OPT_VIDEO_OPTIONS, 35, 52, 220); label(1, S_OPT_AUDIO_OPTIONS, 270, 52, 220);

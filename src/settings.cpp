@@ -58,8 +58,8 @@ void SettingsDefaults(Settings& s)
     KnownFolder(FOLDERID_Pictures, L"Click2Screen", s.imgFolder, MAX_PATH);
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
-    s.capMouse = true; s.highlight = false; s.sounds = true; s.mic = true;
-    s.openFolder = true; s.openEditor = false; s.runAtStartup = false;
+    s.capMouse = true; s.highlight = true; s.sounds = true; s.mic = true;
+    s.openFolder = true; s.runAtStartup = false;
     s.delaySec = 3; s.durH = s.durM = s.durS = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
     s.fps = 25; s.language = 0;
@@ -80,7 +80,6 @@ void SettingsLoad(Settings& s)
     s.sounds       = GetDw(k, L"EnableSound", d.sounds) != 0;
     s.mic          = GetDw(k, L"EnableMicRec", d.mic) != 0;
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
-    s.openEditor   = GetDw(k, L"OpenEditor", d.openEditor) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
     s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
     s.durH         = Clamp((int)GetDw(k, L"RecDurationHour", 0), 0, 99);
@@ -109,7 +108,6 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"EnableSound", s.sounds);
     PutDw(k, L"EnableMicRec", s.mic);
     PutDw(k, L"OpenOutFolder", s.openFolder);
-    PutDw(k, L"OpenEditor", s.openEditor);
     PutDw(k, L"RunAtStartup", s.runAtStartup);
     PutDw(k, L"Delay", s.delaySec);
     PutDw(k, L"RecDurationHour", s.durH);
@@ -310,7 +308,6 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"EnableSound", s.sounds);
     IniInt(path, L"EnableMicRec", s.mic);
     IniInt(path, L"OpenOutFolder", s.openFolder);
-    IniInt(path, L"OpenEditor", s.openEditor);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
     IniInt(path, L"Delay", s.delaySec);
     IniInt(path, L"RecDurationHour", s.durH);
@@ -358,7 +355,6 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"EnableSound", 0, 1, &v)) s.sounds = v != 0;
     if (IniGetInt(path, L"EnableMicRec", 0, 1, &v)) s.mic = v != 0;
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
-    if (IniGetInt(path, L"OpenEditor", 0, 1, &v)) s.openEditor = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
     if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
     if (IniGetInt(path, L"RecDurationHour", 0, 99, &v)) s.durH = v;

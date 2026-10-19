@@ -1,7 +1,7 @@
 # Click2Screen — screen recorder and screenshot tool for Windows 10/11
 
 Click2Screen records the desktop, a region or a window to MP4 (H.264 or H.265), WMV, AVI or an animated GIF (sound from the
-microphone where the format has sound) and takes screenshots of the desktop, a region or a window, with global hotkeys, a tray icon and a small editor. It is a plain Win32
+microphone where the format has sound) and takes screenshots of the desktop, a region or a window, with global hotkeys and a tray icon. It is a plain Win32
 program (no frameworks, no codec packs: the encoder is the one Windows ships with). A sister project of
 [Speak2Mic](https://github.com/symops/Speak2Mic) and [Show2Cam](https://github.com/symops/Show2Cam); the installer works the
 same way. **It never touches the network**: no update check, no telemetry, no downloads (a test checks that).
@@ -16,11 +16,10 @@ watermarks and online components are deliberately not reproduced.
 |---|---|
 | **Record desktop / region / window** | The desktop gives **one file for each monitor** (like the screenshots); the pointed window or the dragged region is one file, with a red frame round it that blinks while the recording runs (steady while the area is only chosen or paused). The region is dragged over a dimmed picture of the desktop, a window is pointed at (the bare desktop counts as a window: its work area, without the taskbar). A small panel (excluded from the recording) has Start / Pause / Stop and shows the time and the file size; **F11** stops. The recorded window may move and be resized while recording. |
 | **Screenshots** | `Ctrl+PrintScreen` — desktop (**each monitor in its own file**, not one merged picture), `Alt+Shift+4` — region, `Alt+Shift+5` — window. PNG, JPEG, BMP, GIF, TIFF, WebP or JPEG XR (the list shows the ones this Windows can write). |
-| **Editor** | After a screenshot (optional): red rectangles, undo, zoom, Save / Save as. |
 | **Delay and countdown** | 0–10 s (a drop-down list) before a recording or a screenshot: big red digits 3 – 2 – 1 in the middle of the chosen area (of every monitor for the whole desktop) and a short mechanical click each second, made after the original's one (the only sound; it can be switched off). The red frame blinks while a screenshot is being made too. |
 | **Time limit** | Stop a recording after hours / minutes / seconds. |
 | **Microphone** | The default microphone, mono 16-bit, 44.1 kHz → AAC or MP3 in the MP4; muted while paused. If it cannot be opened the video is recorded without sound (a message says so). |
-| **Pointer** | Drawn into recordings and screenshots with a translucent yellow circle round it (optional). In every recording (whether or not the pointer itself is drawn) every click makes a wave — left button blue, right red, middle purple — and while **Shift** is held a thin red trail follows the pointer; each point of the trail fades away five minutes after it was drawn, the oldest first. |
+| **Pointer** | Drawn into recordings and screenshots with a translucent yellow circle round it (optional). With "include the pointer" on, every recording has a yellow circle round the pointer and every click makes a wave — left button blue, right red, middle purple — and while **Shift** is held a thin red trail follows the pointer; each point of the trail fades away five minutes after it was drawn, the oldest first. |
 | **Video formats** | MP4 with H.264 ("best" or "fast"), MP4 with H.265 / HEVC (when Windows has the encoder), WMV (Windows Media Video + Windows Media Audio), AVI (Motion-JPEG + PCM sound, written by the program itself) and animated GIF (no sound, at most 960 × 540 and 15 frames a second). Every format ships with Windows: no codec packs. |
 | **Quality** | Video quality high / medium / low (bit rate follows the frame size and the frame rate), 10–60 fps, audio quality high / medium / low. The frame is at most 1920×1080 (the aspect is kept), both sides even. |
 | **Files** | Name template `File $D.$M.$Y $H-$N-$S`, `Img####` (the `#` run is a sequence number), `%USERNAME%`; never overwrites; "open the folder and select the file" after capture. |
@@ -85,11 +84,10 @@ The interface strings live in `src/lang/<code>.txt` (one line per string of `enu
     a second copy handing over to the first, hotkey screenshots of the desktop / a dragged region / a pointed window (size
     and colours of the file), recording through the panel (countdown, pause, resume, hide, tray command, F11, Stop, the time
     limit), the options window (OK stores exactly what it showed, an invalid template is refused, Cancel changes nothing,
-    language switching, the autostart box writes and removes the `Run` entry), the editor opened from the program, hotkeys held
+    language switching, the autostart box writes and removes the `Run` entry), hotkeys held
     by another program, an unusable folder, and a "monkey" that does 25–50 random things in a row while the program must stay
     alive and answering; Exit ends it with code 0;
-  * *pickers and editor*: the region and window pickers driven by messages (any drag direction, a stray click first, Esc), the
-    editor (rectangles drawn and saved, 40 random zoom / scroll / resize messages);
+  * *pickers*: the region and window pickers driven by messages (any drag direction, a stray click first, Esc);
   * *recorder*: start / stop cycles and refusals, the frame schedule with pauses, pause spam from another thread, the time
     limit, a long recording without drift, a window that moves while recorded and the video file itself in a random format: with
     Media Foundation the MP4 / WMV (codec, size, duration, frame count, a decoded frame's colours, the microphone track); the

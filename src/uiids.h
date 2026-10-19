@@ -13,7 +13,7 @@ enum State { ST_IDLE, ST_ARMED, ST_COUNTDOWN, ST_RECORDING, ST_PAUSED };
 #define WM_C2S_SHOW   (WM_APP + 2)
 #define WM_C2S_QUIT   (WM_APP + 3)     // sent by the installer: finish a recording, remove the tray icon and exit
 
-enum { O_AUTOSTART = 300, O_MOUSE, O_HILITE, O_OPENFOLDER, O_OPENEDITOR, O_SOUNDS, O_MIC, O_DELAY, O_VCODEC, O_ACODEC,
+enum { O_AUTOSTART = 300, O_MOUSE, O_HILITE, O_OPENFOLDER, O_SOUNDS, O_MIC, O_DELAY, O_VCODEC, O_ACODEC,
        O_VQ, O_AQ, O_FPS, O_DH, O_DM, O_DS, O_VIDFOLDER, O_IMGFOLDER, O_BRVID, O_BRIMG, O_IMGFMT, O_TPL, O_LANG,
        O_TABS, O_DEFAULTS, O_EXPORT, O_IMPORT };
 
@@ -21,6 +21,5 @@ enum { O_AUTOSTART = 300, O_MOUSE, O_HILITE, O_OPENFOLDER, O_OPENEDITOR, O_SOUND
 #define C2S_CLASS_MAIN    L"Click2ScreenMain"
 #define C2S_CLASS_PANEL   L"Click2ScreenPanel"
 #define C2S_CLASS_OPTIONS L"Click2ScreenOptions"
-#define C2S_CLASS_EDITOR  L"Click2ScreenEditor"
 #define C2S_CLASS_PICKER  L"Click2ScreenPicker"
 #define C2S_CLASS_FRAME   L"Click2ScreenFrame"

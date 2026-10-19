@@ -190,7 +190,7 @@ static void RandomSettings(Settings& s)
         default: _snwprintf(s.fileName, 128, L"%%USERNAME%% %s ##", name); break;
     }
     s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.mic = Chance(50);
-    s.openFolder = Chance(50); s.openEditor = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
+    s.openFolder = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
     s.delaySec = R(0, 10); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
@@ -203,7 +203,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
 #define CMPS(f) if (!Same(a.f, b.f)) { _snwprintf(why, 150, L"%s differs: [%s] vs [%s]", L"" #f, a.f, b.f); return false; }
 #define CMPI(f) if (a.f != b.f) { _snwprintf(why, 120, L"%s: %d vs %d", L"" #f, (int)a.f, (int)b.f); return false; }
     CMPS(vidFolder) CMPS(imgFolder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(mic)
-    CMPI(openFolder) CMPI(openEditor) CMPI(delaySec) CMPI(durH) CMPI(durM) CMPI(durS) CMPI(videoCodec) CMPI(audioCodec)
+    CMPI(openFolder) CMPI(delaySec) CMPI(durH) CMPI(durM) CMPI(durS) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     if (withLanguage) CMPI(language)
     return true;
@@ -341,7 +341,7 @@ static bool DecodePixels(const wchar_t* path, int* w, int* h, uint8_t** px)
     return false;
 }
 
-int CurrentDpi() { return 96; }          // the editor asks the main program for it
+int CurrentDpi() { return 96; }
 
 // ==== tests ==================================================================================================
 static void T_Settings()
@@ -623,7 +623,7 @@ static void T_Edges()
     Check(bad == 0, L"capture: rectangles partly outside the screen keep their size (6 random)");
 }
 
-// ---- pickers and the editor, driven by messages -----------------------------------------------------------------
+// ---- pickers, driven by messages -----------------------------------------------------------------
 struct PickJob { int mode; POINT a, b; bool useWindow; bool clickFirst; };
 static DWORD WINAPI PickDriver(LPVOID p)
 {
@@ -710,81 +710,6 @@ static void T_Pickers()
         WaitForSingleObject(th, 5000); CloseHandle(th);
         Check(!ok, L"picker: Esc cancels");
     }
-}
-
-static void T_Editor()
-{
-    MakeFixture(R(300, 500), R(240, 400));
-    RECT fr = FxScreenRect();
-    HBITMAP bmp = CaptureRect(fr, false, false);
-    if (!bmp) { FAIL(L"editor: no picture to edit"); return; }
-    int f = RandomImageFormat();
-    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\edit%d.%s", g_dir, R(0, 99999), ImageFormatExt(f));
-    SaveBitmap(bmp, path, f);
-    HBITMAP copy = (HBITMAP)CopyImage(bmp, IMAGE_BITMAP, 0, 0, LR_CREATEDIBSECTION);
-    DeleteObject(bmp);
-    OpenEditor(nullptr, copy, path, f);
-    Pump(200);
-    HWND ed = FindWindowW(L"Click2ScreenEditor", nullptr);
-    if (!ed) { FAIL(L"editor: the window did not open"); return; }
-    // a storm of zoom / scroll / resize messages must neither crash nor hang the editor, nor change the picture
-    {
-        RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
-        for (int i = 0; i < 40; ++i) {
-            switch (R(0, 6)) {
-                case 0: SendMessageW(ed, WM_COMMAND, 2, 0); break;                              // zoom in
-                case 1: SendMessageW(ed, WM_COMMAND, 3, 0); break;                              // zoom out
-                case 2: SendMessageW(ed, WM_MOUSEWHEEL, MAKEWPARAM(Chance(50) ? MK_CONTROL : 0, (short)(Chance(50) ? 120 : -120)), MAKELPARAM(50, 50)); break;
-                case 3: SendMessageW(ed, WM_HSCROLL, MAKEWPARAM(R(0, 1) ? SB_LINEDOWN : SB_PAGEUP, 0), 0); break;
-                case 4: SendMessageW(ed, WM_VSCROLL, MAKEWPARAM(R(0, 1) ? SB_PAGEDOWN : SB_LINEUP, 0), 0); break;
-                case 5: SetWindowPos(ed, nullptr, wa.left, wa.top, R(300, 1000), R(250, 700), SWP_NOZORDER | SWP_NOACTIVATE); break;
-                default: SendMessageW(ed, WM_KEYDOWN, Chance(50) ? VK_ADD : VK_SUBTRACT, 0); break;
-            }
-            Pump(5);
-        }
-        DWORD_PTR res = 0;
-        bool alive = SendMessageTimeoutW(ed, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, 5000, &res) != 0;
-        Check(alive && IsWindow(ed), L"editor: 40 random zoom / scroll / resize messages leave it alive");
-    }
-    int n = R(1, 4), added = 0;
-    RECT rects[4];
-    for (int i = 0; i < n; ++i) {
-        int w = R(30, g_fx.w / 2), h = R(30, g_fx.h / 2);
-        int l = R(10, g_fx.w - w - 10), t = R(10, g_fx.h - h - 10);
-        RECT r = { l, t, l + w, t + h };
-        if (EditorTestAddRect(ed, r.left, r.top, r.right, r.bottom)) rects[added++] = r;
-    }
-    bool saved = EditorTestSave(ed);
-    DestroyWindow(ed);
-    Pump(50);
-    int dw = 0, dh = 0; uint8_t* px = nullptr;
-    bool d = saved && DecodePixels(path, &dw, &dh, &px);
-    int tol = LossyFmt(f) ? 60 : f == IMG_GIF ? 60 : 12, red = 0, tested = 0;
-    if (d) for (int i = 0; i < added; ++i) {
-        // the left edge of each rectangle (the pen is 3 px wide, centred on the edge)
-        for (int k = 0; k < 4; ++k) {
-            int y = rects[i].top + 4 + (rects[i].bottom - rects[i].top - 8) * k / 3, x = rects[i].left;
-            if (x < 1 || x >= dw - 1 || y < 0 || y >= dh) continue;
-            bool isRed;
-            if (LossyFmt(f)) {           // a 3 px line is blurred by JPEG: look for the reddest pixel around the edge
-                int best = -999;
-                for (int dx = -2; dx <= 2; ++dx) {
-                    if (x + dx < 0 || x + dx >= dw) continue;
-                    const uint8_t* q = px + ((size_t)y * dw + x + dx) * 4;
-                    int d = (int)q[2] - (q[1] > q[0] ? q[1] : q[0]);
-                    if (d > best) best = d;
-                }
-                isRed = best >= 70;
-            } else {
-                const uint8_t* p = px + ((size_t)y * dw + x) * 4;
-                isRed = Near(RGB(230, 40, 40), p[2], p[1], p[0], tol);
-            }
-            ++tested; if (isRed) ++red;
-        }
-    }
-    wchar_t nm[140]; _snwprintf(nm, 140, L"editor: %d rectangle(s) are in the saved .%s file (%d/%d edge points red)", added, ImageFormatExt(f), red, tested);
-    Check(saved && d && added > 0 && tested > 0 && red * 10 >= tested * 8, nm);
-    delete[] px;
 }
 
 // ---- recorder ----------------------------------------------------------------------------------------------------
@@ -1317,7 +1242,7 @@ static bool ValidSettings(const Settings& s, wchar_t* why)
 static void T_FuzzSettings()
 {
     static const wchar_t* names[] = { L"VidOutputFolder", L"ImgOutputFolder", L"FileName", L"ImageFormat", L"CapMouse", L"Highlight",
-        L"EnableSound", L"EnableMicRec", L"OpenOutFolder", L"OpenEditor", L"RunAtStartup", L"Delay", L"RecDurationHour", L"RecDurationMin",
+        L"EnableSound", L"EnableMicRec", L"OpenOutFolder", L"RunAtStartup", L"Delay", L"RecDurationHour", L"RecDurationMin",
         L"RecDurationSec", L"VideoCodec", L"AudioCodec", L"VideoQuality", L"AudioQuality", L"Fps", L"Language" };
     HKEY k;
     RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\Click2Screen-Autotest");
@@ -1571,7 +1496,7 @@ static int CountFiles(const wchar_t* dir)
 
 struct App { PROCESS_INFORMATION pi; HWND main; Settings cfg; wchar_t img[MAX_PATH], vid[MAX_PATH]; };
 
-static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"")
+static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"", bool realEncoder = false)
 {
     memset(&a, 0, sizeof(a));
     a.cfg = s;
@@ -1579,7 +1504,7 @@ static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"")
     SetEnvironmentVariableW(L"C2S_REGKEY", L"Software\\Click2Screen-Autotest");
     wchar_t inst[40]; _snwprintf(inst, 40, L"-at%lu", GetCurrentProcessId());
     SetEnvironmentVariableW(L"C2S_INSTANCE", inst);
-    SetEnvironmentVariableW(L"C2S_NULLSINK", L"1");
+    if (realEncoder) SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr); else SetEnvironmentVariableW(L"C2S_NULLSINK", L"1");
     wchar_t self[MAX_PATH]; GetModuleFileNameW(nullptr, self, MAX_PATH);
     wchar_t* sl = wcsrchr(self, L'\\'); if (sl) *sl = 0;
     wchar_t cmd[MAX_PATH + 100]; _snwprintf(cmd, MAX_PATH + 100, L"\"%s\\Click2Screen.exe\" %s", self, extraArgs);
@@ -1604,7 +1529,7 @@ static void AppSettings(Settings& s, int language)
 {
     RandomSettings(s);
     s.language = language;
-    s.sounds = false; s.openFolder = false; s.openEditor = false; s.runAtStartup = false;
+    s.sounds = false; s.openFolder = false; s.runAtStartup = false;
     s.delaySec = R(0, 2); s.durH = s.durM = s.durS = 0;
     s.mic = false;
 }
@@ -1746,13 +1671,13 @@ static void T_App()
         Check(o != nullptr, L"program: Options opens its window");
         if (o) {
             Settings w; RandomSettings(w);
-            w.runAtStartup = false; w.sounds = false; w.openFolder = false; w.openEditor = false;
+            w.runAtStartup = false; w.sounds = false; w.openFolder = false;
             wcscpy(w.vidFolder, s.vidFolder); wcscpy(w.imgFolder, s.imgFolder);
             static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
             w.fps = fpsv[R(0, 6)];
             w.language = R(0, LangCount());
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
-            chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_OPENEDITOR, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
+            chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_MIC, w.mic);
             wchar_t n[16];
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
@@ -1993,7 +1918,6 @@ static void T_AppOddities()
         (void)held;
     } else if (which == 1) {                           // an output folder that cannot exist: a message, no crash, the program goes on
         wcscpy(s.imgFolder, L"C:\\nul\\x\\no such drive\\img");
-        s.openEditor = false;
         App a;
         if (!StartApp(a, s)) { FAIL(L"program oddities: no window"); StopApp(a, false); return; }
         PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
@@ -2002,28 +1926,6 @@ static void T_AppOddities()
         Check(box && AppAlive(a), L"program oddities: an unusable pictures folder gives a message and the program stays up");
         DWORD_PTR res = 0;
         Check(SendMessageTimeoutW(a.main, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, 5000, &res) != 0, L"program oddities: the window still answers after that");
-        StopApp(a);
-    } else if (which == 2) {                           // the editor opens from the program, with its own title, and closes
-        s.openEditor = true;
-        App a;
-        if (!StartApp(a, s)) { FAIL(L"program oddities: no window"); StopApp(a, false); return; }
-        PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
-        HWND ed = FindWin(a.pi.dwProcessId, C2S_CLASS_EDITOR, 20000);
-        Check(ed != nullptr, L"program oddities: the editor opens after a screenshot when asked");
-        if (ed) {
-            LangSelect(s.language);
-            wchar_t title[200] = L"";
-            DWORD tend = GetTickCount() + WMS(10000);          // the editor first draws the big picture
-            do { WinText(ed, title, 200); if (!wcscmp(title, T(S_ED_TITLE))) break; Sleep(100); } while ((int)(tend - GetTickCount()) > 0);
-            if (wcscmp(title, T(S_ED_TITLE))) Rep(L"INFO", L"  editor title [%s] expected [%s], program language %d", title, T(S_ED_TITLE), s.language);
-            Check(!wcscmp(title, T(S_ED_TITLE)), L"program oddities: the editor title is in the program's language", title);
-            DWORD_PTR res = 0;
-            for (int i = 0; i < 10; ++i) SendMessageTimeoutW(ed, WM_COMMAND, 2, 0, SMTO_ABORTIFHUNG, 3000, &res);        // zoom in x10
-            PostMessageW(ed, WM_CLOSE, 0, 0);                                                                            // nothing drawn: closes without a question
-            DWORD end = GetTickCount() + WMS(8000);
-            while (IsWindow(ed) && (int)(end - GetTickCount()) > 0) Sleep(100);
-            Check(!IsWindow(ed) && AppAlive(a), L"program oddities: the editor closes at once when nothing was changed");
-        }
         StopApp(a);
     } else if (which >= 4) {                           // the installer closes the program (WM_C2S_QUIT) in the middle of something
         App a;
@@ -2388,7 +2290,7 @@ static void T_Effects()
     wchar_t dd[200]; _snwprintf(dd, 200, L"button %d, %d ring pixels, %d changed farN away, mean change %.0f,%.0f,%.0f", button, ringN, farN, dR, dG, dB);
     Check(ringN >= 25 && farN == 0, L"effects: a click draws a wave round the pointer and nothing else", dd);
     Check(ringN >= 25 && colour, L"effects: the wave has the colour of the button (left blue, right red, middle purple)", dd);
-    // a recording has the waves whether or not the pointer itself is drawn ("include the pointer" off)
+    // the waves belong to "include the pointer": with it off nothing is drawn
     {
         FxStop();
         Grabber ga, gb; ga.Init(w, h); gb.Init(w, h);
@@ -2398,7 +2300,7 @@ static void T_Effects()
         int ch2 = 0;
         for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
             if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
-        Check(ch2 >= 25, L"effects: a recording shows the waves although the pointer itself is not drawn", ch2 ? L"" : L"(nothing changed)");
+        Check(ch2 == 0, L"effects: with \"include the pointer\" off a recording has no waves either", ch2 ? L"(something was drawn)" : L"");
     }
     // the Shift trail: a red line behind the pointer, and a stroke older than five minutes is gone
     FxStop();
@@ -2507,6 +2409,80 @@ static void T_AppFrame()
     wchar_t d3[160]; _snwprintf(d3, 160, L"armed: on %d off %d; recording (running %d): on %d off %d", (int)armOn, (int)armOff, (int)running, (int)recOn, (int)recOff);
     Check(armOn && !armOff, L"frame: the red frame does not blink while the area is only chosen", d3);
     Check(running && recOn && recOff, L"frame: the red frame blinks while the recording runs", d3);
+    StopApp(a);
+}
+
+// ---- the whole path: the real program records an AVI while real clicks and a held Shift happen; the frames are checked -------
+static void T_AppEffects()
+{
+    if (!VideoFormatAvailable(VC_AVI)) { SKIP(L"program effects: no JPEG encoder for the AVI here"); return; }
+    MakeFixture(R(520, 700), R(380, 480));
+    Settings s; PrepareApp(s);
+    s.videoCodec = VC_AVI; s.capMouse = true; s.highlight = Chance(50); s.delaySec = 0; s.mic = false; s.videoQuality = 0; s.fps = 25;
+    s.durH = s.durM = s.durS = 0;
+    App a;
+    if (!StartApp(a, s, L"", true)) { FAIL(L"program effects: the program did not start"); StopApp(a, false); return; }
+    RECT fr = FxScreenRect();
+    int w = g_fx.w, h = g_fx.h - 14;
+    POINT p1 = { fr.left, fr.top }, p2 = { fr.left + w, fr.top + h };
+    SetCursorPos(2, 2);
+    PostMessageW(a.main, WM_COMMAND, IDC_REC_REGION, 0);
+    bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
+    HWND panel = driven ? FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000) : nullptr;
+    LangSelect(s.language);
+    bool running = false;
+    if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); running = WaitText(panel, IDC_P_START, T(S_PAUSE), 15000); }
+    int cx = w * 3 / 4, cy = h / 4, ty = h * 3 / 4;                      // the click in the green quarter, the trail in the lower half
+    if (running) {
+        Pump(500);
+        SetCursorPos(fr.left + cx, fr.top + cy); Pump(150);
+        mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0); Sleep(60); mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
+        Pump(900);
+        keybd_event(VK_SHIFT, 0x2A, 0, 0);                              // Shift held, the pointer moves across the lower half
+        for (int i = 0; i <= 40; ++i) { SetCursorPos(fr.left + 40 + i * 6, fr.top + ty); Pump(40); }
+        keybd_event(VK_SHIFT, 0x2A, KEYEVENTF_KEYUP, 0);
+        Pump(500);
+        SetCursorPos(2, 2); Pump(300);
+        PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_STOP, BN_CLICKED), 0);
+    }
+    wchar_t file[MAX_PATH] = L"";
+    int before = 0;
+    bool got = running && WaitNewFile(s.vidFolder, before, 20000, file);
+    Pump(500);
+    int waveFrames = 0, trailFrames = 0, frames = 0, tested = 0;
+    if (got) {
+        for (int n = 2; n <= 400; n += 2) {                               // every second picture of the video
+            uint8_t* keep = nullptr;
+            AviInfo ai = ReadAvi(file, n, &keep);
+            if (!ai.ok || ai.pickSize == 0 || !keep) { delete[] keep; break; }
+            wchar_t jp[MAX_PATH]; _snwprintf(jp, MAX_PATH, L"%s\\fxframe%d.jpg", g_dir, n);
+            HANDLE hf = CreateFileW(jp, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+            if (hf != INVALID_HANDLE_VALUE) { DWORD wr; WriteFile(hf, keep + ai.pickOff, ai.pickSize, &wr, nullptr); CloseHandle(hf); }
+            delete[] keep;
+            int dw = 0, dh = 0; uint8_t* px = nullptr;
+            ++frames;
+            if (DecodePixelsOnce(jp, &dw, &dh, &px) && dw >= w - 4 && dh >= h - 4) {
+                ++tested;
+                int wave = 0, trail = 0;
+                for (int y = 0; y < dh; ++y)
+                    for (int x = 0; x < dw; ++x) {
+                        const uint8_t* q = px + ((size_t)y * dw + x) * 4;
+                        int dx = x - cx, dy = y - cy;
+                        if (dx * dx + dy * dy < 80 * 80 && q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60) ++wave;        // blue-ish over the green quarter
+                        if (y > h / 2 + 8 && abs(y - ty) < 8 && q[2] > 200 && q[1] < 120 && q[0] < 120) ++trail;                // red over blue / yellow
+                    }
+                if (wave >= 30) ++waveFrames;
+                if (trail >= 12) ++trailFrames;
+            }
+            delete[] px;
+            DeleteFileW(jp);
+        }
+    }
+    wchar_t dd[220]; _snwprintf(dd, 220, L"the video has %d frames, %d decoded: %d show the wave, %d show the trail (running %d, file %d)", frames, tested, waveFrames, trailFrames, (int)running, (int)got);
+    Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
+    Check(waveFrames >= 3, L"program effects: a real click is a blue wave in the recorded video", dd);
+    if (trailFrames < 3 && g_wine) SKIP(L"program effects: Wine does not pass a synthetic Shift to GetAsyncKeyState");
+    else Check(trailFrames >= 3, L"program effects: with Shift held a red trail follows the pointer in the recorded video", dd);
     StopApp(a);
 }
 
@@ -2698,10 +2674,10 @@ int wmain(int argc, wchar_t** argv)
     TestDef tests[] = {
         { L"settings", T_Settings, 2 }, { L"ini", T_Ini, 2 }, { L"template", T_Template, 3 }, { L"sizes", T_Sizes, 1 },
         { L"languages", T_Languages, 1 }, { L"capture", T_Capture, 4 }, { L"scaled", T_Scaled, 2 }, { L"edges", T_Edges, 1 },
-        { L"pickers", T_Pickers, 3 }, { L"editor", T_Editor, 2 }, { L"recorder", T_Recorder, 3 }, { L"scheduler", T_RecorderSched, 3 },
+        { L"pickers", T_Pickers, 3 }, { L"recorder", T_Recorder, 3 }, { L"scheduler", T_RecorderSched, 3 },
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
-        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
+        { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
         { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));

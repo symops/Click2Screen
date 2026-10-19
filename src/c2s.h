@@ -1,6 +1,6 @@
 // Click2Screen — shared declarations.
 // A screen recorder and screenshot tool for Windows: desktop / region / window video with microphone, screenshots
-// with a small editor, global hotkeys, tray control. See ../README.md and ../analysis/FINDINGS.md.
+// global hotkeys, tray control. See ../README.md and ../analysis/FINDINGS.md.
 #pragma once
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -65,7 +65,6 @@ struct Settings {
     bool sounds;                    // countdown / shutter sounds
     bool mic;                       // record audio from the default microphone
     bool openFolder;                // show the finished file in Explorer
-    bool openEditor;                // open the editor after a screenshot
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..10)
     int  durH, durM, durS;          // stop after (all 0 = no limit)
@@ -168,14 +167,6 @@ public:
 private:
     struct Impl; Impl* m;
 };
-
-// ---- editor (editor.cpp) ---------------------------------------------------------------------------------------
-// Opens the editor on the saved screenshot `path` (takes ownership of `bmp`).
-void OpenEditor(HWND owner, HBITMAP bmp, const wchar_t* path, int format);
-// Test hooks used by c2sautotest.exe (rectangles in image coordinates; Save writes the file the editor was opened on).
-bool EditorTestAddRect(HWND editor, int l, int t, int r, int b);
-bool EditorTestSave(HWND editor);
-int  EditorTestRectCount(HWND editor);
 
 // ---- misc ------------------------------------------------------------------------------------------------------
 void AppLogOpen(const wchar_t* name);   // %ProgramData%\Click2Screen\logs\<name>.log (applog.cpp)

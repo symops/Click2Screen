@@ -23,6 +23,7 @@ int g_nClicks;
 Pt* g_trail;
 size_t g_nTrail, g_head, g_capTrail;
 bool g_shiftWas;
+bool g_btnWas[3];
 HHOOK g_hook;
 DWORD g_hookErr;
 unsigned g_hookCalls;                                      // clicks seen by the hook (diagnostics)
@@ -138,6 +139,24 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
     if (sw <= 0 || sh <= 0) return;
     double sx = (double)outW / sw, sy = (double)outH / sh, sc = sx < sy ? sx : sy;
 
+    // The hook is the exact source of clicks; the state of the buttons is read here as well, once per frame, so a click is
+    // not lost when the hook is not called (a hook can be refused or removed by Windows): a press seen by neither is added,
+    // one the hook has already reported (same button, a moment ago) is not counted twice.
+    static const int vks[3] = { VK_LBUTTON, VK_RBUTTON, VK_MBUTTON };
+    for (int b = 0; b < 3; ++b) {
+        SHORT st = GetAsyncKeyState(vks[b]);
+        bool down = (st & 0x8000) != 0, pressedSince = (st & 1) != 0;
+        if ((down && !g_btnWas[b]) || pressedSince) {
+            bool seen = false;
+            Lock();
+            for (int i = 0; i < g_nClicks; ++i) if (g_clicks[i].button == b && now - g_clicks[i].t < 300) seen = true;
+            Unlock();
+            POINT cp;
+            if (!seen && GetCursorPos(&cp)) AddClick(cp.x, cp.y, b, now);
+        }
+        g_btnWas[b] = down;
+    }
+
     bool shift = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
     if (shift) {
         POINT p;
@@ -155,7 +174,7 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
     Lock();
     while (g_head < g_nTrail && now - g_trail[g_head].t > g_trailMs) ++g_head;       // the oldest points fade out first
     if (g_nTrail > g_head) {
-        int w = (int)(2.0 * sc + 0.5); if (w < 1) w = 1;
+        int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2;                         // thin, but it survives video compression
         HPEN pen = CreatePen(PS_SOLID, w, RGB(255, 40, 40));
         HGDIOBJ op = SelectObject(dc, pen);
         bool pen_down = false;
@@ -172,8 +191,8 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
 
     for (int i = 0; i < nc; ++i) {
         double p = (double)(now - cl[i].t) / kWaveMs;                                 // 0 .. 1
-        double radius = (8.0 + 34.0 * p) * sc;
-        double thick = 3.0 * sc; if (thick < 2.0) thick = 2.0;
-        DrawWave(dc, (cl[i].x - src.left) * sx, (cl[i].y - src.top) * sy, radius, thick, 0.95 * (1.0 - p), WaveColor(cl[i].button));
+        double radius = (10.0 + 50.0 * p) * sc;                                       // a ring that grows from the pointer, easy to see in a video
+        double thick = 6.0 * sc * (1.0 - 0.5 * p); if (thick < 3.0) thick = 3.0;
+        DrawWave(dc, (cl[i].x - src.left) * sx, (cl[i].y - src.top) * sy, radius, thick, 0.95 * (1.0 - 0.8 * p), WaveColor(cl[i].button));
     }
 }
