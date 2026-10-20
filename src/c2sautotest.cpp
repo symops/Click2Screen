@@ -1181,8 +1181,8 @@ static void T_HotkeyKeys()
     Settings def; SettingsDefaults(def);
     Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_ALT | MOD_SHIFT, '4') &&
           def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11 && def.hotkey[4] == code(MOD_ALT | MOD_SHIFT, '1') &&
-          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3') && def.hotkey[7] == code(MOD_CONTROL, VK_F12),
-          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings, F11 and Ctrl+F12 for the drawing");
+          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3') && def.hotkey[7] == VK_F10,
+          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings, F11 and F10 for the drawing");
     bool allUsable = true; for (int i = 0; i < HKI_COUNT; ++i) if (!HotkeyUsable(def.hotkey[i])) allUsable = false;
     Check(allUsable, L"hotkeys: every default is a usable combination");
 

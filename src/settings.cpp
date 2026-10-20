@@ -75,7 +75,7 @@ int HotkeyDefault(int i)
     case 4: return ((MOD_ALT | MOD_SHIFT) << 16) | '1';
     case 5: return ((MOD_ALT | MOD_SHIFT) << 16) | '2';
     case 6: return ((MOD_ALT | MOD_SHIFT) << 16) | '3';
-    case 7: return (MOD_CONTROL << 16) | VK_F12;
+    case 7: return VK_F10;
     default: return VK_F11;
     }
 }
