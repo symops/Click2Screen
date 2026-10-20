@@ -48,6 +48,7 @@ void RegisterOverlayClasses();
 void TrailOverlayHide();
 void TrailOverlayUpdate();
 void DrawResume();
+bool RecordingEffectsOn();
 LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 
@@ -504,6 +505,13 @@ void HidePanel()
     Balloon(T(S_APP), T(S_TRAY_HIDDEN));
 }
 
+void SetCaptureExcluded(HWND w, bool excluded)
+{
+    typedef BOOL(WINAPI* SetAff)(HWND, DWORD);
+    SetAff aff = (SetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowDisplayAffinity");
+    if (aff) aff(w, excluded ? 0x11 /*WDA_EXCLUDEFROMCAPTURE*/ : 0 /*WDA_NONE*/);
+}
+
 void ExcludeFromCapture(HWND w)
 {
     // The panel and the frame must not appear in the recording (Windows 10 2004 and later; the frame lies outside the
@@ -865,6 +873,13 @@ void TrailOverlayHide()
 
 void TrailOverlayUpdate()
 {
+    // The lines are in the picture of our own recording already (FxDraw), so while one runs the window is kept out of the capture;
+    // otherwise it is part of the screen, and it is seen in a screen sharing (a messenger, a video call) and in other recorders.
+    static HWND appliedFor = nullptr; static bool appliedExcluded = false;
+    if (g_trailWnd) {
+        bool want = RecordingEffectsOn();
+        if (g_trailWnd != appliedFor || want != appliedExcluded) { SetCaptureExcluded(g_trailWnd, want); appliedFor = g_trailWnd; appliedExcluded = want; }
+    }
     static POINT pts[4096]; static unsigned char brk[4096], shade[4096];
     unsigned ver = 0;
     int n = FxTrailSnapshot(pts, brk, 4096, &ver, shade);
@@ -882,7 +897,7 @@ void TrailOverlayUpdate()
         g_trailWnd = CreateWindowExW(WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenTrail", L"", WS_POPUP,
                                      l, t, w, h, nullptr, nullptr, g_inst, nullptr);
         if (!g_trailWnd) return;
-        ExcludeFromCapture(g_trailWnd);
+        SetCaptureExcluded(g_trailWnd, RecordingEffectsOn());
     }
     HDC scr = GetDC(nullptr);
     BITMAPINFO bi; memset(&bi, 0, sizeof(bi));

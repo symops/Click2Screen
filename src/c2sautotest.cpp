@@ -293,6 +293,25 @@ static bool SafePoint(int lx, int ly, int fw, int fh)        // away from the qu
 }
 // A line of the gradient (any colour) is found by comparing with the same frame without it: a pixel of the line or of its dark outline
 // within three rows of (x, y) that differs a lot. (Frames are bottom-up DIBs of width w and height h.)
+static DWORD AffinityOf(HWND w)
+{
+    typedef BOOL(WINAPI* GetAff)(HWND, DWORD*);
+    GetAff g = (GetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetWindowDisplayAffinity");
+    DWORD v = 0xFFFFFFFF;
+    if (g && w) g(w, &v);
+    return v;
+}
+static bool AffinityReported()                                    // does this Windows keep and report the exclusion from capture? (Wine does not)
+{
+    typedef BOOL(WINAPI* SetAff)(HWND, DWORD);
+    SetAff sa = (SetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowDisplayAffinity");
+    HWND w = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    bool ok = false;
+    if (sa && w) { sa(w, 0x11); ok = AffinityOf(w) == 0x11; }
+    if (w) DestroyWindow(w);
+    return ok;
+}
+
 static bool LineAt(const uint8_t* fr, const uint8_t* base, int w, int h, int x, int y)
 {
     for (int dy = -3; dy <= 3; ++dy) {
@@ -1813,6 +1832,8 @@ static void T_App()
             RECT trc = {}; if (tr) GetWindowRect(tr, &trc);
             bool placed = tr && trc.left <= vs.left + x0 + 2 && trc.right >= vs.left + x0 + 100;
             Check(placed, L"program: a stroke of the left button on the drawing window shows as a red line on the screen");
+            if (AffinityReported()) Check(tr && AffinityOf(tr) == 0, L"program: without a recording the line is part of the screen (not excluded from capture), so a screen sharing sees it");
+            else SKIP(L"program: this Windows does not report the exclusion from capture");
             PostMessageW(ink, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(200, 200));
             DWORD we = GetTickCount() + WMS(3000);
             while (tr && IsWindowVisible(tr) && (int)(we - GetTickCount()) > 0) Sleep(50);
@@ -2865,7 +2886,7 @@ static void T_AppEffects()
     bool running = false;
     if (panel) { PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0); running = WaitText(panel, IDC_P_START, T(S_PAUSE), 15000); }
     int cx = w * 3 / 4, cy = h / 4, ty = h * 3 / 4;                      // the click in the green quarter, the trail in the lower half
-    bool overlaySeen = false;
+    bool overlaySeen = false; DWORD trailAffinity = 0xFFFFFFFF;
     if (running) {
         Pump(500);
         SetCursorPos(fr.left + cx, fr.top + cy); Pump(150);
@@ -2878,7 +2899,7 @@ static void T_AppEffects()
             PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(fr.left + 40 - vs.left, fr.top + ty - vs.top));
             for (int i = 0; i <= 40; ++i) {
                 PostMessageW(ink, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(fr.left + 40 + i * 6 - vs.left, fr.top + ty - vs.top)); Pump(40);
-                if (i > 20) { HWND tw = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tw && IsWindowVisible(tw)) overlaySeen = true; }
+                if (i > 20) { HWND tw = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tw && IsWindowVisible(tw)) { overlaySeen = true; trailAffinity = AffinityOf(tw); } }
             }
             PostMessageW(ink, WM_LBUTTONUP, 0, MAKELPARAM(fr.left + 280 - vs.left, fr.top + ty - vs.top));
         }
@@ -2930,6 +2951,8 @@ static void T_AppEffects()
     else Check(waveFrames == 0, L"program effects: with the highlight option off a real click leaves no wave in the video", dd);
     Check(trailFrames >= 3, L"program effects: a line drawn with the left button in the drawing window is in the recorded video", dd);
     Check(overlaySeen, L"program effects: the line is shown on the screen too, while recording", dd);
+    if (AffinityReported()) Check(trailAffinity == 0x11, L"program effects: while our own recording runs the line window is kept out of the capture (the line is in the picture already)", dd);
+    else SKIP(L"program effects: this Windows does not report the exclusion from capture");
     StopApp(a);
 }
 
