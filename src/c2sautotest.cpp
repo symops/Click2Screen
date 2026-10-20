@@ -292,7 +292,17 @@ static bool SafePoint(int lx, int ly, int fw, int fh)        // away from the qu
     if (abs(lx - fw / 2) < 8 || abs(ly - fh / 2) < 8) return false;
     return ly < fh - 16 && lx >= 2 && lx < fw - 2 && ly >= 2;
 }
-static bool IsLine(int r, int g, int b) { return r > 215 && g < 190 && b < 200; }      // any shade of the gradient (pink - red - orange)
+// A line of the gradient (any colour) is found by comparing with the same frame without it: a pixel of the line or of its dark outline
+// within three rows of (x, y) that differs a lot. (Frames are bottom-up DIBs of width w and height h.)
+static bool LineAt(const uint8_t* fr, const uint8_t* base, int w, int h, int x, int y)
+{
+    for (int dy = -3; dy <= 3; ++dy) {
+        int yy = y + dy; if (yy < 0 || yy >= h) continue;
+        size_t o = ((size_t)(h - 1 - yy) * w + x) * 4;
+        if (abs(fr[o] - base[o]) + abs(fr[o + 1] - base[o + 1]) + abs(fr[o + 2] - base[o + 2]) > 80) return true;
+    }
+    return false;
+}
 
 static bool Near(COLORREF a, int r, int g, int b, int tol)
 {
@@ -1800,13 +1810,13 @@ static void T_App()
             while (IsWindow(ink) && (int)(ee - GetTickCount()) > 0) Sleep(50);
             Check(!IsWindow(ink) && AppAlive(a), L"program: Esc closes the drawing window");
         }
-        // and the menu command of the main window / tray does the same as the hotkey
-        PostMessageW(a.main, WM_COMMAND, ID_MENU_DRAW, 0);
+        // once more, the other way round
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
         HWND ink2 = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
-        PostMessageW(a.main, WM_COMMAND, ID_MENU_DRAW, 0);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
         DWORD me2 = GetTickCount() + WMS(3000);
         while (ink2 && IsWindow(ink2) && (int)(me2 - GetTickCount()) > 0) Sleep(50);
-        Check(ink2 && !IsWindow(ink2), L"program: the menu command switches the drawing window on and off");
+        Check(ink2 && !IsWindow(ink2), L"program: the hotkey switches the drawing window on and off (and off again)");
     }
     // "Restore default" sets back the page that is open only
     {
@@ -2528,56 +2538,55 @@ static void T_Effects()
             if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
         Check(ch2 == 0, L"effects: with \"include the pointer\" off a recording has no waves either", ch2 ? L"(something was drawn)" : L"");
     }
-    // the drawn lines: red, and a stroke older than its lifetime is gone
+    // the drawn lines (a gradient of all the colours): they are in the frame, and a stroke older than its lifetime is gone
     FxStop();
-    FxTestTrailLifetime(3000);                                  // a point lives 3 s here (five minutes for real); the old stroke is 5 s old
-    int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half: blue and yellow, never red
+    FxTestTrailLifetime(3000);                                  // a point lives 3 s here (ten seconds for real); the old stroke is 5 s old
+    int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half
+    Grabber gbase; gbase.Init(w, h);
+    gbase.Grab(rc, true, false, false);                          // the frame without any line
     for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 5000);                    // points come in time order: the old stroke first
     for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + ty, i == 0, 1000);
     Grabber g2; g2.Init(w, h);
     g2.Grab(rc, true, false, true);
     int red = 0, tested = 0, oldRed = 0, oldTested = 0;
-    const uint8_t* c = g2.Bits();
     for (int x = 40; x < 30 + 9 * 20 - 5; x += 3) {
-        size_t o = ((size_t)(h - 1 - ty) * w + x) * 4;
-        ++tested; if (IsLine(c[o + 2], c[o + 1], c[o])) ++red;
-        size_t o2 = ((size_t)(h - 1 - oy) * w + x) * 4;
-        ++oldTested; if (IsLine(c[o2 + 2], c[o2 + 1], c[o2])) ++oldRed;
+        ++tested; if (LineAt(g2.Bits(), gbase.Bits(), w, h, x, ty)) ++red;
+        ++oldTested; if (LineAt(g2.Bits(), gbase.Bits(), w, h, x, oy)) ++oldRed;
     }
-    wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
-    Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is red in the frame", d2);
-    Check(oldTested > 5 && oldRed == 0, L"effects: a trail point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
+    wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points drawn on the fresh line, %d of %d on the old one", red, tested, oldRed, oldTested);
+    Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is in the frame", d2);
+    Check(oldTested > 5 && oldRed == 0, L"effects: a line point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
     FxTestTrailLifetime(0);
     FxStop();
-    // the lines of the drawing window (the left button draws, the right one wipes) are red in the frame, and the wipe takes them all
+    // the lines of the drawing window (the left button draws, the right one wipes) are in the frame, and the wipe takes them all
     {
         Grabber gk; gk.Init(w, h);
         FxStart();
         for (int i = 0; i < 12; ++i) FxPenPoint(fr.left + 40 + i * 14, fr.top + ty, i == 0);
         gk.Grab(rc, true, false, true);
         int redL = 0, tL = 0;
-        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; ++tL; if (IsLine(gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o])) ++redL; }
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { ++tL; if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++redL; }
         FxWipe();
         gk.Grab(rc, true, false, true);
         int redR = 0;
-        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (IsLine(gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o])) ++redR; }
-        // a line is a gradient: points drawn at different moments have different shades (pink - red - orange). A turn of the gradient
-        // takes 2.4 s and goes there and back, so a stroke of 1.2 s runs through at least half of the colours whatever the moment is.
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++redR;
+        // a line is a gradient: points drawn at different moments have different colours. A turn of the colour wheel takes 3 s,
+        // so a stroke of 1.2 s (25 points) runs through two fifths of it, whatever the moment is.
         for (int i = 0; i < 25; ++i) FxTestTrail(fr.left + 40 + i * 10, fr.top + ty, i == 0, 1200 - i * 50);
         gk.Grab(rc, true, false, true);
         int cr[25], cg[25], cb[25], good = 0;
         for (int i = 0; i < 25; ++i) {
             int x = 44 + i * 10; if (i == 24) x -= 6;
             size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; cr[i] = gk.Bits()[o + 2]; cg[i] = gk.Bits()[o + 1]; cb[i] = gk.Bits()[o];
-            if (IsLine(cr[i], cg[i], cb[i])) ++good;
+            if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++good;
         }
         int spread = 0;
         for (int i = 0; i < 25; ++i) for (int j = i + 1; j < 25; ++j) { int d = abs(cr[i] - cr[j]) + abs(cg[i] - cg[j]) + abs(cb[i] - cb[j]); if (d > spread) spread = d; }
         wchar_t gd[200]; _snwprintf(gd, 200, L"%d of 25 pixels on the line, the colours of the stroke differ by up to %d (start %d,%d,%d end %d,%d,%d)", good, spread, cr[0], cg[0], cb[0], cr[24], cg[24], cb[24]);
-        Check(good >= 23 && spread > 90, L"effects: a line is a gradient, not one colour", gd);
+        Check(good >= 23 && spread > 150, L"effects: a line is a gradient of colours, not one colour", gd);
         FxStop(); SetCursorPos(2, 2);
-        wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points red; after the wipe: %d", redL, tL, redR);
-        Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are red in the frame", kd);
+        wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points drawn; after the wipe: %d", redL, tL, redR);
+        Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are in the frame", kd);
         Check(redR == 0, L"effects: the wipe removes all the lines from the frame at once", kd);
     }
     // the mouse pen of the drawing window: points given by the program itself (works over windows of any privilege)
@@ -2835,6 +2844,7 @@ static void T_AppEffects()
     bool got = running && WaitNewFile(s.vidFolder, before, 20000, file);
     Pump(500);
     int waveFrames = 0, trailFrames = 0, frames = 0, tested = 0;
+    uint8_t* ref = nullptr; int refW = 0;                                   // the first decoded picture, before anything is drawn
     if (got) {
         for (int n = 2; n <= 400; n += 2) {                               // every second picture of the video
             uint8_t* keep = nullptr;
@@ -2848,13 +2858,14 @@ static void T_AppEffects()
             ++frames;
             if (DecodePixelsOnce(jp, &dw, &dh, &px) && dw >= w - 4 && dh >= h - 4) {
                 ++tested;
+                if (!ref) { ref = new uint8_t[(size_t)dw * dh * 4]; memcpy(ref, px, (size_t)dw * dh * 4); refW = dw; }
                 int wave = 0, trail = 0;
                 for (int y = 0; y < dh; ++y)
                     for (int x = 0; x < dw; ++x) {
                         const uint8_t* q = px + ((size_t)y * dw + x) * 4;
                         int dx = x - cx, dy = y - cy;
                         if (dx * dx + dy * dy < 80 * 80 && q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60) ++wave;        // blue-ish over the green quarter
-                        if (y > h / 2 + 8 && abs(y - ty) < 8 && IsLine(q[2], q[1], q[0])) ++trail;                // the gradient over blue / yellow
+                        if (y > h / 2 + 8 && abs(y - ty) < 8 && ref) { const uint8_t* rq = ref + ((size_t)y * dw + x) * 4; if (abs(q[0] - rq[0]) + abs(q[1] - rq[1]) + abs(q[2] - rq[2]) > 120) ++trail; }   // differs from the first picture: the line or its outline
                     }
                 if (wave >= 24) ++waveFrames;
                 if (trail >= 12) ++trailFrames;
@@ -2863,6 +2874,7 @@ static void T_AppEffects()
             DeleteFileW(jp);
         }
     }
+    delete[] ref; (void)refW;
     wchar_t dd[220]; _snwprintf(dd, 220, L"the video has %d frames, %d decoded: %d show the wave, %d show the trail (running %d, file %d)", frames, tested, waveFrames, trailFrames, (int)running, (int)got);
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
     if (s.highlight) Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);

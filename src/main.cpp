@@ -894,19 +894,23 @@ void TrailOverlayUpdate()
     if (bmp && px && mem) {
         HGDIOBJ ob = SelectObject(mem, bmp);
         memset(px, 0, (size_t)w * h * 4);
-        HPEN pens[32]; for (int i = 0; i < 32; ++i) pens[i] = nullptr;       // one pen for each shade of the gradient
+        HPEN pens[64]; for (int i = 0; i < 64; ++i) pens[i] = nullptr;       // one pen for each shade of the gradient
+        HPEN outline = CreatePen(PS_SOLID, 5, RGB(30, 30, 30));                // a thin dark outline under the whole line, then the gradient on top
         HGDIOBJ op = SelectObject(mem, GetStockObject(NULL_PEN));
-        bool down = false; int lx = 0, ly = 0;
-        for (int i = 0; i < n; ++i) {
-            int x = pts[i].x - l, y = pts[i].y - t;
-            int sh = shade[i] > 31 ? 31 : shade[i];
-            if (!pens[sh]) pens[sh] = CreatePen(PS_SOLID, 3, FxLineColor((unsigned char)sh));
-            SelectObject(mem, pens[sh]);
-            if (brk[i] || !down) { MoveToEx(mem, x, y, nullptr); down = true; lx = x; ly = y; if (brk[i]) { LineTo(mem, x, y); continue; } }
-            MoveToEx(mem, lx, ly, nullptr); LineTo(mem, x, y); lx = x; ly = y;
+        for (int pass = 0; pass < 2; ++pass) {
+            bool down = false; int lx = 0, ly = 0;
+            for (int i = 0; i < n; ++i) {
+                int x = pts[i].x - l, y = pts[i].y - t;
+                int sh = shade[i] & 63;
+                if (pass == 0) SelectObject(mem, outline);
+                else { if (!pens[sh]) pens[sh] = CreatePen(PS_SOLID, 3, FxLineColor((unsigned char)sh)); SelectObject(mem, pens[sh]); }
+                if (brk[i] || !down) { MoveToEx(mem, x, y, nullptr); down = true; lx = x; ly = y; if (brk[i]) { LineTo(mem, x, y); continue; } }
+                MoveToEx(mem, lx, ly, nullptr); LineTo(mem, x, y); lx = x; ly = y;
+            }
         }
         SelectObject(mem, op);
-        for (int i = 0; i < 32; ++i) if (pens[i]) DeleteObject(pens[i]);
+        DeleteObject(outline);
+        for (int i = 0; i < 64; ++i) if (pens[i]) DeleteObject(pens[i]);
         for (size_t i = 0; i < (size_t)w * h; ++i) px[i] = (px[i] & 0x00FFFFFFu) ? (0xFF000000u | (px[i] & 0x00FFFFFFu)) : 0;     // every drawn pixel opaque
         POINT pos = { l, t }, src = { 0, 0 }; SIZE size = { w, h };
         BLENDFUNCTION bf; bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0; bf.SourceConstantAlpha = 255; bf.AlphaFormat = AC_SRC_ALPHA;
@@ -1561,7 +1565,6 @@ void ShowMainMenu()
 {
     HMENU mn = CreatePopupMenu();
     AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
-    AppendMenuW(mn, MF_STRING | (g_draw ? MF_CHECKED : 0), ID_MENU_DRAW, T(S_HK_DRAW));
     AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(mn, MF_STRING, ID_MENU_PICTURES, T(S_OPEN_PICTURES));
     AppendMenuW(mn, MF_STRING, ID_MENU_VIDEOS, T(S_OPEN_VIDEOS));
@@ -1675,7 +1678,6 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_MENU: ShowMainMenu(); break;
         case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;       // an ordinary minimize: the window waits on the taskbar (one click or Alt+Tab brings it back)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
-        case ID_MENU_DRAW: DrawSwitch(); break;
         case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
         case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
         case IDC_OPTIONS:
@@ -1719,7 +1721,6 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
                 AppendMenuW(mn, MF_STRING, ID_TRAY_PAUSE, g_state == ST_RECORDING ? T(S_PAUSE) : g_state == ST_PAUSED ? T(S_RESUME) : T(S_START));
                 AppendMenuW(mn, MF_STRING, ID_TRAY_STOP, T(S_STOP));
             }
-            AppendMenuW(mn, MF_STRING | (g_draw ? MF_CHECKED : 0), ID_MENU_DRAW, T(S_HK_DRAW));
             AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
             AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(mn, MF_STRING, ID_TRAY_EXIT, T(S_EXIT));
