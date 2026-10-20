@@ -144,6 +144,6 @@ Interrompi registrazione
 Fai clic su un campo e premi la nuova combinazione. Backspace la cancella (la scorciatoia viene disattivata).
 La stessa combinazione è assegnata a due azioni.
 nessuna
-Linee rosse sullo schermo (attiva / disattiva)
+Disegno sullo schermo (attiva / disattiva)
 Disegno attivo: disegna con il pulsante sinistro, il destro cancella tutto, Esc esce.
 Disegno disattivato.

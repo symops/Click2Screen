@@ -126,7 +126,8 @@ void FxStop();
 void FxPenPoint(int x, int y, bool newStroke);       // a point of the trail given by the drawing window (the pen of the mouse)
 void FxWipe();                                     // wipes all the lines at once
 void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the lines always, the click waves when `waves`
-int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version);   // the visible trail (the on-screen copy)
+int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, unsigned char* shade = nullptr);   // the visible lines (the on-screen copy); shade: 0..31 of the gradient for each point
+COLORREF FxLineColor(unsigned char shade);          // the colour of a shade of the gradient (pink - red - orange)
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err);   // (autotest) is the hook installed, how many clicks it saw
 void FxTestTrailLifetime(unsigned ms);             // (autotest) how long a trail point lives; 0 = five minutes
 void FxTestClick(int x, int y, int button);        // (autotest) a click at a screen point, now

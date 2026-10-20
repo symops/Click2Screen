@@ -292,6 +292,8 @@ static bool SafePoint(int lx, int ly, int fw, int fh)        // away from the qu
     if (abs(lx - fw / 2) < 8 || abs(ly - fh / 2) < 8) return false;
     return ly < fh - 16 && lx >= 2 && lx < fw - 2 && ly >= 2;
 }
+static bool IsLine(int r, int g, int b) { return r > 215 && g < 190 && b < 200; }      // any shade of the gradient (pink - red - orange)
+
 static bool Near(COLORREF a, int r, int g, int b, int tol)
 {
     return abs((int)GetRValue(a) - r) <= tol && abs((int)GetGValue(a) - g) <= tol && abs((int)GetBValue(a) - b) <= tol;
@@ -2538,9 +2540,9 @@ static void T_Effects()
     const uint8_t* c = g2.Bits();
     for (int x = 40; x < 30 + 9 * 20 - 5; x += 3) {
         size_t o = ((size_t)(h - 1 - ty) * w + x) * 4;
-        ++tested; if (Near(RGB(255, 40, 40), c[o + 2], c[o + 1], c[o], 40)) ++red;
+        ++tested; if (IsLine(c[o + 2], c[o + 1], c[o])) ++red;
         size_t o2 = ((size_t)(h - 1 - oy) * w + x) * 4;
-        ++oldTested; if (Near(RGB(255, 40, 40), c[o2 + 2], c[o2 + 1], c[o2], 40)) ++oldRed;
+        ++oldTested; if (IsLine(c[o2 + 2], c[o2 + 1], c[o2])) ++oldRed;
     }
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
     Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is red in the frame", d2);
@@ -2554,11 +2556,25 @@ static void T_Effects()
         for (int i = 0; i < 12; ++i) FxPenPoint(fr.left + 40 + i * 14, fr.top + ty, i == 0);
         gk.Grab(rc, true, false, true);
         int redL = 0, tL = 0;
-        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; ++tL; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redL; }
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; ++tL; if (IsLine(gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o])) ++redL; }
         FxWipe();
         gk.Grab(rc, true, false, true);
         int redR = 0;
-        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redR; }
+        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (IsLine(gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o])) ++redR; }
+        // a line is a gradient: points drawn at different moments have different shades (pink - red - orange). A turn of the gradient
+        // takes 2.4 s and goes there and back, so a stroke of 1.2 s runs through at least half of the colours whatever the moment is.
+        for (int i = 0; i < 25; ++i) FxTestTrail(fr.left + 40 + i * 10, fr.top + ty, i == 0, 1200 - i * 50);
+        gk.Grab(rc, true, false, true);
+        int cr[25], cg[25], cb[25], good = 0;
+        for (int i = 0; i < 25; ++i) {
+            int x = 44 + i * 10; if (i == 24) x -= 6;
+            size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; cr[i] = gk.Bits()[o + 2]; cg[i] = gk.Bits()[o + 1]; cb[i] = gk.Bits()[o];
+            if (IsLine(cr[i], cg[i], cb[i])) ++good;
+        }
+        int spread = 0;
+        for (int i = 0; i < 25; ++i) for (int j = i + 1; j < 25; ++j) { int d = abs(cr[i] - cr[j]) + abs(cg[i] - cg[j]) + abs(cb[i] - cb[j]); if (d > spread) spread = d; }
+        wchar_t gd[200]; _snwprintf(gd, 200, L"%d of 25 pixels on the line, the colours of the stroke differ by up to %d (start %d,%d,%d end %d,%d,%d)", good, spread, cr[0], cg[0], cb[0], cr[24], cg[24], cb[24]);
+        Check(good >= 23 && spread > 90, L"effects: a line is a gradient, not one colour", gd);
         FxStop(); SetCursorPos(2, 2);
         wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points red; after the wipe: %d", redL, tL, redR);
         Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are red in the frame", kd);
@@ -2838,7 +2854,7 @@ static void T_AppEffects()
                         const uint8_t* q = px + ((size_t)y * dw + x) * 4;
                         int dx = x - cx, dy = y - cy;
                         if (dx * dx + dy * dy < 80 * 80 && q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60) ++wave;        // blue-ish over the green quarter
-                        if (y > h / 2 + 8 && abs(y - ty) < 8 && q[2] > 200 && q[1] < 120 && q[0] < 120) ++trail;                // red over blue / yellow
+                        if (y > h / 2 + 8 && abs(y - ty) < 8 && IsLine(q[2], q[1], q[0])) ++trail;                // the gradient over blue / yellow
                     }
                 if (wave >= 24) ++waveFrames;
                 if (trail >= 12) ++trailFrames;

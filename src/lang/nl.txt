@@ -144,6 +144,6 @@ Opname stoppen
 Klik op een veld en druk op de nieuwe combinatie. Backspace wist haar (de sneltoets is dan uit).
 Dezelfde combinatie is aan twee acties toegewezen.
 geen
-Rode lijnen op het scherm (aan / uit)
+Tekenen op het scherm (aan / uit)
 Tekenen staat aan: teken met de linkermuisknop, de rechter wist alles, Esc sluit af.
 Tekenen staat uit.

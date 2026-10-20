@@ -144,6 +144,6 @@ Stop recording
 Click a field and press the new combination. Backspace clears it (the hotkey is then off).
 The same combination is assigned to two actions.
 none
-Red lines on the screen (on / off)
+Drawing on the screen (on / off)
 Drawing is on: draw with the left mouse button, the right button erases everything, Esc leaves.
 Drawing is off.

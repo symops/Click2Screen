@@ -144,6 +144,6 @@ Kaydı durdur
 Bir alana tıklayıp yeni tuş birleşimine basın. Geri Al tuşu onu siler (kısayol kapanır).
 Aynı tuş birleşimi iki eyleme atanmış.
 yok
-Ekranda kırmızı çizgiler (aç / kapat)
+Ekranda çizim (aç / kapat)
 Çizim açık: sol fare düğmesiyle çizin, sağ düğme her şeyi siler, Esc çıkar.
 Çizim kapalı.

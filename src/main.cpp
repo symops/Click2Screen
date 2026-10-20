@@ -865,9 +865,9 @@ void TrailOverlayHide()
 
 void TrailOverlayUpdate()
 {
-    static POINT pts[4096]; static unsigned char brk[4096];
+    static POINT pts[4096]; static unsigned char brk[4096], shade[4096];
     unsigned ver = 0;
-    int n = FxTrailSnapshot(pts, brk, 4096, &ver);
+    int n = FxTrailSnapshot(pts, brk, 4096, &ver, shade);
     if (ver == g_trailVer) return;                               // nothing changed since the last picture
     g_trailVer = ver;
     if (n < 1) { if (g_trailWnd) ShowWindow(g_trailWnd, SW_HIDE); return; }
@@ -894,17 +894,20 @@ void TrailOverlayUpdate()
     if (bmp && px && mem) {
         HGDIOBJ ob = SelectObject(mem, bmp);
         memset(px, 0, (size_t)w * h * 4);
-        HPEN pen = CreatePen(PS_SOLID, 3, RGB(255, 255, 255));    // drawn white, then every drawn pixel becomes opaque red
-        HGDIOBJ op = SelectObject(mem, pen);
-        bool down = false;
+        HPEN pens[32]; for (int i = 0; i < 32; ++i) pens[i] = nullptr;       // one pen for each shade of the gradient
+        HGDIOBJ op = SelectObject(mem, GetStockObject(NULL_PEN));
+        bool down = false; int lx = 0, ly = 0;
         for (int i = 0; i < n; ++i) {
             int x = pts[i].x - l, y = pts[i].y - t;
-            if (brk[i] || !down) { MoveToEx(mem, x, y, nullptr); down = true; if (brk[i]) { LineTo(mem, x, y); continue; } }
-            LineTo(mem, x, y);
+            int sh = shade[i] > 31 ? 31 : shade[i];
+            if (!pens[sh]) pens[sh] = CreatePen(PS_SOLID, 3, FxLineColor((unsigned char)sh));
+            SelectObject(mem, pens[sh]);
+            if (brk[i] || !down) { MoveToEx(mem, x, y, nullptr); down = true; lx = x; ly = y; if (brk[i]) { LineTo(mem, x, y); continue; } }
+            MoveToEx(mem, lx, ly, nullptr); LineTo(mem, x, y); lx = x; ly = y;
         }
-        SelectObject(mem, op); DeleteObject(pen);
-        const uint32_t red = 0xFF000000u | (255u << 16) | (40u << 8) | 40u;
-        for (size_t i = 0; i < (size_t)w * h; ++i) px[i] = (px[i] & 0x00FFFFFFu) ? red : 0;
+        SelectObject(mem, op);
+        for (int i = 0; i < 32; ++i) if (pens[i]) DeleteObject(pens[i]);
+        for (size_t i = 0; i < (size_t)w * h; ++i) px[i] = (px[i] & 0x00FFFFFFu) ? (0xFF000000u | (px[i] & 0x00FFFFFFu)) : 0;     // every drawn pixel opaque
         POINT pos = { l, t }, src = { 0, 0 }; SIZE size = { w, h };
         BLENDFUNCTION bf; bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0; bf.SourceConstantAlpha = 255; bf.AlphaFormat = AC_SRC_ALPHA;
         UpdateLayeredWindow(g_trailWnd, scr, &pos, &size, mem, &src, 0, &bf, ULW_ALPHA);

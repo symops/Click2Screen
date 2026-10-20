@@ -144,6 +144,6 @@ Aufnahme beenden
 Klicken Sie auf ein Feld und drücken Sie die neue Kombination. Rücktaste löscht sie (die Tastenkombination ist dann aus).
 Dieselbe Kombination ist zwei Aktionen zugewiesen.
 keine
-Rote Linien auf dem Bildschirm (an / aus)
+Zeichnen auf dem Bildschirm (an / aus)
 Zeichnen ist an: mit der linken Maustaste zeichnen, die rechte löscht alles, Esc beendet.
 Zeichnen ist aus.

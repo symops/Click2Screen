@@ -14,7 +14,16 @@ const ULONGLONG kWaveMs = 650;
 const ULONGLONG kTrailDefaultMs = 10ULL * 1000;          // a point of the trail lives 10 seconds
 ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shortens it: a fresh machine has not been up for five minutes)
 
-struct Pt { int x, y; ULONGLONG t; bool brk; };         // brk: this point starts a new stroke
+struct Pt { int x, y; ULONGLONG t; bool brk; unsigned char shade; };   // brk: this point starts a new stroke; shade: 0..31 of the gradient
+
+// The gradient of the lines: pink - red - orange and back, a full turn in 2.4 seconds of drawing, so a stroke goes through
+// the colours as it is drawn (the shade is kept with each point: nothing changes afterwards).
+unsigned char ShadeAt(ULONGLONG t)
+{
+    double f = (double)(t % 2400) / 2400.0, u = fabs(2.0 * f - 1.0);
+    int b = (int)(u * 31.0 + 0.5);
+    return (unsigned char)(b < 0 ? 0 : b > 31 ? 31 : b);
+}
 
 CRITICAL_SECTION g_cs;
 bool g_csInit;
@@ -54,7 +63,7 @@ void AddPoint(int x, int y, ULONGLONG t, bool brk)
             g_trail = p; g_capTrail = cap;
         }
     }
-    g_trail[g_nTrail].x = x; g_trail[g_nTrail].y = y; g_trail[g_nTrail].t = t; g_trail[g_nTrail].brk = brk;
+    g_trail[g_nTrail].x = x; g_trail[g_nTrail].y = y; g_trail[g_nTrail].t = t; g_trail[g_nTrail].brk = brk; g_trail[g_nTrail].shade = ShadeAt(t);
     ++g_nTrail; ++g_version;
     Unlock();
 }
@@ -149,14 +158,23 @@ void FxWipe()
 }
 
 // The visible points of the trail (for the copy on the screen): newest last; `brk` marks the start of a stroke.
-int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version)
+COLORREF FxLineColor(unsigned char shade)
+{
+    static const int pink[3] = { 255, 40, 180 }, red[3] = { 255, 40, 40 }, orange[3] = { 255, 160, 0 };
+    double u = (shade > 31 ? 31 : shade) / 31.0;
+    const int* a = u < 0.5 ? pink : red; const int* b = u < 0.5 ? red : orange;
+    double k = u < 0.5 ? u / 0.5 : (u - 0.5) / 0.5;
+    return RGB((int)(a[0] + (b[0] - a[0]) * k + 0.5), (int)(a[1] + (b[1] - a[1]) * k + 0.5), (int)(a[2] + (b[2] - a[2]) * k + 0.5));
+}
+
+int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, unsigned char* shade)
 {
     Lock();
     Prune(GetTickCount64());
     int n = (int)(g_nTrail - g_head);
     size_t from = g_head;
     if (n > cap) { from = g_nTrail - cap; n = cap; }
-    for (int i = 0; i < n; ++i) { pts[i].x = g_trail[from + i].x; pts[i].y = g_trail[from + i].y; brk[i] = g_trail[from + i].brk ? 1 : 0; }
+    for (int i = 0; i < n; ++i) { pts[i].x = g_trail[from + i].x; pts[i].y = g_trail[from + i].y; brk[i] = g_trail[from + i].brk ? 1 : 0; if (shade) shade[i] = g_trail[from + i].shade; }
     if (n > 0 && n == cap) brk[0] = 1;
     *version = g_version;
     Unlock();
@@ -201,15 +219,19 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
     Prune(now);                                                                      // the oldest points fade out first
     if (g_nTrail > g_head) {
         int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2;                         // thin, but it survives video compression
-        HPEN pen = CreatePen(PS_SOLID, w, RGB(255, 40, 40));
-        HGDIOBJ op = SelectObject(dc, pen);
-        bool pen_down = false;
+        HPEN pens[32]; for (int i = 0; i < 32; ++i) pens[i] = nullptr;           // one pen for each shade, made when it is needed
+        HGDIOBJ op = SelectObject(dc, GetStockObject(NULL_PEN));
+        bool pen_down = false; int px = 0, py = 0;
         for (size_t i = g_head; i < g_nTrail; ++i) {
             int x = (int)((g_trail[i].x - src.left) * sx), y = (int)((g_trail[i].y - src.top) * sy);
-            if (g_trail[i].brk || !pen_down) { MoveToEx(dc, x, y, nullptr); pen_down = true; if (g_trail[i].brk) { LineTo(dc, x, y); continue; } }
-            LineTo(dc, x, y);
+            int sh = g_trail[i].shade > 31 ? 31 : g_trail[i].shade;
+            if (!pens[sh]) pens[sh] = CreatePen(PS_SOLID, w, FxLineColor((unsigned char)sh));
+            SelectObject(dc, pens[sh]);
+            if (g_trail[i].brk || !pen_down) { MoveToEx(dc, x, y, nullptr); pen_down = true; px = x; py = y; if (g_trail[i].brk) { LineTo(dc, x, y); continue; } }
+            MoveToEx(dc, px, py, nullptr); LineTo(dc, x, y); px = x; py = y;
         }
-        SelectObject(dc, op); DeleteObject(pen);
+        SelectObject(dc, op);
+        for (int i = 0; i < 32; ++i) if (pens[i]) DeleteObject(pens[i]);
     }
     Click cl[kMaxClicks]; int nc = 0;
     for (int i = 0; i < g_nClicks; ++i) if (now - g_clicks[i].t < kWaveMs) cl[nc++] = g_clicks[i];

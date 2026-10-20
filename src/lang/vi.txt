@@ -144,6 +144,6 @@ Dừng quay
 Nhấp vào ô rồi nhấn tổ hợp phím mới. Backspace sẽ xóa tổ hợp (phím tắt bị tắt).
 Cùng một tổ hợp phím được gán cho hai thao tác.
 không có
-Nét đỏ trên màn hình (bật / tắt)
+Vẽ trên màn hình (bật / tắt)
 Đã bật vẽ: vẽ bằng nút chuột trái, nút phải xóa tất cả, Esc để thoát.
 Đã tắt vẽ.

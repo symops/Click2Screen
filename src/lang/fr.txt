@@ -144,6 +144,6 @@ Arrêter l'enregistrement
 Cliquez dans un champ et appuyez sur la nouvelle combinaison. Retour arrière l'efface (le raccourci est alors désactivé).
 La même combinaison est attribuée à deux actions.
 aucun
-Lignes rouges à l'écran (activer / désactiver)
+Dessin à l'écran (activer / désactiver)
 Dessin activé : dessinez avec le bouton gauche, le bouton droit efface tout, Échap quitte.
 Dessin désactivé.
