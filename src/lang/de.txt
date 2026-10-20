@@ -39,8 +39,8 @@ OK
 Abbrechen
 Standard wiederherstellen
 Anwendung beim Start des Computers starten
-Mauszeiger in die Aufnahme einbeziehen
-Mauszeiger hervorheben
+Mauszeiger anzeigen
+Umrandung und Klickwellen um den Mauszeiger (nur im Video)
 Ausgabeordner nach der Aufnahme öffnen
 Editor nach einem Screenshot öffnen
 Töne aktivieren

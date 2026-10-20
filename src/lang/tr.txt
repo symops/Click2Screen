@@ -39,8 +39,8 @@ Tamam
 İptal
 Varsayılanlara dön
 Bilgisayar açıldığında uygulamayı başlat
-Fare imlecini yakalamaya dahil et
-Fare imlecini vurgula
+İşaretçiyi göster
+İşaretçi çevresinde çerçeve ve tıklama dalgaları (yalnızca videoda)
 Yakalamadan sonra çıkış klasörünü aç
 Ekran görüntüsünden sonra düzenleyiciyi aç
 Sesleri etkinleştir

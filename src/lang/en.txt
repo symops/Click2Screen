@@ -39,8 +39,8 @@ OK
 Cancel
 Restore default
 Start the application when my computer starts
-Include the mouse pointer in the capture
-Highlight the mouse pointer
+Show the mouse pointer
+Outline and click waves around the pointer (video only)
 Open the output folder after capture
 Open the editor after a screenshot
 Enable sounds

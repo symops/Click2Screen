@@ -39,8 +39,8 @@ OK
 Anuluj
 Przywróć domyślne
 Uruchamiaj aplikację przy starcie komputera
-Uwzględnij wskaźnik myszy w przechwytywaniu
-Wyróżnij wskaźnik myszy
+Pokazuj wskaźnik
+Obwódka i fale kliknięć wokół wskaźnika (tylko w wideo)
 Otwórz folder docelowy po przechwyceniu
 Otwórz edytor po zrzucie ekranu
 Włącz dźwięki

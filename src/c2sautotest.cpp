@@ -410,7 +410,8 @@ static void T_Ini()
     WritePrivateProfileStringW(L"Click2Screen", L"VideoQuality", L"2", path);
     Settings c; SettingsDefaults(c);
     bool ok = SettingsImport(c, path);
-    Check(ok && c.fps == 25 && c.delaySec == 3 && Same(c.fileName, L"File $D.$M.$Y $H-$N-$S") && c.videoQuality == 2, L"ini: invalid values are ignored, valid ones applied");
+    { Settings dd0; SettingsDefaults(dd0); Check(dd0.delaySec == 0, L"settings: the default delay before a capture is 0 seconds"); }
+    Check(ok && c.fps == 25 && c.delaySec == 0 && Same(c.fileName, L"File $D.$M.$Y $H-$N-$S") && c.videoQuality == 2, L"ini: invalid values are ignored, valid ones applied");
     // missing file / other file
     wchar_t nope[MAX_PATH]; _snwprintf(nope, MAX_PATH, L"%s\\missing.ini", g_dir);
     Settings d; SettingsDefaults(d);
@@ -1777,6 +1778,16 @@ static void T_App()
         HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
         Check(o != nullptr, L"program: Options opens (restore default test)");
         if (o) {
+            {   // the outline / waves box depends on "show the pointer": greyed while that one is off
+                bool pointerOn = SendMessageW(GetDlgItem(o, O_MOUSE), BM_GETCHECK, 0, 0) == BST_CHECKED;
+                bool en0 = IsWindowEnabled(GetDlgItem(o, O_HILITE)) != 0;
+                SendMessageW(GetDlgItem(o, O_MOUSE), BM_CLICK, 0, 0); Sleep(150);
+                bool en1 = IsWindowEnabled(GetDlgItem(o, O_HILITE)) != 0;
+                SendMessageW(GetDlgItem(o, O_MOUSE), BM_CLICK, 0, 0); Sleep(150);
+                bool en2 = IsWindowEnabled(GetDlgItem(o, O_HILITE)) != 0;
+                wchar_t dd[120]; _snwprintf(dd, 120, L"pointer on at start %d: highlight box enabled %d, after one click %d, after two %d", (int)pointerOn, (int)en0, (int)en1, (int)en2);
+                Check(en0 == pointerOn && en1 == !pointerOn && en2 == pointerOn, L"program: the outline-and-waves box is enabled only while the pointer box is checked", dd);
+            }
             Settings d; SettingsDefaults(d);
             SendMessageW(GetDlgItem(o, O_SOUNDS), BM_SETCHECK, d.sounds ? BST_UNCHECKED : BST_CHECKED, 0);       // a general setting, changed
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, d.fps == 10 ? 6 : 0, 0);                              // a video setting, changed
@@ -2440,7 +2451,7 @@ static void T_Effects()
     int cx = w * 3 / 4 + R(-20, 20), cy = h / 4 + R(-15, 15);
     g0.Grab(rc, true, false, false);
     FxTestClick(fr.left + cx, fr.top + cy, button);
-    g1.Grab(rc, true, false, true);
+    g1.Grab(rc, true, true, true);                                // the highlight option on: waves (and the halo, which is far from here)
     int ringN = 0, farN = 0; double dR = 0, dG = 0, dB = 0;
     const uint8_t* a = g0.Bits(); const uint8_t* b = g1.Bits();
     for (int y = 0; y < h; ++y)
@@ -2457,13 +2468,25 @@ static void T_Effects()
     wchar_t dd[200]; _snwprintf(dd, 200, L"button %d, %d ring pixels, %d changed farN away, mean change %.0f,%.0f,%.0f", button, ringN, farN, dR, dG, dB);
     Check(ringN >= 25 && farN == 0, L"effects: a click draws a wave round the pointer and nothing else", dd);
     Check(ringN >= 25 && colour, L"effects: the wave has the colour of the button (left blue, right red, middle purple)", dd);
+    // the waves belong to the highlight option: without it a click leaves no wave (the pointer itself is still shown)
+    {
+        FxStop();
+        Grabber gc, gd; gc.Init(w, h); gd.Init(w, h);
+        gc.Grab(rc, true, false, false);
+        FxTestClick(fr.left + cx, fr.top + cy, 0);
+        gd.Grab(rc, true, false, true);
+        int ch3 = 0;
+        for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
+            if (abs(gd.Bits()[o + 2] - gc.Bits()[o + 2]) + abs(gd.Bits()[o + 1] - gc.Bits()[o + 1]) + abs(gd.Bits()[o] - gc.Bits()[o]) > 30) ++ch3;
+        Check(ch3 == 0, L"effects: with the highlight option off a click draws no wave", ch3 ? L"(something was drawn)" : L"");
+    }
     // the waves belong to "include the pointer": with it off nothing is drawn
     {
         FxStop();
         Grabber ga, gb; ga.Init(w, h); gb.Init(w, h);
         ga.Grab(rc, false, false, false);
         FxTestClick(fr.left + cx, fr.top + cy, 0);
-        gb.Grab(rc, false, false, true);
+        gb.Grab(rc, false, true, true);
         int ch2 = 0;
         for (size_t o = 0; o + 3 < (size_t)w * h * 4; o += 4)
             if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
@@ -2794,7 +2817,8 @@ static void T_AppEffects()
     }
     wchar_t dd[220]; _snwprintf(dd, 220, L"the video has %d frames, %d decoded: %d show the wave, %d show the trail (running %d, file %d)", frames, tested, waveFrames, trailFrames, (int)running, (int)got);
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
-    Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);
+    if (s.highlight) Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);
+    else Check(waveFrames == 0, L"program effects: with the highlight option off a real click leaves no wave in the video", dd);
     if (trailFrames < 3 && g_wine) SKIP(L"program effects: Wine does not pass a synthetic Shift to GetAsyncKeyState");
     else {
         Check(trailFrames >= 3, L"program effects: with the left Shift held a red trail follows the pointer in the recorded video", dd);

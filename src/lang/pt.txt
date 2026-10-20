@@ -39,8 +39,8 @@ OK
 Cancelar
 Restaurar padrões
 Iniciar o aplicativo quando o computador for ligado
-Incluir o ponteiro do mouse na captura
-Destacar o ponteiro do mouse
+Mostrar o ponteiro
+Contorno e ondas de clique ao redor do ponteiro (somente em vídeo)
 Abrir a pasta de saída após a captura
 Abrir o editor após uma captura de tela
 Ativar sons

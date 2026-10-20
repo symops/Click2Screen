@@ -39,8 +39,8 @@ OK
 Batal
 Pulihkan default
 Jalankan aplikasi saat komputer dinyalakan
-Sertakan penunjuk mouse dalam tangkapan
-Sorot penunjuk mouse
+Tampilkan penunjuk
+Garis tepi dan gelombang klik di sekitar penunjuk (khusus video)
 Buka folder keluaran setelah penangkapan
 Buka editor setelah tangkapan layar
 Aktifkan suara

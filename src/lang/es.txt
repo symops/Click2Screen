@@ -39,8 +39,8 @@ Aceptar
 Cancelar
 Restaurar valores predeterminados
 Iniciar la aplicación al arrancar el equipo
-Incluir el puntero del ratón en la captura
-Resaltar el puntero del ratón
+Mostrar el puntero
+Contorno y ondas de clic alrededor del puntero (solo en vídeo)
 Abrir la carpeta de destino tras la captura
 Abrir el editor tras una captura de pantalla
 Activar los sonidos

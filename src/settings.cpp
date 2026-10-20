@@ -61,7 +61,7 @@ void SettingsDefaults(Settings& s)
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
     s.openFolder = true; s.runAtStartup = false;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
-    s.delaySec = 3; s.durH = s.durM = s.durS = 0;
+    s.delaySec = 0; s.durH = s.durM = s.durS = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
     s.fps = 25; s.language = 0;
 }

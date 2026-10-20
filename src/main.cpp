@@ -1071,6 +1071,7 @@ void OptLoad(OptState* o)
     auto chk = [&](int id, bool v) { CheckDlgButton(d, id, v ? BST_CHECKED : BST_UNCHECKED); };
     chk(O_AUTOSTART, s.runAtStartup); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
     chk(O_SOUNDS, s.sounds); chk(O_NOTIFY, s.notify); chk(O_LOOPBACK, s.loopback); chk(O_MIC, s.mic);
+    EnableWindow(GetDlgItem(d, O_HILITE), s.capMouse);                // the outline and the waves are drawn round the pointer: without it there is nothing to outline
     SendDlgItemMessageW(d, O_DELAY, CB_SETCURSEL, s.delaySec < 0 ? 0 : s.delaySec > 10 ? 10 : s.delaySec, 0);
     ComboSelectData(d, O_VCODEC, s.videoCodec);
     SendDlgItemMessageW(d, O_ACODEC, CB_SETCURSEL, s.audioCodec, 0);
@@ -1256,6 +1257,7 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         switch (LOWORD(wp)) {
         case IDOK: if (OptStore(o)) { o->ok = true; o->done = true; } break;
         case IDCANCEL: o->done = true; break;
+        case O_MOUSE: EnableWindow(GetDlgItem(hw, O_HILITE), IsDlgButtonChecked(hw, O_MOUSE) == BST_CHECKED); break;
         case O_BRVID: BrowseFolder(hw, O_VIDFOLDER); break;
         case O_BRIMG: BrowseFolder(hw, O_IMGFOLDER); break;
         case O_EXPORT: OptExport(o); break;

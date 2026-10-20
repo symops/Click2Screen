@@ -39,8 +39,8 @@ OK
 Hủy
 Khôi phục mặc định
 Khởi động ứng dụng cùng máy tính
-Bao gồm con trỏ chuột trong ảnh quay
-Làm nổi bật con trỏ chuột
+Hiển thị con trỏ
+Viền và sóng nhấp quanh con trỏ (chỉ trong video)
 Mở thư mục đầu ra sau khi quay/chụp
 Mở trình chỉnh sửa sau khi chụp ảnh màn hình
 Bật âm thanh

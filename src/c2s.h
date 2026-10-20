@@ -124,7 +124,7 @@ private:
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
 void FxSample();                                   // reads the Shift keys: the left one adds trail points, the right one wipes the trail (FxDraw does it for every frame)
-void FxDraw(HDC dc, const RECT& src, int outW, int outH);
+void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the Shift trail always, the click waves when `waves`
 int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version);   // the visible trail (the on-screen copy)
 void FxTestKeys(int keys);                         // (autotest) -1 the real keys; bit 0 left Shift, bit 1 right Shift
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err);   // (autotest) is the hook installed, how many clicks it saw

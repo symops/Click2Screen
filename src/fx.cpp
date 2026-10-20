@@ -196,7 +196,7 @@ static void SampleTrail(ULONGLONG now)
 
 void FxSample() { SampleTrail(GetTickCount64()); }
 
-void FxDraw(HDC dc, const RECT& src, int outW, int outH)
+void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
 {
     ULONGLONG now = GetTickCount64();
     int sw = src.right - src.left, sh = src.bottom - src.top;
@@ -241,7 +241,7 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH)
     for (int i = 0; i < g_nClicks; ++i) if (now - g_clicks[i].t < kWaveMs) cl[nc++] = g_clicks[i];
     Unlock();
 
-    for (int i = 0; i < nc; ++i) {
+    for (int i = 0; i < nc && waves; ++i) {
         double p = (double)(now - cl[i].t) / kWaveMs;                                 // 0 .. 1
         double radius = (10.0 + 50.0 * p) * sc;                                       // a ring that grows from the pointer, easy to see in a video
         double thick = 6.0 * sc * (1.0 - 0.5 * p); if (thick < 3.0) thick = 3.0;

@@ -39,8 +39,8 @@ OK
 Annulla
 Ripristina predefiniti
 Avvia l’applicazione all’avvio del computer
-Includi il puntatore del mouse nella cattura
-Evidenzia il puntatore del mouse
+Mostra il puntatore
+Contorno e onde di clic attorno al puntatore (solo nei video)
 Apri la cartella di destinazione dopo la cattura
 Apri l’editor dopo una schermata
 Abilita i suoni

@@ -39,8 +39,8 @@ OK
 Annuleren
 Standaardwaarden herstellen
 De toepassing starten wanneer de computer opstart
-De muisaanwijzer opnemen in de opname
-De muisaanwijzer markeren
+Muisaanwijzer tonen
+Omlijning en klikgolven rond de aanwijzer (alleen in video)
 De uitvoermap openen na het vastleggen
 De editor openen na een schermafbeelding
 Geluiden inschakelen
