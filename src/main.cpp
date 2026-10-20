@@ -896,8 +896,7 @@ void TrailOverlayUpdate()
         memset(px, 0, (size_t)w * h * 4);
         static POINT loc[4096];
         for (int i = 0; i < n; ++i) { loc[i].x = pts[i].x - l; loc[i].y = pts[i].y - t; }
-        FxPaintLines(mem, loc, brk, shade, n, 3);                              // the same lines as in the video: outline + gradient
-        for (size_t i = 0; i < (size_t)w * h; ++i) px[i] = (px[i] & 0x00FFFFFFu) ? (0xFF000000u | (px[i] & 0x00FFFFFFu)) : 0;     // every drawn pixel opaque
+        FxPaintLines(px, w, h, true, true, loc, brk, shade, n, 3.0f);          // the same lines as in the video: smooth, a gradient of all the colours
         POINT pos = { l, t }, src = { 0, 0 }; SIZE size = { w, h };
         BLENDFUNCTION bf; bf.BlendOp = AC_SRC_OVER; bf.BlendFlags = 0; bf.SourceConstantAlpha = 255; bf.AlphaFormat = AC_SRC_ALPHA;
         UpdateLayeredWindow(g_trailWnd, scr, &pos, &size, mem, &src, 0, &bf, ULW_ALPHA);

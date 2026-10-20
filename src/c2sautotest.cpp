@@ -2538,14 +2538,14 @@ static void T_Effects()
             if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
         Check(ch2 == 0, L"effects: with \"include the pointer\" off a recording has no waves either", ch2 ? L"(something was drawn)" : L"");
     }
-    // the drawn lines (a gradient of all the colours): they are in the frame, and a stroke older than its lifetime is gone
+    // The drawn lines (a gradient of all the colours, smooth, anti-aliased). The colours come with the moment of drawing, so the test
+    // gives the points the shades it wants (red - orange: they differ from both the blue and the yellow of the lower half).
     FxStop();
-    FxTestTrailLifetime(3000);                                  // a point lives 3 s here (ten seconds for real); the old stroke is 5 s old
     int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half
     Grabber gbase; gbase.Init(w, h);
     gbase.Grab(rc, true, false, false);                          // the frame without any line
-    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 5000);                    // points come in time order: the old stroke first
-    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + ty, i == 0, 1000);
+    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 12000);                  // a stroke older than the lifetime (10 s): the oldest goes first
+    for (int i = 0; i < 10; ++i) FxTestTrailShade(fr.left + 30 + i * 20, fr.top + ty, i == 0, 0);
     Grabber g2; g2.Init(w, h);
     g2.Grab(rc, true, false, true);
     int red = 0, tested = 0, oldRed = 0, oldTested = 0;
@@ -2556,13 +2556,12 @@ static void T_Effects()
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points drawn on the fresh line, %d of %d on the old one", red, tested, oldRed, oldTested);
     Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is in the frame", d2);
     Check(oldTested > 5 && oldRed == 0, L"effects: a line point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
-    FxTestTrailLifetime(0);
     FxStop();
     // the lines of the drawing window (the left button draws, the right one wipes) are in the frame, and the wipe takes them all
     {
         Grabber gk; gk.Init(w, h);
         FxStart();
-        for (int i = 0; i < 12; ++i) FxPenPoint(fr.left + 40 + i * 14, fr.top + ty, i == 0);
+        for (int i = 0; i < 12; ++i) FxTestTrailShade(fr.left + 40 + i * 14, fr.top + ty, i == 0, 0);
         gk.Grab(rc, true, false, true);
         int redL = 0, tL = 0;
         for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { ++tL; if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++redL; }
@@ -2570,9 +2569,8 @@ static void T_Effects()
         gk.Grab(rc, true, false, true);
         int redR = 0;
         for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++redR;
-        // a line is a gradient: points drawn at different moments have different colours. A turn of the colour wheel takes 5 s,
-        // so a stroke of 1.2 s (25 points) runs through a quarter of it, whatever the moment is.
-        for (int i = 0; i < 25; ++i) FxTestTrail(fr.left + 40 + i * 10, fr.top + ty, i == 0, 1200 - i * 50);
+        // a line is a gradient: points drawn at different moments have different colours (here 30 shades from red to orange in 25 points)
+        for (int i = 0; i < 25; ++i) FxTestTrailShade(fr.left + 40 + i * 10, fr.top + ty, i == 0, 250 + i * 5 / 4);
         gk.Grab(rc, true, false, true);
         int cr[25], cg[25], cb[25], good = 0;
         for (int i = 0; i < 25; ++i) {
@@ -2583,14 +2581,14 @@ static void T_Effects()
         int spread = 0;
         for (int i = 0; i < 25; ++i) for (int j = i + 1; j < 25; ++j) { int d = abs(cr[i] - cr[j]) + abs(cg[i] - cg[j]) + abs(cb[i] - cb[j]); if (d > spread) spread = d; }
         wchar_t gd[200]; _snwprintf(gd, 200, L"%d of 25 pixels on the line, the colours of the stroke differ by up to %d (start %d,%d,%d end %d,%d,%d)", good, spread, cr[0], cg[0], cb[0], cr[24], cg[24], cb[24]);
-        Check(good >= 23 && spread > 90, L"effects: a line is a gradient of colours, not one colour", gd);
+        Check(good >= 23 && spread > 60, L"effects: a line is a gradient of colours, not one colour", gd);
         // the colours change smoothly along a long segment between two far points (not one colour and then a jump)
         FxWipe();
         int span = w - 90 < 300 ? w - 90 : 300;
-        FxTestTrail(fr.left + 40, fr.top + ty, true, 2000);
-        FxTestTrail(fr.left + 40 + span, fr.top + ty, false, 0);
+        FxTestTrailShade(fr.left + 40, fr.top + ty, true, 250);
+        FxTestTrailShade(fr.left + 40 + span, fr.top + ty, false, 40);
         gk.Grab(rc, true, false, true);
-        int prevR = -1, prevG = 0, prevB = 0, maxStep = 0, total = 0, firstR = 0, firstG = 0, firstB = 0, lastR = 0, lastG = 0, lastB = 0, samples = 0;
+        int prevR = -1, prevG = 0, prevB = 0, maxStep = 0, firstR = 0, firstG = 0, firstB = 0, lastR = 0, lastG = 0, lastB = 0, samples = 0;
         for (int x = 46; x < 40 + span - 6; x += 3) {
             size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; int r = gk.Bits()[o + 2], g = gk.Bits()[o + 1], bl = gk.Bits()[o];
             if (prevR >= 0) { int d = abs(r - prevR) + abs(g - prevG) + abs(bl - prevB); if (d > maxStep) maxStep = d; }
@@ -2598,9 +2596,24 @@ static void T_Effects()
             lastR = r; lastG = g; lastB = bl; ++samples;
             prevR = r; prevG = g; prevB = bl;
         }
-        total = abs(firstR - lastR) + abs(firstG - lastG) + abs(firstB - lastB);
+        int total = abs(firstR - lastR) + abs(firstG - lastG) + abs(firstB - lastB);
         wchar_t sd[200]; _snwprintf(sd, 200, L"%d samples along %d px: the biggest step between neighbours %d, start %d,%d,%d end %d,%d,%d", samples, span, maxStep, firstR, firstG, firstB, lastR, lastG, lastB);
-        Check(samples > 20 && maxStep < 70 && total > 100, L"effects: the colours of a long segment change smoothly from one end to the other", sd);
+        Check(samples > 20 && maxStep < 40 && total > 100, L"effects: the colours of a long segment change smoothly from one end to the other", sd);
+        // smooth edges: a slanted line has pixels of in-between colour (an aliased one would have none), and there is no black outline
+        FxWipe();
+        FxTestTrailShade(fr.left + 40, fr.top + ty - 30, true, 0);
+        FxTestTrailShade(fr.left + 40 + 110, fr.top + ty + 30, false, 0);
+        gk.Grab(rc, true, false, true);
+        int mixed = 0, dark = 0;
+        for (int y = ty - 36; y <= ty + 36; ++y)
+            for (int x = 34; x < 40 + 120; ++x) {
+                size_t o = ((size_t)(h - 1 - y) * w + x) * 4; int r = gk.Bits()[o + 2], g = gk.Bits()[o + 1], bl = gk.Bits()[o];
+                if (r > 40 && r < 215 && g < 40) ++mixed;                       // between the blue of the background and the red of the line
+                if (r < 60 && g < 60 && bl < 60) ++dark;                        // a black outline would be here
+            }
+        wchar_t ad[160]; _snwprintf(ad, 160, L"%d pixels of in-between colour on the edges, %d dark pixels", mixed, dark);
+        Check(mixed >= 40, L"effects: the lines have smooth (anti-aliased) edges", ad);
+        Check(dark == 0, L"effects: the lines have no black outline", ad);
         FxStop(); SetCursorPos(2, 2);
         wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points drawn; after the wipe: %d", redL, tL, redR);
         Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are in the frame", kd);
@@ -2896,7 +2909,7 @@ static void T_AppEffects()
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
     if (s.highlight) Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);
     else Check(waveFrames == 0, L"program effects: with the highlight option off a real click leaves no wave in the video", dd);
-    Check(trailFrames >= 3, L"program effects: a line drawn with the left button in the drawing window is red in the recorded video", dd);
+    Check(trailFrames >= 3, L"program effects: a line drawn with the left button in the drawing window is in the recorded video", dd);
     Check(overlaySeen, L"program effects: the line is shown on the screen too, while recording", dd);
     StopApp(a);
 }

@@ -16,11 +16,12 @@ ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shorten
 
 struct Pt { int x, y; ULONGLONG t; bool brk; unsigned char shade; };   // brk: this point starts a new stroke; shade: 0..31 of the gradient
 
-// The gradient of the lines: all the colours of the rainbow, a full turn in 5 seconds of drawing, so a stroke goes through the
+// The gradient of the lines: all the colours of the rainbow, a full turn in 8 seconds of drawing, so a stroke goes through the
 // colours slowly as it is drawn (the shade, 0..255 round the colour wheel, is kept with each point: nothing changes afterwards).
+const ULONGLONG kShadePeriodMs = 8000;
 unsigned char ShadeAt(ULONGLONG t)
 {
-    return (unsigned char)((int)((double)(t % 5000) / 5000.0 * 256.0) & 255);
+    return (unsigned char)((int)((double)(t % kShadePeriodMs) / (double)kShadePeriodMs * 256.0) & 255);
 }
 
 CRITICAL_SECTION g_cs;
@@ -160,6 +161,7 @@ COLORREF FxLineColor(unsigned char shade)
 {
     double h = shade * 6.0 / 256.0;                             // 0..6 round the colour wheel, full colours
     int i = (int)h; double f = h - i;
+    f = f * f * (3.0 - 2.0 * f);                                // soft ramps: the colour changes gently at the primary colours too
     int up = (int)(255.0 * f + 0.5), down = 255 - up;
     switch (i) {
     case 0: return RGB(255, up, 0);
@@ -171,45 +173,113 @@ COLORREF FxLineColor(unsigned char shade)
     }
 }
 
-// The lines of the drawing, in the picture of `dc` (the video frame or the copy on the screen): a thin dark outline under all of
-// them (it shows on a background of any colour), then the gradient. A segment between two points is cut into short pieces whose
-// colour goes from the colour of one point to the colour of the next, so the colours change smoothly however far apart the
-// points are. pt are device points, brk marks the first point of a stroke, shade is 0..255 round the colour wheel.
-void FxPaintLines(HDC dc, const POINT* pt, const unsigned char* brk, const unsigned char* shade, int n, int w)
+namespace {
+struct SP { float x, y, s; };                                   // a point of the smoothed path: position and shade (not wrapped)
+COLORREF g_lut[256]; bool g_lutInit;
+
+void ColorAt(float s, int* r, int* g, int* b)                   // the colour at a fractional shade: neighbours of the table blended
 {
-    if (n < 1) return;
-    HPEN pens[256]; for (int i = 0; i < 256; ++i) pens[i] = nullptr;           // one pen for each shade, made when it is needed
-    HPEN outline = CreatePen(PS_SOLID, w + 2, RGB(30, 30, 30));
-    HGDIOBJ op = SelectObject(dc, GetStockObject(NULL_PEN));
-    for (int pass = 0; pass < 2; ++pass) {
-        bool down = false; int px = 0, py = 0, ps = 0;
-        for (int i = 0; i < n; ++i) {
-            int x = pt[i].x, y = pt[i].y, sh = shade[i];
-            auto pick = [&](int s) {
-                if (pass == 0) { SelectObject(dc, outline); return; }
-                s &= 255; if (!pens[s]) pens[s] = CreatePen(PS_SOLID, w, FxLineColor((unsigned char)s));
-                SelectObject(dc, pens[s]);
-            };
-            if (brk[i] || !down) {
-                MoveToEx(dc, x, y, nullptr); down = true; px = x; py = y; ps = sh;
-                if (brk[i]) { pick(sh); LineTo(dc, x, y); continue; }
-            }
-            int d = (sh - ps) & 255;                                           // the colour goes on round the wheel in the order of drawing
-            int dist = abs(x - px) > abs(y - py) ? abs(x - px) : abs(y - py);
-            int steps = pass == 0 ? 1 : dist / 2; if (steps < 1) steps = 1; if (steps > 48) steps = 48;
-            int ax = px, ay = py;
-            for (int k = 1; k <= steps; ++k) {
-                int bx = px + (x - px) * k / steps, by = py + (y - py) * k / steps;
-                pick(ps + d * k / steps);
-                MoveToEx(dc, ax, ay, nullptr); LineTo(dc, bx, by);
-                ax = bx; ay = by;
-            }
-            px = x; py = y; ps = sh;
+    if (!g_lutInit) { for (int i = 0; i < 256; ++i) g_lut[i] = FxLineColor((unsigned char)i); g_lutInit = true; }
+    s = fmodf(s, 256.0f); if (s < 0) s += 256.0f;
+    int i = (int)s; float f = s - i; int j = (i + 1) & 255;
+    COLORREF a = g_lut[i & 255], c = g_lut[j];
+    *r = (int)(GetRValue(a) + (GetRValue(c) - GetRValue(a)) * f + 0.5f);
+    *g = (int)(GetGValue(a) + (GetGValue(c) - GetGValue(a)) * f + 0.5f);
+    *b = (int)(GetBValue(a) + (GetBValue(c) - GetBValue(a)) * f + 0.5f);
+}
+
+// One stroke [a, b) of the points: the path is smoothed (a Catmull-Rom spline through the points), every piece of it is a capsule with
+// an anti-aliased edge and a colour that goes from the shade of one point to the next. The stroke is rendered into a coverage buffer
+// first (the best coverage of the pixel wins, so the joints of the pieces do not get heavier edges) and laid on the picture once.
+void PaintStroke(uint32_t* bits, int bw, int bh, bool topDown, bool alpha, const POINT* pt, const unsigned char* shade, int a, int b, float width)
+{
+    int m = b - a;
+    if (m < 1) return;
+    float r = width * 0.5f;
+    // the smoothed path
+    size_t cap = (size_t)(m - 1) * 24 + 2;
+    SP* e = (SP*)malloc(cap * sizeof(SP));
+    float* us = (float*)malloc((size_t)m * sizeof(float));
+    if (!e || !us) { free(e); free(us); return; }
+    us[0] = shade[a];
+    for (int k = 1; k < m; ++k) us[k] = us[k - 1] + (float)((shade[a + k] - shade[a + k - 1]) & 255);     // the colour goes on round the wheel in the order of drawing
+    size_t ne = 0;
+    for (int k = 0; k + 1 < m; ++k) {
+        const POINT &p1 = pt[a + k], &p2 = pt[a + k + 1], &p0 = pt[a + (k > 0 ? k - 1 : 0)], &p3 = pt[a + (k + 2 < m ? k + 2 : m - 1)];
+        float dx = (float)(p2.x - p1.x), dy = (float)(p2.y - p1.y);
+        int steps = (int)(sqrtf(dx * dx + dy * dy) / 2.5f); if (steps < 1) steps = 1; if (steps > 24) steps = 24;
+        for (int j = 0; j < steps; ++j) {
+            float t = (float)j / steps, t2 = t * t, t3 = t2 * t;
+            float x = 0.5f * (2.0f * p1.x + (-p0.x + p2.x) * t + (2.0f * p0.x - 5.0f * p1.x + 4.0f * p2.x - p3.x) * t2 + (-p0.x + 3.0f * p1.x - 3.0f * p2.x + p3.x) * t3);
+            float y = 0.5f * (2.0f * p1.y + (-p0.y + p2.y) * t + (2.0f * p0.y - 5.0f * p1.y + 4.0f * p2.y - p3.y) * t2 + (-p0.y + 3.0f * p1.y - 3.0f * p2.y + p3.y) * t3);
+            e[ne].x = x; e[ne].y = y; e[ne].s = us[k] + (us[k + 1] - us[k]) * t; ++ne;
         }
     }
-    SelectObject(dc, op);
-    DeleteObject(outline);
-    for (int i = 0; i < 256; ++i) if (pens[i]) DeleteObject(pens[i]);
+    e[ne].x = (float)pt[b - 1].x; e[ne].y = (float)pt[b - 1].y; e[ne].s = us[m - 1]; ++ne;
+    free(us);
+    // the box of the stroke, clipped to the picture
+    float fx0 = e[0].x, fx1 = e[0].x, fy0 = e[0].y, fy1 = e[0].y;
+    for (size_t i = 1; i < ne; ++i) { if (e[i].x < fx0) fx0 = e[i].x; if (e[i].x > fx1) fx1 = e[i].x; if (e[i].y < fy0) fy0 = e[i].y; if (e[i].y > fy1) fy1 = e[i].y; }
+    int bx0 = (int)floorf(fx0 - r - 2), bx1 = (int)ceilf(fx1 + r + 2), by0 = (int)floorf(fy0 - r - 2), by1 = (int)ceilf(fy1 + r + 2);
+    if (bx0 < 0) bx0 = 0; if (by0 < 0) by0 = 0; if (bx1 > bw - 1) bx1 = bw - 1; if (by1 > bh - 1) by1 = bh - 1;
+    if (bx1 < bx0 || by1 < by0) { free(e); return; }
+    int cw = bx1 - bx0 + 1, ch = by1 - by0 + 1;
+    unsigned char* cov = (unsigned char*)calloc((size_t)cw * ch, 1);
+    uint32_t* col = (uint32_t*)malloc((size_t)cw * ch * sizeof(uint32_t));
+    if (!cov || !col) { free(e); free(cov); free(col); return; }
+    for (size_t i = 0; i < ne; ++i) {
+        const SP& p = e[i]; const SP& q = i + 1 < ne ? e[i + 1] : e[i];
+        float vx = q.x - p.x, vy = q.y - p.y, len2 = vx * vx + vy * vy;
+        int x0 = (int)floorf((p.x < q.x ? p.x : q.x) - r - 1), x1 = (int)ceilf((p.x > q.x ? p.x : q.x) + r + 1);
+        int y0 = (int)floorf((p.y < q.y ? p.y : q.y) - r - 1), y1 = (int)ceilf((p.y > q.y ? p.y : q.y) + r + 1);
+        if (x0 < bx0) x0 = bx0; if (y0 < by0) y0 = by0; if (x1 > bx1) x1 = bx1; if (y1 > by1) y1 = by1;
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x) {
+                float t = 0;
+                if (len2 > 0) { t = ((x - p.x) * vx + (y - p.y) * vy) / len2; if (t < 0) t = 0; else if (t > 1) t = 1; }
+                float dx = x - (p.x + vx * t), dy = y - (p.y + vy * t);
+                float c = r + 0.5f - sqrtf(dx * dx + dy * dy);
+                if (c <= 0) continue;
+                int cv = c >= 1.0f ? 255 : (int)(c * 255.0f + 0.5f);
+                size_t idx = (size_t)(y - by0) * cw + (x - bx0);
+                if (cv > cov[idx]) {
+                    cov[idx] = (unsigned char)cv;
+                    int cr, cg, cb; ColorAt(p.s + (q.s - p.s) * t, &cr, &cg, &cb);
+                    col[idx] = ((uint32_t)cr << 16) | ((uint32_t)cg << 8) | (uint32_t)cb;
+                }
+            }
+    }
+    // laid on the picture: `alpha` is a premultiplied picture with an alpha channel (the copy on the screen), otherwise opaque pixels
+    for (int y = by0; y <= by1; ++y) {
+        uint32_t* row = bits + (size_t)(topDown ? y : bh - 1 - y) * bw;
+        for (int x = bx0; x <= bx1; ++x) {
+            size_t idx = (size_t)(y - by0) * cw + (x - bx0);
+            unsigned cv = cov[idx]; if (!cv) continue;
+            uint32_t c = col[idx], d = row[x];
+            unsigned inv = 255 - cv;
+            unsigned rr = (((c >> 16) & 255) * cv + ((d >> 16) & 255) * inv + 127) / 255;
+            unsigned gg = (((c >> 8) & 255) * cv + ((d >> 8) & 255) * inv + 127) / 255;
+            unsigned bb = ((c & 255) * cv + (d & 255) * inv + 127) / 255;
+            unsigned aa = alpha ? (cv * 255 + (d >> 24) * inv + 127) / 255 : (d >> 24);
+            row[x] = (aa << 24) | (rr << 16) | (gg << 8) | bb;
+        }
+    }
+    free(e); free(cov); free(col);
+}
+}
+
+// The lines of the drawing in a 32-bit picture (the video frame, or the premultiplied copy on the screen when `alpha`): smooth
+// (anti-aliased, the path is a spline) and with a gradient of all the colours that blends from one point to the next.
+// pt are the points in pixels of the picture, brk marks the first point of a stroke, shade is 0..255 round the colour wheel.
+void FxPaintLines(uint32_t* bits, int bw, int bh, bool topDown, bool alpha, const POINT* pt, const unsigned char* brk, const unsigned char* shade, int n, float width)
+{
+    if (!bits || bw < 1 || bh < 1) return;
+    int a = 0;
+    while (a < n) {
+        int b = a + 1; while (b < n && !brk[b]) ++b;
+        PaintStroke(bits, bw, bh, topDown, alpha, pt, shade, a, b, width);
+        a = b;
+    }
 }
 
 int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, unsigned char* shade)
@@ -224,6 +294,14 @@ int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, 
     *version = g_version;
     Unlock();
     return n;
+}
+
+void FxTestTrailShade(int x, int y, bool newStroke, int shade)
+{
+    ULONGLONG now = GetTickCount64(), cur = now % kShadePeriodMs;
+    ULONGLONG target = (ULONGLONG)(shade & 255) * kShadePeriodMs / 256 + kShadePeriodMs / 512;          // the middle of the slot of that shade
+    ULONGLONG back = (cur + kShadePeriodMs - target) % kShadePeriodMs;
+    AddPoint(x, y, now - back, newStroke);
 }
 
 void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }
@@ -276,7 +354,12 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
     for (int i = 0; i < g_nClicks; ++i) if (now - g_clicks[i].t < kWaveMs) cl[nc++] = g_clicks[i];
     Unlock();
 
-    if (ln > 0) { int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2; FxPaintLines(dc, lp, lb, ls, ln, w); }      // thin, but it survives video compression
+    if (ln > 0) {
+        float lw = (float)(3.0 * sc); if (lw < 2.5f) lw = 2.5f;                                          // thin, but it survives video compression
+        DIBSECTION ds; HBITMAP hb = (HBITMAP)GetCurrentObject(dc, OBJ_BITMAP);
+        if (hb && GetObject(hb, sizeof(ds), &ds) == sizeof(ds) && ds.dsBm.bmBits && ds.dsBm.bmBitsPixel == 32)
+            FxPaintLines((uint32_t*)ds.dsBm.bmBits, ds.dsBm.bmWidth, ds.dsBm.bmHeight, ds.dsBmih.biHeight < 0, false, lp, lb, ls, ln, lw);
+    }
     free(lp); free(lb); free(ls);
 
     for (int i = 0; i < nc && waves; ++i) {
