@@ -32,7 +32,6 @@ Quay sẽ bắt đầu sau %d...
 Click2Screen đang quay. Nhấp biểu tượng ở khay hệ thống để tạm dừng, nhấp chuột phải để xem thêm.
 Tùy chọn Click2Screen
 Chung
-Video và âm thanh
 Tệp
 Ngôn ngữ
 OK
@@ -52,11 +51,7 @@ Codec âm thanh:
 Chất lượng video:
 Chất lượng âm thanh:
 Số khung hình mỗi giây:
-Dừng quay sau (0 = không giới hạn):
-giờ
-phút
-Thư mục video:
-Thư mục ảnh:
+Thư mục cho video và ảnh
 Định dạng ảnh:
 Mẫu tên tệp:
 Mẹo: # – một chữ số của số thứ tự, $Y năm, $M tháng, $D ngày, $H giờ, $N phút, $S giây, %USERNAME% – tên người dùng. Ví dụ: File $D.$M.$Y $H-$N-$S hoặc Img####
@@ -130,8 +125,8 @@ Lỗi: thư mục cài đặt không hợp lệ (cần đường dẫn đầy đ
 Cài đặt lại
 Mở thư mục hình ảnh
 Mở thư mục video
-Hình ảnh
-Tên tệp
+Định dạng
+Lưu
 Tùy chọn video
 Tùy chọn âm thanh
 Phiên bản %s
@@ -147,3 +142,4 @@ không có
 Vẽ trên màn hình (bật / tắt)
 Đã bật vẽ: vẽ bằng nút chuột trái, nút phải xóa tất cả, Esc để thoát.
 Đã tắt vẽ.
+Tên tệp sẽ là:

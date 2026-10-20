@@ -32,7 +32,6 @@ Zapisano: %s
 Click2Screen nagrywa. Kliknij ikonę w obszarze powiadomień, aby wstrzymać; prawy przycisk – więcej opcji.
 Opcje Click2Screen
 Ogólne
-Wideo i dźwięk
 Pliki
 Język
 OK
@@ -52,11 +51,7 @@ Kodek audio:
 Jakość wideo:
 Jakość dźwięku:
 Klatek na sekundę:
-Zatrzymaj nagrywanie po (0 = bez limitu):
-godz.
-min
-Folder wideo:
-Folder obrazów:
+Folder na wideo i obrazy
 Format obrazu:
 Wzorzec nazwy pliku:
 Wskazówki: # – jedna cyfra numeru kolejnego, $Y rok, $M miesiąc, $D dzień, $H godzina, $N minuta, $S sekunda, %USERNAME% – nazwa użytkownika. Przykład: File $D.$M.$Y $H-$N-$S lub Img####
@@ -130,8 +125,8 @@ Błąd: folder instalacji jest nieprawidłowy (potrzebna pełna ścieżka, np. C
 Zainstaluj ponownie
 Otwórz folder z obrazami
 Otwórz folder z wideo
-Obrazy
-Nazwa pliku
+Formaty
+Zapis
 Opcje wideo
 Opcje dźwięku
 Wersja %s
@@ -147,3 +142,4 @@ brak
 Rysowanie na ekranie (włącz / wyłącz)
 Rysowanie włączone: rysuj lewym przyciskiem myszy, prawy kasuje wszystko, Esc kończy.
 Rysowanie wyłączone.
+Plik będzie się nazywał:

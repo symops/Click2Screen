@@ -32,7 +32,6 @@ Kaydedildi: %s
 Click2Screen kaydediyor. Duraklatmak için bildirim alanındaki simgeye tıklayın, daha fazlası için sağ tıklayın.
 Click2Screen seçenekleri
 Genel
-Video ve ses
 Dosyalar
 Dil
 Tamam
@@ -52,11 +51,7 @@ Ses codec bileşeni:
 Video kalitesi:
 Ses kalitesi:
 Saniyedeki kare sayısı:
-Kaydı şu süre sonra durdur (0 = sınırsız):
-saat
-dakika
-Video klasörü:
-Resim klasörü:
+Video ve görüntü klasörü
 Resim biçimi:
 Dosya adı şablonu:
 İpuçları: # – sıra numarasının bir basamağı, $Y yıl, $M ay, $D gün, $H saat, $N dakika, $S saniye, %USERNAME% – kullanıcı adı. Örnek: File $D.$M.$Y $H-$N-$S veya Img####
@@ -130,8 +125,8 @@ Hata: kurulum klasörü geçersiz (C:\Programs\Click2Screen gibi tam bir yol ger
 Yeniden yükle
 Resimler klasörünü aç
 Videolar klasörünü aç
-Resimler
-Dosya adı
+Biçimler
+Kaydetme
 Video seçenekleri
 Ses seçenekleri
 Sürüm %s
@@ -147,3 +142,4 @@ yok
 Ekranda çizim (aç / kapat)
 Çizim açık: sol fare düğmesiyle çizin, sağ düğme her şeyi siler, Esc çıkar.
 Çizim kapalı.
+Dosya adı şöyle olacak:

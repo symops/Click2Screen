@@ -32,7 +32,6 @@ Saved: %s
 Click2Screen is recording. Click the tray icon to pause, right-click for more.
 Click2Screen options
 General
-Video and audio
 Files
 Language
 OK
@@ -52,11 +51,7 @@ Audio codec:
 Video quality:
 Audio quality:
 Frames per second:
-Stop recording after (0 = no limit):
-hours
-minutes
-Videos folder:
-Pictures folder:
+Folder for videos and images
 Image format:
 File name template:
 Tips: # - one digit of the sequential number, $Y year, $M month, $D day, $H hour, $N minute, $S second, %USERNAME% - user name. Example: File $D.$M.$Y $H-$N-$S, or Img####
@@ -130,8 +125,8 @@ Error: the installation folder is not valid (a full path such as C:\Programs\Cli
 Reinstall
 Open pictures folder
 Open videos folder
-Images
-File name
+Formats
+Saving
 Video options
 Audio options
 Version %s
@@ -147,3 +142,4 @@ none
 Drawing on the screen (on / off)
 Drawing is on: draw with the left mouse button, the right button erases everything, Esc leaves.
 Drawing is off.
+The file will be named:

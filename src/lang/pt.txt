@@ -32,7 +32,6 @@ Salvo: %s
 O Click2Screen está gravando. Clique no ícone da área de notificação para pausar; clique com o botão direito para mais opções.
 Opções do Click2Screen
 Geral
-Vídeo e áudio
 Arquivos
 Idioma
 OK
@@ -52,11 +51,7 @@ Codec de áudio:
 Qualidade do vídeo:
 Qualidade do áudio:
 Quadros por segundo:
-Parar a gravação após (0 = sem limite):
-horas
-minutos
-Pasta de vídeos:
-Pasta de imagens:
+Pasta de vídeos e imagens
 Formato da imagem:
 Modelo do nome do arquivo:
 Dicas: # – um dígito do número sequencial, $Y ano, $M mês, $D dia, $H hora, $N minuto, $S segundo, %USERNAME% – nome do usuário. Exemplo: File $D.$M.$Y $H-$N-$S ou Img####
@@ -130,8 +125,8 @@ Erro: a pasta de instalação não é válida (é preciso um caminho completo, c
 Reinstalar
 Abrir a pasta de imagens
 Abrir a pasta de vídeos
-Imagens
-Nome do arquivo
+Formatos
+Salvamento
 Opções de vídeo
 Opções de áudio
 Versão %s
@@ -147,3 +142,4 @@ nenhum
 Desenho na tela (ligar / desligar)
 Desenho ativado: desenhe com o botão esquerdo, o direito apaga tudo, Esc sai.
 Desenho desativado.
+O arquivo se chamará:

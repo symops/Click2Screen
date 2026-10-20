@@ -32,7 +32,6 @@ Guardado: %s
 Click2Screen está grabando. Haga clic en el icono del área de notificación para pausar; clic derecho para más opciones.
 Opciones de Click2Screen
 General
-Vídeo y audio
 Archivos
 Idioma
 Aceptar
@@ -52,11 +51,7 @@ Códec de audio:
 Calidad de vídeo:
 Calidad de audio:
 Fotogramas por segundo:
-Detener la grabación después de (0 = sin límite):
-horas
-minutos
-Carpeta de vídeos:
-Carpeta de imágenes:
+Carpeta de vídeos e imágenes
 Formato de imagen:
 Plantilla del nombre de archivo:
 Consejos: # – un dígito del número de secuencia, $Y año, $M mes, $D día, $H hora, $N minuto, $S segundo, %USERNAME% – nombre de usuario. Ejemplo: File $D.$M.$Y $H-$N-$S o Img####
@@ -130,8 +125,8 @@ Error: la carpeta de instalación no es válida (se necesita una ruta completa, 
 Reinstalar
 Abrir la carpeta de imágenes
 Abrir la carpeta de vídeos
-Imágenes
-Nombre de archivo
+Formatos
+Guardado
 Opciones de vídeo
 Opciones de audio
 Versión %s
@@ -147,3 +142,4 @@ ninguno
 Dibujo en la pantalla (activar / desactivar)
 Dibujo activado: dibuje con el botón izquierdo, el derecho lo borra todo, Esc sale.
 Dibujo desactivado.
+El archivo se llamará:

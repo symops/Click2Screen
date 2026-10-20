@@ -32,7 +32,6 @@ Enregistré : %s
 Click2Screen enregistre. Cliquez sur l’icône de la zone de notification pour mettre en pause, clic droit pour plus d’options.
 Options de Click2Screen
 Général
-Vidéo et audio
 Fichiers
 Langue
 OK
@@ -52,11 +51,7 @@ Codec audio :
 Qualité vidéo :
 Qualité audio :
 Images par seconde :
-Arrêter l’enregistrement après (0 = sans limite) :
-heures
-minutes
-Dossier des vidéos :
-Dossier des images :
+Dossier des vidéos et des images
 Format d’image :
 Modèle de nom de fichier :
 Conseils : # – un chiffre du numéro d’ordre, $Y année, $M mois, $D jour, $H heure, $N minute, $S seconde, %USERNAME% – nom d’utilisateur. Exemple : File $D.$M.$Y $H-$N-$S ou Img####
@@ -130,8 +125,8 @@ Erreur : le dossier d'installation n'est pas valide (un chemin complet comme C:\
 Réinstaller
 Ouvrir le dossier des images
 Ouvrir le dossier des vidéos
-Images
-Nom de fichier
+Formats
+Enregistrement
 Options vidéo
 Options audio
 Version %s
@@ -147,3 +142,4 @@ aucun
 Dessin à l'écran (activer / désactiver)
 Dessin activé : dessinez avec le bouton gauche, le bouton droit efface tout, Échap quitte.
 Dessin désactivé.
+Le fichier s'appellera :

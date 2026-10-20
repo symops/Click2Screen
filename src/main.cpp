@@ -381,7 +381,7 @@ void BeginRecord()
     else areas[0] = g_target.rc;
     DeleteRecs();
     for (int i = 0; i < n; ++i) {
-        if (!BuildOutputPath(g_cfg.vidFolder, g_cfg.fileName, VideoFormatExt(g_target.cfg.videoCodec), L"VidCounter", g_outPaths[i], MAX_PATH, err, 300)) {
+        if (!BuildOutputPath(g_cfg.folder, g_cfg.fileName, VideoFormatExt(g_target.cfg.videoCodec), L"VidCounter", g_outPaths[i], MAX_PATH, err, 300)) {
             Warn(err); break;
         }
         RecParams rp = g_target;
@@ -667,7 +667,7 @@ void Arm(Mode mode)
     if (!ChooseTarget(mode, &rc, &hw)) { if (g_mainWasVisible) ShowMain(true); return; }
     if (rc.right - rc.left < 16 || rc.bottom - rc.top < 16) { Warn(T(S_ERR_REGION_SMALL)); if (g_mainWasVisible) ShowMain(true); return; }
     wchar_t err[300];
-    if (!EnsureFolder(g_cfg.vidFolder, err, 300)) { Warn(err); if (g_mainWasVisible) ShowMain(true); return; }
+    if (!EnsureFolder(g_cfg.folder, err, 300)) { Warn(err); if (g_mainWasVisible) ShowMain(true); return; }
     memset(&g_target, 0, sizeof(g_target));
     g_target.rc = rc; g_target.hwnd = hw;
     g_modeDesktop = mode == M_DESKTOP;
@@ -981,7 +981,7 @@ void Shot(Mode mode)
     bool wasVisible = g_main && IsWindowVisible(g_main) && !IsIconic(g_main);
     RECT rects[16]; int count = 1; HWND hw = nullptr;
     wchar_t err[300];
-    if (!EnsureFolder(g_cfg.imgFolder, err, 300)) { Warn(err); g_busyShot = false; return; }
+    if (!EnsureFolder(g_cfg.folder, err, 300)) { Warn(err); g_busyShot = false; return; }
     if (mode == M_DESKTOP) {
         // One picture per monitor (not one merged picture of the whole desktop).
         count = MonitorRects(rects, 16);
@@ -1007,7 +1007,7 @@ void Shot(Mode mode)
     bool saved = false;
     for (int i = 0; i < count; ++i) {
         if (!bmps[i]) continue;
-        if (!BuildOutputPath(g_cfg.imgFolder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
+        if (!BuildOutputPath(g_cfg.folder, g_cfg.fileName, ImageFormatExt(g_cfg.imageFormat), L"ImgCounter", path, MAX_PATH, err, 300)) {
             Warn(err); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
         }
         Log(L"shot: saving picture %d as %s", i + 1, ImageFormatName(g_cfg.imageFormat));
@@ -1031,7 +1031,7 @@ void Shot(Mode mode)
 }
 
 // ---- options -----------------------------------------------------------------------------------------------------
-const int kPages = 6;
+const int kPages = 5;
 struct OptState { Settings s; bool ok, done; HWND dlg; HWND pg[kPages][32]; int np[kPages]; int sel; RECT tabRc[kPages]; int hk[HKI_COUNT]; };
 
 // A hotkey field: read-only, it shows the combination and takes the next one pressed (Backspace / Delete clear it).
@@ -1104,6 +1104,16 @@ int ComboGetData(HWND d, int id, int fallback)
     return v < 0 ? fallback : v;
 }
 
+// Under the template field: the name a file would get now (without the extension).
+void TplPreview(HWND d)
+{
+    wchar_t tpl[128], name[460], line[560];
+    GetDlgItemTextW(d, O_TPL, tpl, 128);
+    TemplatePreview(tpl, name, 460);
+    if (name[0]) _snwprintf(line, 560, L"%s  %s", T(S_OPT_NAMEPREVIEW), name); else line[0] = 0;
+    SetDlgItemTextW(d, O_TPLPREVIEW, line);
+}
+
 void OptLoad(OptState* o)
 {
     HWND d = o->dlg; Settings& s = o->s;
@@ -1119,10 +1129,10 @@ void OptLoad(OptState* o)
     static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
     int fi = 3; for (int i = 0; i < 7; ++i) if (fpsv[i] == s.fps) fi = i;
     SendDlgItemMessageW(d, O_FPS, CB_SETCURSEL, fi, 0);
-    SetDlgItemInt(d, O_DH, s.durH, FALSE); SetDlgItemInt(d, O_DM, s.durM, FALSE); SetDlgItemInt(d, O_DS, s.durS, FALSE);
-    SetDlgItemTextW(d, O_VIDFOLDER, s.vidFolder); SetDlgItemTextW(d, O_IMGFOLDER, s.imgFolder);
+    SetDlgItemTextW(d, O_FOLDER, s.folder);
     ComboSelectData(d, O_IMGFMT, s.imageFormat);
     SetDlgItemTextW(d, O_TPL, s.fileName);
+    TplPreview(d);
     SendDlgItemMessageW(d, O_LANG, CB_SETCURSEL, s.language, 0);
     for (int i = 0; i < HKI_COUNT; ++i) { o->hk[i] = s.hotkey[i]; HkShow(o, i); }
 }
@@ -1143,8 +1153,7 @@ void OptCollect(OptState* o, Settings& s)
     static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
     int fi = (int)SendDlgItemMessageW(d, O_FPS, CB_GETCURSEL, 0, 0); if (fi < 0 || fi > 6) fi = 3;
     s.fps = fpsv[fi];
-    s.durH = num(O_DH, 0, 99); s.durM = num(O_DM, 0, 59); s.durS = num(O_DS, 0, 59);
-    GetDlgItemTextW(d, O_VIDFOLDER, s.vidFolder, MAX_PATH); GetDlgItemTextW(d, O_IMGFOLDER, s.imgFolder, MAX_PATH);
+    GetDlgItemTextW(d, O_FOLDER, s.folder, MAX_PATH);
     s.imageFormat = ComboGetData(d, O_IMGFMT, s.imageFormat);
     GetDlgItemTextW(d, O_TPL, s.fileName, 128);
     s.language = (int)SendDlgItemMessageW(d, O_LANG, CB_GETCURSEL, 0, 0); if (s.language < 0) s.language = 0;
@@ -1162,11 +1171,10 @@ void OptRestorePage(OptState* o)
     case 0: cur.runAtStartup = d.runAtStartup; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.openFolder = d.openFolder;
             cur.sounds = d.sounds; cur.notify = d.notify; cur.loopback = d.loopback; cur.mic = d.mic; cur.delaySec = d.delaySec; break;
     case 1: cur.videoCodec = d.videoCodec; cur.audioCodec = d.audioCodec; cur.videoQuality = d.videoQuality; cur.audioQuality = d.audioQuality;
-            cur.fps = d.fps; cur.durH = d.durH; cur.durM = d.durM; cur.durS = d.durS; wcscpy(cur.vidFolder, d.vidFolder); break;
-    case 2: cur.imageFormat = d.imageFormat; wcscpy(cur.imgFolder, d.imgFolder); break;
-    case 3: wcscpy(cur.fileName, d.fileName); break;
-    case 4: cur.language = d.language; break;
-    case 5: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
+            cur.fps = d.fps; cur.imageFormat = d.imageFormat; break;
+    case 2: wcscpy(cur.folder, d.folder); wcscpy(cur.fileName, d.fileName); break;
+    case 3: cur.language = d.language; break;
+    case 4: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
     }
     o->s = cur; OptLoad(o);
 }
@@ -1178,10 +1186,10 @@ bool OptStore(OptState* o)
     wchar_t err[300];
     for (int i = 0; i < HKI_COUNT; ++i)
         for (int j = i + 1; j < HKI_COUNT; ++j)
-            if (s.hotkey[i] && s.hotkey[i] == s.hotkey[j]) { ShowPage(o, 5); SetFocus(GetDlgItem(d, O_HK0 + j)); MessageBoxW(d, T(S_HK_DUP), T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false; }
+            if (s.hotkey[i] && s.hotkey[i] == s.hotkey[j]) { ShowPage(o, 4); SetFocus(GetDlgItem(d, O_HK0 + j)); MessageBoxW(d, T(S_HK_DUP), T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false; }
     if (!TemplateValid(s.fileName)) { MessageBoxW(d, T(S_ERR_TEMPLATE), T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false; }
     // A folder that does not exist yet is created (the original only warned).
-    if (!EnsureFolder(s.vidFolder, err, 300) || !EnsureFolder(s.imgFolder, err, 300)) {
+    if (!EnsureFolder(s.folder, err, 300)) {
         MessageBoxW(d, err, T(S_OPT_TITLE), MB_OK | MB_ICONWARNING); return false;
     }
     o->s = s;
@@ -1261,7 +1269,7 @@ void PaintOptions(OptState* o, HDC dc)
     RECT pg = { Sc(16), Sc(37), Sc(513), Sc(287) };
     Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
     Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
-    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG, S_OPT_HOTKEYS };
+    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
     SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(0, 0, 0));
     HGDIOBJ of = SelectObject(dc, g_font);
     for (int i = 0; i < kPages; ++i) {
@@ -1297,8 +1305,8 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDOK: if (OptStore(o)) { o->ok = true; o->done = true; } break;
         case IDCANCEL: o->done = true; break;
         case O_MOUSE: EnableWindow(GetDlgItem(hw, O_HILITE), IsDlgButtonChecked(hw, O_MOUSE) == BST_CHECKED); break;
-        case O_BRVID: BrowseFolder(hw, O_VIDFOLDER); break;
-        case O_BRIMG: BrowseFolder(hw, O_IMGFOLDER); break;
+        case O_BRFOLDER: BrowseFolder(hw, O_FOLDER); break;
+        case O_TPL: if (HIWORD(wp) == EN_CHANGE) TplPreview(hw); break;
         case O_EXPORT: OptExport(o); break;
         case O_IMPORT: OptImport(o); break;
         case O_DEFAULTS: OptRestorePage(o); break;
@@ -1332,7 +1340,7 @@ bool OptionsDialog()
     HWND d = o.dlg;
     {   // the tab rectangles: the text width + 16 units, 21 units high
         HDC dc = GetDC(d); HGDIOBJ of = SelectObject(dc, g_font);
-        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_VIDEO_AUDIO, S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_LANG, S_OPT_HOTKEYS };
+        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
         int w[kPages], sum = 0;
         for (int i = 0; i < kPages; ++i) { SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz); w[i] = sz.cx; sum += sz.cx; }
         int pad = Sc(16);                                                  // a long translation squeezes the padding so that all the tabs stay over the page
@@ -1361,7 +1369,7 @@ bool OptionsDialog()
         {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_NOTIFY, O_NOTIFY}, {S_OPT_MIC, O_MIC}, {S_OPT_LOOPBACK, O_LOOPBACK} };
     for (int i = 0; i < 8; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 91 + i * 25, 460, 18, chk[i].id);
 
-    // page 1: video (left column) and audio (right column)
+    // page 1: video (left column) and audio (right column), then the image format and the folder both go to
     label(1, S_OPT_VIDEO_OPTIONS, 35, 52, 220); label(1, S_OPT_AUDIO_OPTIONS, 270, 52, 220);
     label(1, S_OPT_VCODEC, 35, 72, 220);        label(1, S_OPT_ACODEC, 270, 72, 220);
     HWND vc = combo(1, O_VCODEC, 34, 90, 223);  HWND ac = combo(1, O_ACODEC, 270, 90, 223);
@@ -1371,40 +1379,32 @@ bool OptionsDialog()
     HWND vq = combo(1, O_VQ, 34, 136, 223);     HWND aq = combo(1, O_AQ, 270, 136, 223);
     HWND qs[2] = { vq, aq };
     for (HWND q : qs) { ComboAdd(q, T(S_Q_HIGH)); ComboAdd(q, T(S_Q_MEDIUM)); ComboAdd(q, T(S_Q_LOW)); }
-    label(1, S_OPT_FPS, 35, 166, 140);
-    HWND fp = combo(1, O_FPS, 180, 162, 77);
+    label(1, S_OPT_FPS, 35, 170, 140);
+    HWND fp = combo(1, O_FPS, 180, 166, 77);
     static const wchar_t* const fpsText[7] = { L"10", L"15", L"20", L"25", L"30", L"45", L"60" };
     for (const wchar_t* f : fpsText) ComboAdd(fp, f);
-    label(1, S_OPT_VIDFOLDER, 35, 193, 400);
-    edit(1, O_VIDFOLDER, 34, 211, 417);
-    add(1, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 210, 33, 22, O_BRVID);
-    label(1, S_OPT_DURATION, 35, 240, 450);
-    edit(1, O_DH, 35, 258, 38, ES_NUMBER);  label(1, S_OPT_HOURS, 78, 260, 70);
-    edit(1, O_DM, 160, 258, 38, ES_NUMBER); label(1, S_OPT_MINUTES, 203, 260, 70);
-    edit(1, O_DS, 285, 258, 38, ES_NUMBER); label(1, S_OPT_SECONDS, 328, 260, 70);
-
-    // page 2: images
-    label(2, S_OPT_IMGFORMAT, 35, 63, 160);
-    HWND fm = combo(2, O_IMGFMT, 203, 61, 188);
+    label(1, S_OPT_IMGFORMAT, 270, 170, 140);
+    HWND fm = combo(1, O_IMGFMT, 405, 166, 88);
     for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ComboAdd(fm, ImageFormatName(i), i);
-    label(2, S_OPT_IMGFOLDER, 35, 105, 450);                    // the label above the field (a long translation does not run into it)
-    edit(2, O_IMGFOLDER, 34, 123, 417);
-    add(2, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 122, 33, 22, O_BRIMG);
 
-    // page 3: file name
-    label(3, S_OPT_TEMPLATE, 34, 57, 459);
-    edit(3, O_TPL, 34, 75, 459);
-    add(3, L"STATIC", T(S_OPT_TEMPLATE_TIPS), SS_LEFT | SS_NOPREFIX, 34, 108, 460, 150, 0);
+    // page 2: saving - the folder for the videos and the pictures, the name template, how a file will be named, the tips
+    label(2, S_OPT_FOLDER, 34, 52, 459);                       // the label above the field (a long translation does not run into it)
+    edit(2, O_FOLDER, 34, 70, 417);
+    add(2, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 69, 33, 22, O_BRFOLDER);
+    label(2, S_OPT_TEMPLATE, 34, 105, 459);
+    edit(2, O_TPL, 34, 123, 459);
+    add(2, L"STATIC", L"", SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 34, 150, 459, 16, O_TPLPREVIEW);
+    add(2, L"STATIC", T(S_OPT_TEMPLATE_TIPS), SS_LEFT | SS_NOPREFIX, 34, 176, 460, 100, 0);
 
-    // page 4: language (and the settings file: export / import)
-    label(4, S_OPT_LANG, 33, 57, 205);
-    HWND lg = combo(4, O_LANG, 33, 76, 205);
+    // page 3: language (and the settings file: export / import)
+    label(3, S_OPT_LANG, 33, 57, 205);
+    HWND lg = combo(3, O_LANG, 33, 76, 205);
     ComboAdd(lg, T(S_LANG_AUTO));
     for (int i = 0; i < LangCount(); ++i) ComboAdd(lg, LangName(i));
-    add(4, L"BUTTON", T(S_OPT_EXPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 118, 205, 22, O_EXPORT);
-    add(4, L"BUTTON", T(S_OPT_IMPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 148, 205, 22, O_IMPORT);
+    add(3, L"BUTTON", T(S_OPT_EXPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 118, 205, 22, O_EXPORT);
+    add(3, L"BUTTON", T(S_OPT_IMPORT), WS_TABSTOP | BS_PUSHBUTTON, 33, 148, 205, 22, O_IMPORT);
 
-    // page 5: hotkeys (the actions of the main window and the stop of a recording)
+    // page 4: hotkeys (the actions of the main window and the stop of a recording)
     {
         static const Str labels[HKI_COUNT] = { S_SHOT_DESKTOP, S_SHOT_REGION, S_SHOT_WINDOW, S_HK_STOP, S_REC_DESKTOP, S_REC_REGION, S_REC_WINDOW, S_HK_DRAW };
         static const int order[HKI_COUNT] = { 0, 1, 2, 4, 5, 6, 3, 7 };            // the screenshots, the recordings, the stop key, the drawing
@@ -1412,11 +1412,11 @@ bool OptionsDialog()
             int i = order[row];
             wchar_t t[120]; wcsncpy(t, T(labels[i]), 119); t[119] = 0;
             for (wchar_t* c = t; *c; ++c) if (*c == L'\n') { *c = 0; break; }         // "Capture desktop\n(Ctrl+PrintScreen)": the name only
-            add(5, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 51 + row * 24, 250, 16, 0);
-            HWND e = edit(5, O_HK0 + i, 293, 48 + row * 24, 200, ES_READONLY | ES_CENTER);
+            add(4, L"STATIC", t, SS_LEFT | SS_NOPREFIX | SS_ENDELLIPSIS, 33, 51 + row * 24, 250, 16, 0);
+            HWND e = edit(4, O_HK0 + i, 293, 48 + row * 24, 200, ES_READONLY | ES_CENTER);
             SetPropW(e, L"c2s.hkprev", (HANDLE)SetWindowLongPtrW(e, GWLP_WNDPROC, (LONG_PTR)HkProc));
         }
-        add(5, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 244, 460, 38, 0);
+        add(4, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 244, 460, 38, 0);
     }
 
     // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
@@ -1663,8 +1663,8 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_MENU: ShowMainMenu(); break;
         case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;       // an ordinary minimize: the window waits on the taskbar (one click or Alt+Tab brings it back)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
-        case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
-        case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
+        case ID_MENU_PICTURES: OpenFolder(g_cfg.folder); break;
+        case ID_MENU_VIDEOS: OpenFolder(g_cfg.folder); break;
         case IDC_OPTIONS:
             if (OptionsDialog()) ApplyLanguage();
             break;

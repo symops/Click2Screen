@@ -19,11 +19,9 @@ enum Str {
     S_OPTIONS, S_GRP_VIDEO, S_GRP_SHOT, S_HOTKEYS_HINT, S_STATUS_READY, S_PANEL_TITLE, S_TIME,
     S_SIZE, S_START, S_PAUSE, S_RESUME, S_STOP, S_HIDE, S_SHOW_PANEL,
     S_EXIT, S_STOP_HINT, S_TIP_START, S_TIP_PAUSE, S_TIP_STOP, S_HIDE_ASK, S_STARTING_IN,
-    S_RECORDING, S_PAUSED, S_SAVED, S_TRAY_HIDDEN, S_OPT_TITLE, S_OPT_GENERAL, S_OPT_VIDEO_AUDIO,
-    S_OPT_FILES, S_OPT_LANG, S_BTN_OK, S_BTN_CANCEL, S_RESTORE_DEFAULT, S_OPT_AUTOSTART, S_OPT_MOUSE,
+    S_RECORDING, S_PAUSED, S_SAVED, S_TRAY_HIDDEN, S_OPT_TITLE, S_OPT_GENERAL, S_OPT_FILES, S_OPT_LANG, S_BTN_OK, S_BTN_CANCEL, S_RESTORE_DEFAULT, S_OPT_AUTOSTART, S_OPT_MOUSE,
     S_OPT_HIGHLIGHT, S_OPT_OPEN_FOLDER, S_OPT_OPEN_EDITOR, S_OPT_SOUNDS, S_OPT_MIC, S_OPT_DELAY, S_OPT_SECONDS,
-    S_OPT_VCODEC, S_OPT_ACODEC, S_OPT_VQUALITY, S_OPT_AQUALITY, S_OPT_FPS, S_OPT_DURATION, S_OPT_HOURS,
-    S_OPT_MINUTES, S_OPT_VIDFOLDER, S_OPT_IMGFOLDER, S_OPT_IMGFORMAT, S_OPT_TEMPLATE, S_OPT_TEMPLATE_TIPS, S_BROWSE,
+    S_OPT_VCODEC, S_OPT_ACODEC, S_OPT_VQUALITY, S_OPT_AQUALITY, S_OPT_FPS, S_OPT_FOLDER, S_OPT_IMGFORMAT, S_OPT_TEMPLATE, S_OPT_TEMPLATE_TIPS, S_BROWSE,
     S_LANG_AUTO, S_VC_BEST, S_VC_FAST, S_AC_AAC, S_AC_MP3, S_Q_HIGH, S_Q_MEDIUM,
     S_Q_LOW, S_ERR_FOLDER_MISSING, S_ERR_FOLDER_CREATE, S_ERR_FOLDER_WRITE, S_ERR_TEMPLATE, S_ERR_CAPTURE, S_ERR_RECORDER,
     S_ERR_AUDIO, S_ERR_SAVE, S_ERR_REGION_SMALL, S_ERR_HOTKEY, S_ERR_ALREADY, S_ED_TITLE, S_ED_RECT,
@@ -34,9 +32,9 @@ enum Str {
     S_SU_LOG_COPY, S_SU_LOG_COPY_FAIL, S_SU_LOG_REG, S_SU_LOG_LINKS, S_SU_LOG_LINKS_DEL, S_SU_LOG_AUTO_ON, S_SU_LOG_AUTO_OFF,
     S_SU_LOG_DONE, S_SU_LOG_FAIL, S_SU_LOG_KEPT, S_SU_LOG_NOSRC, S_SU_LOG_NODIR, S_SU_ASK_REMOVE,
     S_SU_PATH, S_SU_BROWSE, S_SU_BROWSE_TITLE, S_SU_LOG_BADDIR, S_SU_REINSTALL, S_OPEN_PICTURES, S_OPEN_VIDEOS,
-    S_OPT_IMAGES, S_OPT_FILENAME, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
+    S_OPT_FORMATS, S_OPT_SAVE, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
-    S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF,
+    S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF, S_OPT_NAMEPREVIEW,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -57,8 +55,7 @@ const wchar_t* VideoFormatName(int vc);               // "H.264 (MP4, slower)" .
 const wchar_t* VideoFormatExt(int vc);                // "mp4", "wmv", "avi", "gif"
 bool VideoFormatAvailable(int vc);                    // the encoder exists on this Windows (HEVC needs the Microsoft extension)
 struct Settings {
-    wchar_t vidFolder[MAX_PATH];
-    wchar_t imgFolder[MAX_PATH];
+    wchar_t folder[MAX_PATH];       // where the videos and the pictures go (one folder for both)
     wchar_t fileName[128];          // template: $Y $M $D $H $N $S, # (digit of the sequence number), %USERNAME%
     int  imageFormat;               // IMG_*
     bool capMouse;                  // pointer in recordings and screenshots
@@ -71,7 +68,6 @@ struct Settings {
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;
     int  delaySec;                  // delay before capture (0..10)
-    int  durH, durM, durS;          // stop after (all 0 = no limit)
     int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF
     int  audioCodec;                // 0 = AAC, 1 = MP3
     int  videoQuality;              // 0 high, 1 medium, 2 low
@@ -87,6 +83,7 @@ void SettingsUseKey(const wchar_t* key);                       // another regist
 bool SettingsExport(const Settings& s, const wchar_t* path);   // .ini, UTF-16; the language is not exported
 bool SettingsImport(Settings& s, const wchar_t* path);         // false: no such file / no Click2Screen section
 bool TemplateValid(const wchar_t* tpl);
+void TemplatePreview(const wchar_t* tpl, wchar_t* out, int cap);   // the name (without the extension) a file would get now; "" for an invalid template
 // Hotkeys (Settings::hotkey): index 0 desktop, 1 region, 2 window screenshot, 3 stop the recording, 4 desktop, 5 region, 6 window recording, 7 the red-line drawing on / off.
 enum { HKI_COUNT = 8 };
 int  HotkeyDefault(int index);

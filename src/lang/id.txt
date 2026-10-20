@@ -32,7 +32,6 @@ Tersimpan: %s
 Click2Screen sedang merekam. Klik ikon di area notifikasi untuk menjeda, klik kanan untuk opsi lain.
 Opsi Click2Screen
 Umum
-Video dan audio
 Berkas
 Bahasa
 OK
@@ -52,11 +51,7 @@ Codec audio:
 Kualitas video:
 Kualitas audio:
 Bingkai per detik:
-Hentikan rekaman setelah (0 = tanpa batas):
-jam
-menit
-Folder video:
-Folder gambar:
+Folder untuk video dan gambar
 Format gambar:
 Templat nama berkas:
 Tips: # – satu digit nomor urut, $Y tahun, $M bulan, $D hari, $H jam, $N menit, $S detik, %USERNAME% – nama pengguna. Contoh: File $D.$M.$Y $H-$N-$S atau Img####
@@ -130,8 +125,8 @@ Kesalahan: folder pemasangan tidak valid (diperlukan path lengkap seperti C:\Pro
 Pasang ulang
 Buka folder gambar
 Buka folder video
-Gambar
-Nama berkas
+Format
+Penyimpanan
 Opsi video
 Opsi audio
 Versi %s
@@ -147,3 +142,4 @@ tidak ada
 Menggambar di layar (hidup / mati)
 Menggambar aktif: gambar dengan tombol kiri mouse, tombol kanan menghapus semuanya, Esc keluar.
 Menggambar nonaktif.
+Nama file akan menjadi:

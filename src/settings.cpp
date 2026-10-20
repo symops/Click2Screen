@@ -54,14 +54,13 @@ static void KnownFolder(const KNOWNFOLDERID& id, const wchar_t* sub, wchar_t* ou
 void SettingsDefaults(Settings& s)
 {
     memset(&s, 0, sizeof(s));
-    KnownFolder(FOLDERID_Videos, L"Click2Screen", s.vidFolder, MAX_PATH);
-    KnownFolder(FOLDERID_Pictures, L"Click2Screen", s.imgFolder, MAX_PATH);
+    KnownFolder(FOLDERID_Videos, L"Click2Screen", s.folder, MAX_PATH);           // videos and pictures go to the same folder
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
     s.openFolder = true; s.runAtStartup = false;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
-    s.delaySec = 0; s.durH = s.durM = s.durS = 0;
+    s.delaySec = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
     s.fps = 25; s.language = 0;
 }
@@ -129,8 +128,11 @@ void SettingsLoad(Settings& s)
     HKEY k;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, KEY, 0, KEY_READ, &k) != ERROR_SUCCESS) return;
     Settings d = s;
-    GetStr(k, L"VidOutputFolder", s.vidFolder, MAX_PATH, d.vidFolder);
-    GetStr(k, L"ImgOutputFolder", s.imgFolder, MAX_PATH, d.imgFolder);
+    {   // one folder; the settings of an older version kept two, the one of the videos stays
+        wchar_t f[MAX_PATH]; GetStr(k, L"OutputFolder", f, MAX_PATH, L"");
+        if (!f[0]) GetStr(k, L"VidOutputFolder", f, MAX_PATH, L"");
+        if (f[0]) wcscpy(s.folder, f);
+    }
     GetStr(k, L"FileName", s.fileName, 128, d.fileName);
     s.imageFormat  = Clamp((int)GetDw(k, L"ImageFormat", d.imageFormat), 0, IMG_COUNT - 1);
     s.capMouse     = GetDw(k, L"CapMouse", d.capMouse) != 0;
@@ -142,9 +144,6 @@ void SettingsLoad(Settings& s)
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
     s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
-    s.durH         = Clamp((int)GetDw(k, L"RecDurationHour", 0), 0, 99);
-    s.durM         = Clamp((int)GetDw(k, L"RecDurationMin", 0), 0, 59);
-    s.durS         = Clamp((int)GetDw(k, L"RecDurationSec", 0), 0, 59);
     s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, VC_COUNT - 1);
     s.audioCodec   = Clamp((int)GetDw(k, L"AudioCodec", d.audioCodec), 0, 1);
     s.videoQuality = Clamp((int)GetDw(k, L"VideoQuality", d.videoQuality), 0, 2);
@@ -163,8 +162,7 @@ void SettingsSave(const Settings& s)
 {
     HKEY k;
     if (RegCreateKeyExW(HKEY_CURRENT_USER, KEY, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) != ERROR_SUCCESS) return;
-    PutStr(k, L"VidOutputFolder", s.vidFolder);
-    PutStr(k, L"ImgOutputFolder", s.imgFolder);
+    PutStr(k, L"OutputFolder", s.folder);
     PutStr(k, L"FileName", s.fileName);
     PutDw(k, L"ImageFormat", s.imageFormat);
     PutDw(k, L"CapMouse", s.capMouse);
@@ -176,9 +174,6 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"OpenOutFolder", s.openFolder);
     PutDw(k, L"RunAtStartup", s.runAtStartup);
     PutDw(k, L"Delay", s.delaySec);
-    PutDw(k, L"RecDurationHour", s.durH);
-    PutDw(k, L"RecDurationMin", s.durM);
-    PutDw(k, L"RecDurationSec", s.durS);
     PutDw(k, L"VideoCodec", s.videoCodec);
     PutDw(k, L"AudioCodec", s.audioCodec);
     PutDw(k, L"VideoQuality", s.videoQuality);
@@ -259,24 +254,19 @@ bool EnsureFolder(const wchar_t* folder, wchar_t* err, int errLen)
     return true;
 }
 
-bool BuildOutputPath(const wchar_t* folder, const wchar_t* tpl, const wchar_t* ext, const wchar_t* counterKey,
-                     wchar_t* path, int pathLen, wchar_t* err, int errLen)
+// The template expanded for the moment: everything except the '#' run, which stays a hole (its position and width are returned).
+static void ExpandTemplate(const wchar_t* tpl, wchar_t* base, int* blen, int* hashPos, int* hashLen)
 {
-    if (!TemplateValid(tpl)) { if (err) { wcsncpy(err, T(S_ERR_TEMPLATE), errLen - 1); err[errLen - 1] = 0; } return false; }
-    if (!EnsureFolder(folder, err, errLen)) return false;
-
     SYSTEMTIME st; GetLocalTime(&st);
     wchar_t user[128]; DWORD un = 128;
     if (!GetUserNameW(user, &un)) wcscpy(user, L"user");
-
-    // Expand everything except the '#' run, remembering where it is.
-    wchar_t base[400]; int bl = 0, hashPos = -1, hashLen = 0;
+    int bl = 0; *hashPos = -1; *hashLen = 0;
     auto put = [&](const wchar_t* s) { while (*s && bl < 380) base[bl++] = *s++; };
     for (const wchar_t* p = tpl; *p; ++p) {
         wchar_t tmp[16];
         if (*p == L'#') {
-            if (hashPos < 0) hashPos = bl;
-            ++hashLen;
+            if (*hashPos < 0) *hashPos = bl;
+            ++*hashLen;
             continue;
         }
         if (*p == L'$' && p[1] && wcschr(L"YMDHNS", p[1])) {
@@ -296,7 +286,50 @@ bool BuildOutputPath(const wchar_t* folder, const wchar_t* tpl, const wchar_t* e
         wchar_t one[2] = { *p, 0 };
         put(one);
     }
-    base[bl] = 0;
+    base[bl] = 0; *blen = bl;
+}
+
+// The name with the number n put in the hole; a name must not end with a dot or a blank and must not be empty.
+static void AssembleName(const wchar_t* base, int bl, int hashPos, int hashLen, unsigned n, wchar_t* name)
+{
+    int nl = 0;
+    if (hashPos >= 0) {
+        for (int i = 0; i < hashPos && nl < 380; ++i) name[nl++] = base[i];
+        wchar_t num[24]; _snwprintf(num, 24, L"%0*u", hashLen, n);
+        for (const wchar_t* q = num; *q && nl < 440; ++q) name[nl++] = *q;
+        for (int i = hashPos; i < bl && nl < 455; ++i) name[nl++] = base[i];
+    } else {
+        for (int i = 0; i < bl; ++i) name[nl++] = base[i];
+    }
+    name[nl] = 0;
+    while (nl > 0 && (name[nl - 1] == L'.' || name[nl - 1] == L' ')) name[--nl] = 0;
+    if (nl == 0) wcscpy(name, L"Click2Screen");
+}
+
+void TemplatePreview(const wchar_t* tpl, wchar_t* out, int cap)
+{
+    out[0] = 0;
+    if (!TemplateValid(tpl)) return;
+    wchar_t base[400]; int bl = 0, hashPos = -1, hashLen = 0;
+    ExpandTemplate(tpl, base, &bl, &hashPos, &hashLen);
+    unsigned n = 1;
+    if (hashPos >= 0) {                                            // the number the next video would get (the videos and the pictures count apart)
+        HKEY k;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, KEY, 0, KEY_READ, &k) == ERROR_SUCCESS) { n = GetDw(k, L"VidCounter", 0) + 1; RegCloseKey(k); }
+    }
+    wchar_t name[460];
+    AssembleName(base, bl, hashPos, hashLen, n, name);
+    wcsncpy(out, name, cap - 1); out[cap - 1] = 0;
+}
+
+bool BuildOutputPath(const wchar_t* folder, const wchar_t* tpl, const wchar_t* ext, const wchar_t* counterKey,
+                     wchar_t* path, int pathLen, wchar_t* err, int errLen)
+{
+    if (!TemplateValid(tpl)) { if (err) { wcsncpy(err, T(S_ERR_TEMPLATE), errLen - 1); err[errLen - 1] = 0; } return false; }
+    if (!EnsureFolder(folder, err, errLen)) return false;
+
+    wchar_t base[400]; int bl = 0, hashPos = -1, hashLen = 0;
+    ExpandTemplate(tpl, base, &bl, &hashPos, &hashLen);
 
     unsigned n = 1;
     if (hashPos >= 0 && counterKey) {
@@ -305,18 +338,7 @@ bool BuildOutputPath(const wchar_t* folder, const wchar_t* tpl, const wchar_t* e
     }
     for (int tries = 0; tries < 100000; ++tries, ++n) {
         wchar_t name[460];
-        int nl = 0;
-        if (hashPos >= 0) {
-            for (int i = 0; i < hashPos && nl < 380; ++i) name[nl++] = base[i];
-            wchar_t num[24]; _snwprintf(num, 24, L"%0*u", hashLen, n);
-            for (const wchar_t* q = num; *q && nl < 440; ++q) name[nl++] = *q;
-            for (int i = hashPos; i < bl && nl < 455; ++i) name[nl++] = base[i];
-        } else {
-            for (int i = 0; i < bl; ++i) name[nl++] = base[i];
-        }
-        name[nl] = 0;
-        while (nl > 0 && (name[nl - 1] == L'.' || name[nl - 1] == L' ')) name[--nl] = 0;
-        if (nl == 0) wcscpy(name, L"Click2Screen");
+        AssembleName(base, bl, hashPos, hashLen, n, name);
         _snwprintf(path, pathLen, L"%s\\%s.%s", folder, name, ext);
         path[pathLen - 1] = 0;
         if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) break;
@@ -366,8 +388,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     if (!ok) return false;
     // Text values are written in quotes (the profile functions take them off when reading): a value that starts or
     // ends with a blank comes back unchanged. Quotes cannot occur in a path or in a valid name template.
-    IniStr(path, L"VidOutputFolder", s.vidFolder);
-    IniStr(path, L"ImgOutputFolder", s.imgFolder);
+    IniStr(path, L"OutputFolder", s.folder);
     IniStr(path, L"FileName", s.fileName);
     IniInt(path, L"ImageFormat", s.imageFormat);
     IniInt(path, L"CapMouse", s.capMouse);
@@ -380,9 +401,6 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"OpenOutFolder", s.openFolder);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
     IniInt(path, L"Delay", s.delaySec);
-    IniInt(path, L"RecDurationHour", s.durH);
-    IniInt(path, L"RecDurationMin", s.durM);
-    IniInt(path, L"RecDurationSec", s.durS);
     IniInt(path, L"VideoCodec", s.videoCodec);
     IniInt(path, L"AudioCodec", s.audioCodec);
     IniInt(path, L"VideoQuality", s.videoQuality);
@@ -415,8 +433,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (!found) return false;
     (void)probe;
     wchar_t str[MAX_PATH];
-    if (GetPrivateProfileStringW(kSec, L"VidOutputFolder", L"", str, MAX_PATH, path) > 0) { wcscpy(s.vidFolder, str); }
-    if (GetPrivateProfileStringW(kSec, L"ImgOutputFolder", L"", str, MAX_PATH, path) > 0) { wcscpy(s.imgFolder, str); }
+    if (GetPrivateProfileStringW(kSec, L"OutputFolder", L"", str, MAX_PATH, path) > 0 || GetPrivateProfileStringW(kSec, L"VidOutputFolder", L"", str, MAX_PATH, path) > 0) { wcscpy(s.folder, str); }
     if (GetPrivateProfileStringW(kSec, L"FileName", L"", str, 128, path) > 0 && TemplateValid(str)) wcscpy(s.fileName, str);
     int v;
     if (IniGetInt(path, L"ImageFormat", 0, IMG_COUNT - 1, &v)) s.imageFormat = v;
@@ -430,9 +447,6 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
     if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
-    if (IniGetInt(path, L"RecDurationHour", 0, 99, &v)) s.durH = v;
-    if (IniGetInt(path, L"RecDurationMin", 0, 59, &v)) s.durM = v;
-    if (IniGetInt(path, L"RecDurationSec", 0, 59, &v)) s.durS = v;
     if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v;
     if (IniGetInt(path, L"AudioCodec", 0, 1, &v)) s.audioCodec = v;
     if (IniGetInt(path, L"VideoQuality", 0, 2, &v)) s.videoQuality = v;

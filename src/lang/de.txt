@@ -32,7 +32,6 @@ Gespeichert: %s
 Click2Screen nimmt auf. Klick auf das Symbol im Infobereich: Pause, Rechtsklick: Menü.
 Click2Screen-Optionen
 Allgemein
-Video und Audio
 Dateien
 Sprache
 OK
@@ -52,11 +51,7 @@ Audiocodec:
 Videoqualität:
 Audioqualität:
 Bilder pro Sekunde:
-Aufnahme beenden nach (0 = unbegrenzt):
-Stunden
-Minuten
-Ordner für Videos:
-Ordner für Bilder:
+Ordner für Videos und Bilder
 Bildformat:
 Dateinamenvorlage:
 Tipps: # – eine Ziffer der laufenden Nummer, $Y Jahr, $M Monat, $D Tag, $H Stunde, $N Minute, $S Sekunde, %USERNAME% – Benutzername. Beispiel: File $D.$M.$Y $H-$N-$S oder Img####
@@ -130,8 +125,8 @@ Fehler: Der Installationsordner ist ungültig (ein vollständiger Pfad wie C:\Pr
 Neu installieren
 Bilderordner öffnen
 Videoordner öffnen
-Bilder
-Dateiname
+Formate
+Speichern
 Videooptionen
 Audiooptionen
 Version %s
@@ -147,3 +142,4 @@ keine
 Zeichnen auf dem Bildschirm (an / aus)
 Zeichnen ist an: mit der linken Maustaste zeichnen, die rechte löscht alles, Esc beendet.
 Zeichnen ist aus.
+Der Dateiname wird:

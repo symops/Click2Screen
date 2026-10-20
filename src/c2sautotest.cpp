@@ -6,7 +6,7 @@
 // size, orientation and colours, saved files must decode again, the settings must survive the registry and the .ini
 // export, the file names must follow the template, every language table must be complete, the region / window pickers
 // must return what the "mouse" selected, the editor must save the rectangles it drew, and the recorder must produce an
-// MP4 whose size, duration, frame count and picture match what was recorded (pauses, time limit, a moving window).
+// MP4 whose size, duration, frame count and picture match what was recorded (pauses, a moving window).
 // With --installer the installer is also run through a random install / update / remove cycle (administrator).
 //
 // PASS / FAIL / WARN / SKIP go to the console and to %ProgramData%\Click2Screen\logs\autotest.log; exit code 1 if
@@ -201,8 +201,7 @@ static void RandomSettings(Settings& s)
 {
     SettingsDefaults(s);
     wchar_t t[40];
-    RandomText(t, 20); _snwprintf(s.vidFolder, MAX_PATH, L"%s\\vid %s", g_dir, t);
-    RandomText(t, 20); _snwprintf(s.imgFolder, MAX_PATH, L"%s\\img %s", g_dir, t);
+    RandomText(t, 20); _snwprintf(s.folder, MAX_PATH, L"%s\\out %s", g_dir, t);
     wchar_t name[40]; RandomText(name, 12);
     switch (R(0, 3)) {
         case 0: _snwprintf(s.fileName, 128, L"%s $Y-$M-$D $H-$N-$S", name); break;
@@ -212,7 +211,7 @@ static void RandomSettings(Settings& s)
     }
     s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.notify = Chance(50); s.loopback = Chance(50); s.mic = Chance(50);
     s.openFolder = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
-    s.delaySec = R(0, 10); s.durH = R(0, 99); s.durM = R(0, 59); s.durS = R(0, 59);
+    s.delaySec = R(0, 10);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
     s.fps = f[R(0, 7)];
@@ -224,8 +223,8 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
 {
 #define CMPS(f) if (!Same(a.f, b.f)) { _snwprintf(why, 150, L"%s differs: [%s] vs [%s]", L"" #f, a.f, b.f); return false; }
 #define CMPI(f) if (a.f != b.f) { _snwprintf(why, 120, L"%s: %d vs %d", L"" #f, (int)a.f, (int)b.f); return false; }
-    CMPS(vidFolder) CMPS(imgFolder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
-    CMPI(openFolder) CMPI(delaySec) CMPI(durH) CMPI(durM) CMPI(durS) CMPI(videoCodec) CMPI(audioCodec)
+    CMPS(folder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
+    CMPI(openFolder) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
@@ -460,6 +459,32 @@ static void T_Template()
         if (TemplateValid(t) != OracleValid(t)) { ++bad; Rep(L"INFO", L"  template \"%s\": program %d, oracle %d", t, (int)TemplateValid(t), (int)OracleValid(t)); }
     }
     Check(bad == 0, L"template: validity of 200 random templates matches the rules", bad ? L"(see INFO lines)" : L"");
+
+    // the preview of the name (what the options window shows under the template field)
+    {
+        SettingsUseKey(L"Software\\Click2Screen-Autotest");
+        wchar_t got[300], want[300], want2[300]; bool okTime = false;
+        for (int tries = 0; tries < 3 && !okTime; ++tries) {                              // the clock may tick between the two readings
+            SYSTEMTIME st; GetLocalTime(&st);
+            _snwprintf(want, 300, L"File %02d.%02d.%04d %02d-%02d-%02d", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
+            TemplatePreview(L"File $D.$M.$Y $H-$N-$S", got, 300);
+            GetLocalTime(&st);
+            _snwprintf(want2, 300, L"File %02d.%02d.%04d %02d-%02d-%02d", st.wDay, st.wMonth, st.wYear, st.wHour, st.wMinute, st.wSecond);
+            okTime = Same(got, want) || Same(got, want2);
+        }
+        Check(okTime, L"template: the preview of \"File $D.$M.$Y $H-$N-$S\" is the name a file gets now, without the extension", got);
+        wchar_t num[300], user[128]; DWORD un = 128; if (!GetUserNameW(user, &un)) wcscpy(user, L"user");
+        TemplatePreview(L"Img####", num, 300);
+        bool digits = wcsncmp(num, L"Img", 3) == 0 && wcslen(num) == 7; for (int i = 3; i < 7 && digits; ++i) if (num[i] < L'0' || num[i] > L'9') digits = false;
+        Check(digits, L"template: the preview puts a number of the given width in the place of the #", num);
+        wchar_t un2[300]; TemplatePreview(L"%USERNAME% x", un2, 300);
+        wchar_t wantUser[300]; _snwprintf(wantUser, 300, L"%s x", user);
+        Check(Same(un2, wantUser), L"template: the preview has the user name where %USERNAME% stands", un2);
+        wchar_t bad1[300] = L"x", bad2[300] = L"x", dots[300];
+        TemplatePreview(L"a/b", bad1, 300); TemplatePreview(L"a#b#", bad2, 300); TemplatePreview(L"abc. ", dots, 300);
+        Check(bad1[0] == 0 && bad2[0] == 0, L"template: the preview of an invalid template is empty");
+        Check(Same(dots, L"abc"), L"template: a name does not end with a dot or a blank in the preview either", dots);
+    }
 
     // BuildOutputPath: never an existing file, numbering skips used numbers, characters of the name are legal
     wchar_t folder[MAX_PATH]; wchar_t part[24]; RandomText(part, 10);
@@ -1036,16 +1061,13 @@ static void RecordOnce(bool useNull, bool sched = false)
     const int effFps = fmt == VC_GIF && p.cfg.fps > 15 ? 15 : p.cfg.fps;
     p.cfg.capMouse = Chance(40); p.cfg.highlight = Chance(30);
     p.cfg.mic = !useNull && Chance(40);
-    int limit = 0;
-    p.cfg.durH = p.cfg.durM = p.cfg.durS = 0;
-    if (Chance(30)) { limit = R(2, 3); p.cfg.durS = limit; }
     bool pause = Chance(40), spam = Chance(25), move = mode == 2 && Chance(40);
     wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\rec%d.%s", g_dir, R(0, 999999), VideoFormatExt(fmt));
     wcscpy(p.path, path);
     if (useNull) SetEnvironmentVariableW(L"C2S_NULLSINK", L"1"); else SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr);
     wchar_t desc[300];
-    _snwprintf(desc, 300, L"record (%s) %s %dx%d fps=%d codec=%d q=%d mic=%d limit=%d pause=%d spam=%d move=%d", useNull ? L"no encoder" : own ? L"own sink" : L"MF",
-               mode == 2 ? L"window" : mode == 1 ? L"part" : L"region", pw, ph, p.cfg.fps, p.cfg.videoCodec, p.cfg.videoQuality, p.cfg.mic, limit, pause, spam, move);
+    _snwprintf(desc, 300, L"record (%s) %s %dx%d fps=%d codec=%d q=%d mic=%d pause=%d spam=%d move=%d", useNull ? L"no encoder" : own ? L"own sink" : L"MF",
+               mode == 2 ? L"window" : mode == 1 ? L"part" : L"region", pw, ph, p.cfg.fps, p.cfg.videoCodec, p.cfg.videoQuality, p.cfg.mic, pause, spam, move);
     INFO(L"%s", desc);
     Recorder rec;
     wchar_t err[300] = L"";
@@ -1056,7 +1078,7 @@ static void RecordOnce(bool useNull, bool sched = false)
     FitSizeForVideo(fmt, srcw, srch, ew, eh);
     Check(rec.Width() == ew && rec.Height() == eh, L"recorder: output size follows FitSize", desc);
     DWORD t0 = GetTickCount();
-    int total = limit ? limit + 2 : R(3, 5);
+    int total = R(3, 5);
     double pausedFor = 0;
     HANDLE spamT = spam ? CreateThread(nullptr, 0, PauseSpam, &rec, 0, nullptr) : nullptr;
     int slice = 0;
@@ -1074,21 +1096,17 @@ static void RecordOnce(bool useNull, bool sched = false)
     if (spamT) { WaitForSingleObject(spamT, 5000); CloseHandle(spamT); }
     double wall = (GetTickCount() - t0) / 1000.0;
     double el = rec.ElapsedSec();
-    bool limited = rec.LimitReached();
     unsigned long long frames = rec.FramesWritten();
     bool stopped = rec.Stop();
     bool failedSelf = rec.Failed();
     Check(stopped && !failedSelf, L"recorder: Stop finalizes the file", desc);
-    if (limit) {
-        wchar_t d2[120]; _snwprintf(d2, 120, L"limit %ds, recorded %.2fs", limit, el);
-        Check(limited && fabs(el - limit) < 0.7, L"recorder: the time limit stops the recording by itself", d2);
-    } else if (!spam) {
+    if (!spam) {
         wchar_t d2[160]; _snwprintf(d2, 160, L"wall %.2fs, paused %.2fs, recorded %.2fs", wall, pausedFor, el);
         Check(fabs(el - (wall - pausedFor)) < 0.6, L"recorder: recorded time = wall time - pauses", d2);
     }
     if (useNull) {
         // frames at the requested rate while running (spam / pauses make the expected count a range)
-        double lo = (limit ? limit : el) * effFps * 0.4, hi = (el + 0.3) * effFps * 1.15 + 3;
+        double lo = el * effFps * 0.4, hi = (el + 0.3) * effFps * 1.15 + 3;
         wchar_t d2[140]; _snwprintf(d2, 140, L"%llu frames in %.2fs at %d fps", frames, el, effFps);
         Check((double)frames <= hi && (double)frames >= (spam ? 1.0 : lo * 0.7), L"recorder: frame count follows the frame rate (no frames while paused)", d2);
         SetEnvironmentVariableW(L"C2S_NULLSINK", nullptr);
@@ -1129,7 +1147,7 @@ static void T_Recorder()
 
 static void T_RecorderSched()
 {
-    RecordOnce(true, true);            // schedule / pauses / limit, no encoder: works everywhere
+    RecordOnce(true, true);            // schedule / pauses, no encoder: works everywhere
 }
 
 static void T_RecorderLifecycle()
@@ -1331,19 +1349,17 @@ static bool ValidSettings(const Settings& s, wchar_t* why)
 {
 #define NEED(c) if (!(c)) { _snwprintf(why, 100, L"%s", L"" #c); return false; }
     NEED(s.imageFormat >= 0 && s.imageFormat < IMG_COUNT) NEED(s.fps >= 5 && s.fps <= 60) NEED(s.delaySec >= 0 && s.delaySec <= 10)
-    NEED(s.durH >= 0 && s.durH <= 99) NEED(s.durM >= 0 && s.durM <= 59) NEED(s.durS >= 0 && s.durS <= 59)
     NEED(s.videoCodec >= 0 && s.videoCodec < VC_COUNT) NEED(s.audioCodec >= 0 && s.audioCodec <= 1)
     NEED(s.videoQuality >= 0 && s.videoQuality <= 2) NEED(s.audioQuality >= 0 && s.audioQuality <= 2)
     NEED(s.language >= 0 && s.language <= LangCount()) NEED(TemplateValid(s.fileName))
-    NEED(wcslen(s.vidFolder) < MAX_PATH && wcslen(s.imgFolder) < MAX_PATH)
+    NEED(wcslen(s.folder) < MAX_PATH)
     return true;
 }
 
 static void T_FuzzSettings()
 {
-    static const wchar_t* names[] = { L"VidOutputFolder", L"ImgOutputFolder", L"FileName", L"ImageFormat", L"CapMouse", L"Highlight",
-        L"EnableSound", L"EnableMicRec", L"OpenOutFolder", L"RunAtStartup", L"Delay", L"RecDurationHour", L"RecDurationMin",
-        L"RecDurationSec", L"VideoCodec", L"AudioCodec", L"VideoQuality", L"AudioQuality", L"Fps", L"Language" };
+    static const wchar_t* names[] = { L"OutputFolder", L"VidOutputFolder", L"FileName", L"ImageFormat", L"CapMouse", L"Highlight",
+        L"EnableSound", L"EnableMicRec", L"OpenOutFolder", L"RunAtStartup", L"Delay", L"VideoCodec", L"AudioCodec", L"VideoQuality", L"AudioQuality", L"Fps", L"Language" };
     HKEY k;
     RegDeleteKeyW(HKEY_CURRENT_USER, L"Software\\Click2Screen-Autotest");
     if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Click2Screen-Autotest", 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) != ERROR_SUCCESS) { WARN(L"fuzz: cannot create the registry key"); return; }
@@ -1375,7 +1391,7 @@ static void T_FuzzIni()
         BYTE b[600]; int n = R(0, 600); for (int i = 0; i < n; ++i) b[i] = (BYTE)NextU(); WriteFile(h, b, n, &w, nullptr);
     } else {                               // a Click2Screen section with random lines, ANSI or UTF-16
         wchar_t text[3000] = L"\xFEFF[Click2Screen]\r\n";
-        static const wchar_t* keys[] = { L"Fps", L"Delay", L"FileName", L"VidOutputFolder", L"ImageFormat", L"CapMouse", L"VideoCodec", L"Junk", L"RecDurationSec", L"Language" };
+        static const wchar_t* keys[] = { L"Fps", L"Delay", L"FileName", L"OutputFolder", L"ImageFormat", L"CapMouse", L"VideoCodec", L"Junk", L"VidOutputFolder", L"Language" };
         int lines = R(0, 25);
         for (int i = 0; i < lines; ++i) {
             wchar_t line[400]; const wchar_t* key = keys[R(0, 9)];
@@ -1630,7 +1646,7 @@ static void AppSettings(Settings& s, int language)
     RandomSettings(s);
     s.language = language;
     s.sounds = false; s.openFolder = false; s.runAtStartup = false;
-    s.delaySec = R(0, 2); s.durH = s.durM = s.durS = 0;
+    s.delaySec = R(0, 2);
     s.mic = false;
 }
 
@@ -1677,12 +1693,10 @@ static void T_App()
     AppSettings(s, language);
     // the program's folders: fresh ones
     wchar_t t[24]; _snwprintf(t, 24, L"app%d", R(0, 99999));
-    _snwprintf(s.imgFolder, MAX_PATH, L"%s\\%s\\img", g_dir, t); _snwprintf(s.vidFolder, MAX_PATH, L"%s\\%s\\vid", g_dir, t);
-    bool limitFlow = Chance(25);
-    if (limitFlow) s.durS = 3;
+    _snwprintf(s.folder, MAX_PATH, L"%s\\%s\\out", g_dir, t);
     App a;
     if (!StartApp(a, s)) { FAIL(L"program: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
-    INFO(L"program flow: language %d, delay %d s, limit %d s", language, s.delaySec, s.durS);
+    INFO(L"program flow: language %d, delay %d s", language, s.delaySec);
     LangSelect(language == 0 ? 0 : language);
     AppTexts(a, language, L"at start", s.hotkey);
 
@@ -1704,14 +1718,14 @@ static void T_App()
 
     // a screenshot with the hotkey message
     {
-        int before = CountFiles(s.imgFolder);
+        int before = CountFiles(s.folder);
         PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
         DWORD end = GetTickCount() + WMS(20000);
-        while (CountFiles(s.imgFolder) <= before && (int)(end - GetTickCount()) > 0) Sleep(100);
-        wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.*", s.imgFolder);
+        while (CountFiles(s.folder) <= before && (int)(end - GetTickCount()) > 0) Sleep(100);
+        wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.*", s.folder);
         WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
         wchar_t file[MAX_PATH] = L"";
-        if (h != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fd.cFileName[0] != L'.') _snwprintf(file, MAX_PATH, L"%s\\%s", s.imgFolder, fd.cFileName); } while (FindNextFileW(h, &fd)); FindClose(h); }
+        if (h != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && fd.cFileName[0] != L'.') _snwprintf(file, MAX_PATH, L"%s\\%s", s.folder, fd.cFileName); } while (FindNextFileW(h, &fd)); FindClose(h); }
         // the file shows up while the program is still writing it: wait until its size stops changing
         unsigned long long last = 0; int stable = 0;
         for (int i = 0; i < 100 && stable < 4 && file[0]; ++i) { unsigned long long z = FileSz(file); if (z == last && z > 0) ++stable; else stable = 0; last = z; Sleep(150); }
@@ -1744,7 +1758,7 @@ static void T_App()
                 wchar_t t1[100], t2[100];
                 WinText(GetDlgItem(panel, IDC_P_TIME), t1, 100); Sleep(1200); WinText(GetDlgItem(panel, IDC_P_TIME), t2, 100);
                 Check(wcscmp(t1, t2) != 0, L"program: the time label runs while recording", t2);
-                if (!limitFlow) {
+                {
                     PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0);
                     Check(WaitText(panel, IDC_P_START, T(S_RESUME), 3000), L"program: Pause -> the button offers Resume");
                     WinText(GetDlgItem(panel, IDC_P_TIME), t1, 100); Sleep(1200); WinText(GetDlgItem(panel, IDC_P_TIME), t2, 100);
@@ -1763,12 +1777,10 @@ static void T_App()
                     }
                     if (Chance(50)) PostMessageW(a.main, WM_HOTKEY, HK_STOP, 0);                     // F11
                     else PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_STOP, BN_CLICKED), 0);    // the Stop button
-                } else {
-                    Sleep(1500);                                // the time limit stops it by itself
                 }
                 DWORD end = GetTickCount() + WMS(12000);
                 while (FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) && (int)(end - GetTickCount()) > 0) Sleep(100);
-                Check(FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) == nullptr, limitFlow ? L"program: the time limit closes the recording by itself" : L"program: Stop closes the panel");
+                Check(FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) == nullptr, L"program: Stop closes the panel");
                 Sleep(300);
                 wchar_t st[500], prefix[100]; WinText(GetDlgItem(a.main, IDC_STATUS), st, 500);
                 wcsncpy(prefix, T(S_SAVED), 99); prefix[99] = 0; wchar_t* pc = wcsstr(prefix, L"%s"); if (pc) *pc = 0;
@@ -1859,7 +1871,7 @@ static void T_App()
         if (o) {
             Settings w; RandomSettings(w);
             w.runAtStartup = false; w.sounds = false; w.openFolder = false;
-            wcscpy(w.vidFolder, s.vidFolder); wcscpy(w.imgFolder, s.imgFolder);
+            wcscpy(w.folder, s.folder);
             static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
             w.fps = fpsv[R(0, 6)];
             w.language = R(0, LangCount());
@@ -1880,13 +1892,21 @@ static void T_App()
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
             int fi = 0; for (int i = 0; i < 7; ++i) if (fpsv[i] == w.fps) fi = i;
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, fi, 0);
-            _snwprintf(n, 16, L"%d", w.durH); SetText(GetDlgItem(o, O_DH), n);
-            _snwprintf(n, 16, L"%d", w.durM); SetText(GetDlgItem(o, O_DM), n);
-            _snwprintf(n, 16, L"%d", w.durS); SetText(GetDlgItem(o, O_DS), n);
             SelData(GetDlgItem(o, O_IMGFMT), w.imageFormat);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
             bool bad = Chance(30) || dupKeys;
             SetText(GetDlgItem(o, O_TPL), bad && !dupKeys ? L"a#b#" : w.fileName);
+            {   // under the template field the window shows the name a file would get now
+                Sleep(250);
+                wchar_t pv[600]; WinText(GetDlgItem(o, O_TPLPREVIEW), pv, 600);
+                wchar_t e1[460], e2[460]; const wchar_t* tpl = bad && !dupKeys ? L"a#b#" : w.fileName;
+                TemplatePreview(tpl, e1, 460); Sleep(30); TemplatePreview(tpl, e2, 460);
+                size_t pl = wcslen(pv);
+                bool endsWith1 = e1[0] && pl >= wcslen(e1) && !wcscmp(pv + pl - wcslen(e1), e1), endsWith2 = e2[0] && pl >= wcslen(e2) && !wcscmp(pv + pl - wcslen(e2), e2);
+                bool ok = e1[0] ? (endsWith1 || endsWith2) : pv[0] == 0;
+                wchar_t dpv[700]; _snwprintf(dpv, 700, L"shown [%s], expected the name [%s]", pv, e1);
+                Check(ok, L"program: the Save tab shows under the template how a file will be named (without the extension)", dpv);
+            }
             PostMessageW(o, WM_COMMAND, IDOK, 0);
             if (bad) {
                 bool warned = DismissBox(a.pi.dwProcessId, IDOK, 5000);
@@ -2002,7 +2022,7 @@ static void PrepareApp(Settings& s)
 {
     AppSettings(s, R(0, LangCount()));
     wchar_t t[24]; _snwprintf(t, 24, L"app%d", R(0, 99999));
-    _snwprintf(s.imgFolder, MAX_PATH, L"%s\\%s\\img", g_dir, t); _snwprintf(s.vidFolder, MAX_PATH, L"%s\\%s\\vid", g_dir, t);
+    _snwprintf(s.folder, MAX_PATH, L"%s\\%s\\out", g_dir, t);
     s.delaySec = 0;
 }
 
@@ -2040,22 +2060,22 @@ static void T_AppPicks()
             POINT p1 = { vs.left + R(10, (vs.right - vs.left) - 330), vs.top + R(10, (vs.bottom - vs.top) - 260) };
             POINT p2 = { p1.x + R(40, 320), p1.y + R(40, 250) };
             bool flip = Chance(50); if (flip) { POINT t = p1; p1 = p2; p2 = t; }
-            int before = CountFiles(s.imgFolder);
+            int before = CountFiles(s.folder);
             PostMessageW(a.main, WM_HOTKEY, HK_REGION, 0);
             bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2, Chance(30));
             wchar_t file[MAX_PATH] = L""; int dw = 0, dh = 0; uint8_t* px = nullptr;
-            bool got = driven && WaitNewFile(s.imgFolder, before, 20000, file) && DecodePixels(file, &dw, &dh, &px);
+            bool got = driven && WaitNewFile(s.folder, before, 20000, file) && DecodePixels(file, &dw, &dh, &px);
             _snwprintf(nm, 160, L"program picks: region screenshot %dx%d is saved at exactly that size", abs(p2.x - p1.x), abs(p2.y - p1.y));
             wchar_t dd[200]; _snwprintf(dd, 200, L"driven=%d got=%d file %dx%d, dragged (%d,%d)-(%d,%d)", (int)driven, (int)got, dw, dh, (int)p1.x, (int)p1.y, (int)p2.x, (int)p2.y);
             Check(got && dw == abs(p2.x - p1.x) && dh == abs(p2.y - p1.y), nm, dd);
             delete[] px;
         } else if (what == 1) {                                        // window screenshot (Alt+Shift+5)
             POINT p = { fr.left + R(20, g_fx.w - 20), fr.top + R(20, g_fx.h - 20) };
-            int before = CountFiles(s.imgFolder);
+            int before = CountFiles(s.folder);
             PostMessageW(a.main, WM_HOTKEY, HK_WINDOW, 0);
             bool driven = DrivePicker(a.pi.dwProcessId, 1, p, p);
             wchar_t file[MAX_PATH] = L""; int dw = 0, dh = 0; uint8_t* px = nullptr;
-            bool got = driven && WaitNewFile(s.imgFolder, before, 20000, file) && DecodePixels(file, &dw, &dh, &px);
+            bool got = driven && WaitNewFile(s.folder, before, 20000, file) && DecodePixels(file, &dw, &dh, &px);
             RECT vis; WindowVisibleRect(g_fx.hw, &vis);
             wchar_t dd[200]; _snwprintf(dd, 200, L"driven=%d got=%d file %dx%d, window %dx%d", (int)driven, (int)got, dw, dh, (int)(vis.right - vis.left), (int)(vis.bottom - vis.top));
             Check(got && dw == vis.right - vis.left && dh == vis.bottom - vis.top, L"program picks: window screenshot has the size of the pointed window", dd);
@@ -2131,17 +2151,17 @@ static void T_AppOddities()
         bool ok = StartApp(a, s);
         Check(ok && AppAlive(a), L"program oddities: the program starts although its hotkeys are held by another program", L"");
         if (ok) {                                      // and the buttons still work
-            int before = CountFiles(s.imgFolder);
+            int before = CountFiles(s.folder);
             PostMessageW(a.main, WM_COMMAND, IDC_SHOT_DESKTOP, 0);
             wchar_t f[MAX_PATH];
-            Check(WaitNewFile(s.imgFolder, before, 20000, f), L"program oddities: the screenshot button works without the hotkeys");
+            Check(WaitNewFile(s.folder, before, 20000, f), L"program oddities: the screenshot button works without the hotkeys");
         }
         StopApp(a);
         for (int i = 1; i <= 3; ++i) UnregisterHotKey(hold, i);
         DestroyWindow(hold);
         (void)held;
     } else if (which == 1) {                           // an output folder that cannot exist: a message, no crash, the program goes on
-        wcscpy(s.imgFolder, L"C:\\nul\\x\\no such drive\\img");
+        wcscpy(s.folder, L"C:\\nul\\x\\no such drive\\img");
         App a;
         if (!StartApp(a, s)) { FAIL(L"program oddities: no window"); StopApp(a, false); return; }
         PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
@@ -2751,12 +2771,12 @@ static void T_AppFrame()
         while (!IsIconic(a.main) && (int)(me - GetTickCount()) > 0) Sleep(50);
         bool minimized = IsIconic(a.main) != 0 && IsWindowVisible(a.main);
         Check(minimized, L"frame: Minimize minimizes the main window to the taskbar (it stays shown, not hidden to the tray)");
-        int shots = CountFiles(s.imgFolder);
+        int shots = CountFiles(s.folder);
         PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
         DWORD se = GetTickCount() + WMS(10000);
-        while (CountFiles(s.imgFolder) <= shots && (int)(se - GetTickCount()) > 0) Sleep(100);
+        while (CountFiles(s.folder) <= shots && (int)(se - GetTickCount()) > 0) Sleep(100);
         Sleep(500);
-        Check(CountFiles(s.imgFolder) > shots && IsIconic(a.main), L"frame: a screenshot taken while the window is minimized does not bring it back");
+        Check(CountFiles(s.folder) > shots && IsIconic(a.main), L"frame: a screenshot taken while the window is minimized does not bring it back");
         ShowWindow(a.main, SW_RESTORE); Sleep(300);
         PostMessageW(a.main, WM_COMMAND, IDC_CLOSE, 0);
         DWORD ce = GetTickCount() + WMS(3000);
@@ -2768,7 +2788,7 @@ static void T_AppFrame()
         Check(IsWindowVisible(a.main) && !IsIconic(a.main), L"frame: the tray brings the window back");
     }
     POINT p1 = { fr.left + 30, fr.top + 30 }, p2 = { fr.left + 30 + R(160, 260), fr.top + 30 + R(110, 170) };
-    int before = CountFiles(s.imgFolder);
+    int before = CountFiles(s.folder);
     PostMessageW(a.main, WM_HOTKEY, HK_REGION, 0);
     bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
     bool seenOn = false, seenOff = false, digit = false, centred = false, framed = false, digitBig = false;
@@ -2787,11 +2807,11 @@ static void T_AppFrame()
             centred = centred || (abs(mx - cx) <= 2 && abs(my - cy) <= 2);
         }
         if (seenOn && seenOff && digit && framed && centred) break;
-        if (!f && !d && CountFiles(s.imgFolder) > before) break;
+        if (!f && !d && CountFiles(s.folder) > before) break;
         Pump(60);
     }
     wchar_t file[MAX_PATH] = L"";
-    bool got = driven && WaitNewFile(s.imgFolder, before, 20000, file);
+    bool got = driven && WaitNewFile(s.folder, before, 20000, file);
     Pump(300);
     HWND f2 = FindWin(a.pi.dwProcessId, L"Click2ScreenFrame", 0), d2 = FindWin(a.pi.dwProcessId, L"Click2ScreenCount", 0);
     wchar_t dd[200]; _snwprintf(dd, 200, L"driven %d, on %d off %d, frame at the area %d, digit %d centred %d", (int)driven, (int)seenOn, (int)seenOff, (int)framed, (int)digit, (int)centred);
@@ -2832,7 +2852,6 @@ static void T_AppEffects()
     MakeFixture(R(520, 700), R(380, 480));
     Settings s; PrepareApp(s);
     s.videoCodec = VC_AVI; s.capMouse = true; s.highlight = Chance(50); s.delaySec = 0; s.mic = false; s.videoQuality = 0; s.fps = 25;
-    s.durH = s.durM = s.durS = 0;
     App a;
     if (!StartApp(a, s, L"", true)) { FAIL(L"program effects: the program did not start"); StopApp(a, false); return; }
     RECT fr = FxScreenRect();
@@ -2871,7 +2890,7 @@ static void T_AppEffects()
     }
     wchar_t file[MAX_PATH] = L"";
     int before = 0;
-    bool got = running && WaitNewFile(s.vidFolder, before, 20000, file);
+    bool got = running && WaitNewFile(s.folder, before, 20000, file);
     Pump(500);
     int waveFrames = 0, trailFrames = 0, frames = 0, tested = 0;
     uint8_t* ref = nullptr; int refW = 0;                                   // the first decoded picture, before anything is drawn
@@ -2947,13 +2966,13 @@ static void T_AppCrashRestart()
     bool ok = StartApp(b, s);                                         // the same single-instance name: the mutex is gone with the process
     Check(ok && AppAlive(b), L"crash: the program starts again after being killed in a recording");
     if (ok) {
-        int before = CountFiles(s.imgFolder);
+        int before = CountFiles(s.folder);
         PostMessageW(b.main, WM_HOTKEY, HK_DESKTOP, 0);
         wchar_t f[MAX_PATH];
         DWORD t0 = GetTickCount();
-        bool got = WaitNewFile(s.imgFolder, before, 20000, f);
-        wchar_t d[400]; _snwprintf(d, 400, L"files before %d, after %d, alive %d, waited %lu ms, image format %d, delay %d, folder %s (exists %d)", before, CountFiles(s.imgFolder), (int)AppAlive(b),
-                                   (unsigned long)(GetTickCount() - t0), s.imageFormat, s.delaySec, s.imgFolder, (int)(GetFileAttributesW(s.imgFolder) != INVALID_FILE_ATTRIBUTES));
+        bool got = WaitNewFile(s.folder, before, 20000, f);
+        wchar_t d[400]; _snwprintf(d, 400, L"files before %d, after %d, alive %d, waited %lu ms, image format %d, delay %d, folder %s (exists %d)", before, CountFiles(s.folder), (int)AppAlive(b),
+                                   (unsigned long)(GetTickCount() - t0), s.imageFormat, s.delaySec, s.folder, (int)(GetFileAttributesW(s.folder) != INVALID_FILE_ATTRIBUTES));
         Check(got, L"crash: and works (a screenshot after the restart)", d);
     }
     StopApp(b);
@@ -2986,7 +3005,7 @@ static void T_AppFlood()
     }
     DWORD_PTR res = 0;
     bool answers = SendMessageTimeoutW(a.main, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, WMS(10000), &res) != 0;
-    int files = CountFiles(s.imgFolder);
+    int files = CountFiles(s.folder);
     wchar_t d[100]; _snwprintf(d, 100, L"%d messages sent, %d pictures saved", n, files);
     Check(AppAlive(a) && answers, L"flood: the program is alive and answering after a burst of hotkeys and commands", d);
     PostMessageW(a.main, WM_COMMAND, ID_TRAY_EXIT, 0);

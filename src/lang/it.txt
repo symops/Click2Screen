@@ -32,7 +32,6 @@ Salvato: %s
 Click2Screen sta registrando. Fai clic sull’icona nell’area di notifica per la pausa, clic destro per altro.
 Opzioni di Click2Screen
 Generale
-Video e audio
 File
 Lingua
 OK
@@ -52,11 +51,7 @@ Codec audio:
 Qualità video:
 Qualità audio:
 Fotogrammi al secondo:
-Interrompi la registrazione dopo (0 = nessun limite):
-ore
-minuti
-Cartella dei video:
-Cartella delle immagini:
+Cartella per video e immagini
 Formato immagine:
 Modello del nome file:
 Suggerimenti: # – una cifra del numero progressivo, $Y anno, $M mese, $D giorno, $H ora, $N minuto, $S secondo, %USERNAME% – nome utente. Esempio: File $D.$M.$Y $H-$N-$S oppure Img####
@@ -130,8 +125,8 @@ Errore: la cartella di installazione non è valida (serve un percorso completo, 
 Reinstalla
 Apri la cartella delle immagini
 Apri la cartella dei video
-Immagini
-Nome file
+Formati
+Salvataggio
 Opzioni video
 Opzioni audio
 Versione %s
@@ -147,3 +142,4 @@ nessuna
 Disegno sullo schermo (attiva / disattiva)
 Disegno attivo: disegna con il pulsante sinistro, il destro cancella tutto, Esc esce.
 Disegno disattivato.
+Il file si chiamerà:

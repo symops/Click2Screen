@@ -48,7 +48,6 @@ struct Recorder::Impl {
     volatile LONGLONG mediaNow = 0;      // last media time seen by the video thread, 100 ns
     Grabber grab;
     int w = 0, h = 0, fps = 25;
-    LONGLONG limit100 = 0;
     LONGLONG lastVideoTs = -1;
     LONGLONG audioSamples = 0;
     HWAVEIN hwi = nullptr;
@@ -116,7 +115,6 @@ struct Recorder::Impl {
             if (paused) { Sleep(10); continue; }
             LONGLONG mt = MediaTime();
             mediaNow = mt;
-            if (limit100 && mt >= limit100) { limit = 1; break; }
             if (alt && alt->Full()) { limit = 1; break; }       // a file that cannot grow: finish it properly
             if (mt < n * interval) {
                 LONGLONG waitMs = (n * interval - mt) / 10000;
@@ -312,8 +310,6 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     d.fps = p.cfg.fps < 5 ? 5 : p.cfg.fps > 60 ? 60 : p.cfg.fps;
     if (fmt == VC_GIF && d.fps > 15) d.fps = 15;       // a GIF is for slow pictures: 15 frames a second at most
     if (!d.grab.Init(d.w, d.h)) { if (err) wcsncpy(err, T(S_ERR_CAPTURE), errLen - 1); return false; }
-    int total = p.cfg.durH * 3600 + p.cfg.durM * 60 + p.cfg.durS;
-    d.limit100 = (LONGLONG)total * 10000000LL;
 
     if (GetEnvironmentVariableW(L"C2S_NULLSINK", nullptr, 0) > 0) {
         d.nullSink = true;

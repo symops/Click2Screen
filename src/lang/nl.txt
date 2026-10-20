@@ -32,7 +32,6 @@ Opgeslagen: %s
 Click2Screen neemt op. Klik op het pictogram in het systeemvak om te pauzeren, rechtsklik voor meer.
 Opties van Click2Screen
 Algemeen
-Video en audio
 Bestanden
 Taal
 OK
@@ -52,11 +51,7 @@ Audiocodec:
 Videokwaliteit:
 Audiokwaliteit:
 Beeldjes per seconde:
-Opname stoppen na (0 = geen limiet):
-uur
-minuten
-Map voor video’s:
-Map voor afbeeldingen:
+Map voor video's en afbeeldingen
 Afbeeldingsindeling:
 Sjabloon voor bestandsnaam:
 Tips: # – één cijfer van het volgnummer, $Y jaar, $M maand, $D dag, $H uur, $N minuut, $S seconde, %USERNAME% – gebruikersnaam. Voorbeeld: File $D.$M.$Y $H-$N-$S of Img####
@@ -130,8 +125,8 @@ Fout: de installatiemap is ongeldig (een volledig pad zoals C:\Programs\Click2Sc
 Opnieuw installeren
 Afbeeldingenmap openen
 Videomap openen
-Afbeeldingen
-Bestandsnaam
+Formaten
+Opslaan
 Video-opties
 Audio-opties
 Versie %s
@@ -147,3 +142,4 @@ geen
 Tekenen op het scherm (aan / uit)
 Tekenen staat aan: teken met de linkermuisknop, de rechter wist alles, Esc sluit af.
 Tekenen staat uit.
+Het bestand heet:
