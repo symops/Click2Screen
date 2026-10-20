@@ -145,5 +145,5 @@ Fai clic su un campo e premi la nuova combinazione. Backspace la cancella (la sc
 La stessa combinazione è assegnata a due azioni.
 nessuna
 Linee rosse sullo schermo (attiva / disattiva)
-Disegno attivo: tieni premuto Maiusc sinistro e muovi il mouse; Maiusc destro cancella tutto.
+Disegno attivo: disegna con il pulsante sinistro, il destro cancella tutto, Esc esce.
 Disegno disattivato.

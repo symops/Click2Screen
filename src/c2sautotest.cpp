@@ -1771,6 +1771,40 @@ static void T_App()
         bool onAlive = AppAlive(a);
         PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(300);
         Check(onAlive && AppAlive(a), L"program: the drawing hotkey can be switched on and off");
+        // the drawing window: it covers the screen, the left button draws, the right one wipes, Esc leaves
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        HWND ink = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        RECT vs = VirtualScreen(), ir = {};
+        if (ink) GetWindowRect(ink, &ir);
+        LONG iex = ink ? GetWindowLongW(ink, GWL_EXSTYLE) : 0;
+        wchar_t id[160]; _snwprintf(id, 160, L"window %d,%d %dx%d, the screen %d,%d %dx%d, topmost %d", (int)ir.left, (int)ir.top, (int)(ir.right - ir.left), (int)(ir.bottom - ir.top), (int)vs.left, (int)vs.top, (int)(vs.right - vs.left), (int)(vs.bottom - vs.top), (iex & WS_EX_TOPMOST) != 0);
+        Check(ink && IsWindowVisible(ink) && ir.left == vs.left && ir.top == vs.top && ir.right == vs.right && ir.bottom == vs.bottom && (iex & WS_EX_TOPMOST), L"program: the drawing on puts a topmost window over the whole screen that takes the mouse", id);
+        if (ink) {
+            int x0 = 60, y0 = 60;
+            PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x0, y0));
+            for (int i = 1; i <= 12; ++i) PostMessageW(ink, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x0 + i * 9, y0 + i * 5));
+            PostMessageW(ink, WM_LBUTTONUP, 0, MAKELPARAM(x0 + 108, y0 + 60));
+            HWND tr = nullptr; DWORD te = GetTickCount() + WMS(3000);
+            while ((int)(te - GetTickCount()) > 0) { tr = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tr && IsWindowVisible(tr)) break; tr = nullptr; Sleep(50); }
+            RECT trc = {}; if (tr) GetWindowRect(tr, &trc);
+            bool placed = tr && trc.left <= vs.left + x0 + 2 && trc.right >= vs.left + x0 + 100;
+            Check(placed, L"program: a stroke of the left button on the drawing window shows as a red line on the screen");
+            PostMessageW(ink, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(200, 200));
+            DWORD we = GetTickCount() + WMS(3000);
+            while (tr && IsWindowVisible(tr) && (int)(we - GetTickCount()) > 0) Sleep(50);
+            Check(!tr || !IsWindowVisible(tr), L"program: the right button on the drawing window wipes the lines");
+            PostMessageW(ink, WM_KEYDOWN, VK_ESCAPE, 0);
+            DWORD ee = GetTickCount() + WMS(3000);
+            while (IsWindow(ink) && (int)(ee - GetTickCount()) > 0) Sleep(50);
+            Check(!IsWindow(ink) && AppAlive(a), L"program: Esc closes the drawing window");
+        }
+        // and the menu command of the main window / tray does the same as the hotkey
+        PostMessageW(a.main, WM_COMMAND, ID_MENU_DRAW, 0);
+        HWND ink2 = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        PostMessageW(a.main, WM_COMMAND, ID_MENU_DRAW, 0);
+        DWORD me2 = GetTickCount() + WMS(3000);
+        while (ink2 && IsWindow(ink2) && (int)(me2 - GetTickCount()) > 0) Sleep(50);
+        Check(ink2 && !IsWindow(ink2), L"program: the menu command switches the drawing window on and off");
     }
     // "Restore default" sets back the page that is open only
     {
@@ -2553,6 +2587,21 @@ static void T_Effects()
         Check(held == 0, L"drawing: a Shift still held from the hotkey draws nothing until it is released", dd);
         Check(drawn >= 6, L"drawing: without a recording the left Shift adds trail points", dd);
         Check(wiped == 0, L"drawing: the right Shift wipes the lines", dd);
+    }
+    // the mouse pen of the drawing window: points given by the program itself (works over windows of any privilege)
+    {
+        POINT pt[4096]; unsigned char br[4096]; unsigned ver = 0;
+        FxStart();
+        FxPenPoint(100, 100, true); FxPenPoint(120, 110, false); FxPenPoint(120, 110, false); FxPenPoint(150, 130, false);   // the same point twice counts once
+        FxPenPoint(300, 300, true); FxPenPoint(310, 320, false);
+        int n = FxTrailSnapshot(pt, br, 4096, &ver);
+        bool shape = n == 5 && br[0] == 1 && br[1] == 0 && br[2] == 0 && br[3] == 1 && pt[3].x == 300 && pt[4].y == 320;
+        FxWipe();
+        int after = FxTrailSnapshot(pt, br, 4096, &ver);
+        FxStop();
+        wchar_t dd[120]; _snwprintf(dd, 120, L"%d points in two strokes (shape ok %d), after the wipe %d", n, (int)shape, after);
+        Check(shape, L"drawing: the mouse pen adds points in strokes (a repeated point is skipped)", dd);
+        Check(after == 0, L"drawing: wiping removes every line at once", dd);
     }
     // the yellow circle round the pointer is for recordings only: a screenshot never has it
     {

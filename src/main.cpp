@@ -16,6 +16,7 @@ namespace {
 
 HINSTANCE g_inst;
 HWND   g_main, g_panel, g_frame, g_tip;
+HWND   g_ink;                      // the drawing window that takes the mouse while the drawing is on
 bool   g_draw;                     // the red-line drawing is switched on (with or without a recording)
 bool   g_frameBlink;               // the red frame blinks only while a recording runs or a screenshot is being made
 bool   g_modeDesktop;             // the recording covers the whole desktop: no frame, the panel sits at the bottom
@@ -48,6 +49,7 @@ void TrailOverlayHide();
 void TrailOverlayUpdate();
 void DrawResume();
 LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
+LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 
 UINT g_dpi = 96;                 // DPI of the monitor the main window is on (WM_DPICHANGED keeps it current)
 int Sc(int v) { return MulDiv(v, (int)g_dpi, 96); }
@@ -629,6 +631,7 @@ void ShowPanel()
                               0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
     ExcludeFromCapture(g_panel);
     RoundWindow(g_panel, w, h, Sc(8));
+    if (g_ink) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     // time | size | F11: Stop | start / pause | stop  (cells split at 47, 103, 168, 199 of 230 units)
     static const int cell[6] = { 0, 47, 103, 168, 199, 230 };
     static const int ids[5] = { IDC_P_TIME, IDC_P_SIZE, IDC_P_HINT, IDC_P_START, IDC_P_STOP };
@@ -801,6 +804,8 @@ void RegisterOverlayClasses()
     RegisterClassW(&wc);
     wc.lpfnWndProc = TrailProc; wc.lpszClassName = L"Click2ScreenTrail";
     RegisterClassW(&wc);
+    wc.lpfnWndProc = InkProc; wc.lpszClassName = C2S_CLASS_INK; wc.hCursor = LoadCursorW(nullptr, IDC_CROSS);
+    RegisterClassW(&wc);
 }
 
 // What is drawn with the left Shift while recording is shown on the screen too (the user sees what he has drawn): a see-through,
@@ -808,6 +813,48 @@ void RegisterOverlayClasses()
 HWND g_trailWnd;
 unsigned g_trailVer = 0xFFFFFFFFu;
 LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp) { return DefWindowProcW(hw, m, wp, lp); }
+
+// The drawing window (like the pen of ZoomIt): while the drawing is on a see-through window covers the whole screen and takes the
+// mouse, so it works over windows of any privilege (the keyboard of such windows is not readable from here). The left button draws,
+// the right button wipes everything, Esc or the same hotkey leaves.
+bool g_inkDown;
+LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
+{
+    auto pt = [&](POINT* p) { p->x = (short)LOWORD(lp); p->y = (short)HIWORD(lp); ClientToScreen(hw, p); };
+    switch (m) {
+    case WM_SETCURSOR: SetCursor(LoadCursorW(nullptr, IDC_CROSS)); return TRUE;
+    case WM_ERASEBKGND: return 1;
+    case WM_LBUTTONDOWN: { POINT p; pt(&p); SetCapture(hw); g_inkDown = true; FxPenPoint(p.x, p.y, true); return 0; }
+    case WM_MOUSEMOVE: if (g_inkDown && (wp & MK_LBUTTON)) { POINT p; pt(&p); FxPenPoint(p.x, p.y, false); } return 0;
+    case WM_LBUTTONUP: g_inkDown = false; if (GetCapture() == hw) ReleaseCapture(); return 0;
+    case WM_CAPTURECHANGED: g_inkDown = false; return 0;
+    case WM_RBUTTONDOWN: FxWipe(); return 0;
+    case WM_KEYDOWN: if (wp == VK_ESCAPE) PostMessageW(g_main, WM_HOTKEY, HK_DRAW, 0); return 0;
+    case WM_MOUSEACTIVATE: return MA_ACTIVATE;
+    }
+    return DefWindowProcW(hw, m, wp, lp);
+}
+
+void InkHide()
+{
+    if (g_ink) { DestroyWindow(g_ink); g_ink = nullptr; }
+    g_inkDown = false;
+}
+
+void InkShow()
+{
+    if (g_ink) return;
+    RegisterOverlayClasses();
+    RECT vs = VirtualScreen();
+    g_ink = CreateWindowExW(WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW, C2S_CLASS_INK, L"", WS_POPUP,
+                            vs.left, vs.top, vs.right - vs.left, vs.bottom - vs.top, nullptr, nullptr, g_inst, nullptr);
+    if (!g_ink) return;
+    SetLayeredWindowAttributes(g_ink, 0, 1, LWA_ALPHA);                      // seen by nobody, but it takes the mouse everywhere
+    ExcludeFromCapture(g_ink);
+    ShowWindow(g_ink, SW_SHOW);
+    SetForegroundWindow(g_ink);                                              // so that Esc reaches it
+    if (g_panel) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);     // the recording panel stays in reach
+}
 
 void TrailOverlayHide()
 {
@@ -1511,6 +1558,7 @@ void ShowMainMenu()
 {
     HMENU mn = CreatePopupMenu();
     AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
+    AppendMenuW(mn, MF_STRING | (g_draw ? MF_CHECKED : 0), ID_MENU_DRAW, T(S_HK_DRAW));
     AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(mn, MF_STRING, ID_MENU_PICTURES, T(S_OPEN_PICTURES));
     AppendMenuW(mn, MF_STRING, ID_MENU_VIDEOS, T(S_OPEN_VIDEOS));
@@ -1560,8 +1608,8 @@ void DrawResume()
 void DrawSwitch()
 {
     g_draw = !g_draw;
-    if (g_draw) { if (!RecordingEffectsOn()) DrawResume(); }
-    else if (!RecordingEffectsOn()) { TrailOverlayHide(); FxStop(); }
+    if (g_draw) { if (!RecordingEffectsOn()) DrawResume(); InkShow(); }
+    else { InkHide(); if (!RecordingEffectsOn()) { TrailOverlayHide(); FxStop(); } }
     Balloon(T(S_APP), T(g_draw ? S_DRAW_ON : S_DRAW_OFF));
 }
 
@@ -1624,6 +1672,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_MENU: ShowMainMenu(); break;
         case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;       // an ordinary minimize: the window waits on the taskbar (one click or Alt+Tab brings it back)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
+        case ID_MENU_DRAW: DrawSwitch(); break;
         case ID_MENU_PICTURES: OpenFolder(g_cfg.imgFolder); break;
         case ID_MENU_VIDEOS: OpenFolder(g_cfg.vidFolder); break;
         case IDC_OPTIONS:
@@ -1667,6 +1716,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
                 AppendMenuW(mn, MF_STRING, ID_TRAY_PAUSE, g_state == ST_RECORDING ? T(S_PAUSE) : g_state == ST_PAUSED ? T(S_RESUME) : T(S_START));
                 AppendMenuW(mn, MF_STRING, ID_TRAY_STOP, T(S_STOP));
             }
+            AppendMenuW(mn, MF_STRING | (g_draw ? MF_CHECKED : 0), ID_MENU_DRAW, T(S_HK_DRAW));
             AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
             AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
             AppendMenuW(mn, MF_STRING, ID_TRAY_EXIT, T(S_EXIT));
@@ -1690,6 +1740,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         ClosePanel();
         if (g_trayAdded) { TrayRemove(&g_nid); g_trayAdded = false; }
         Log(L"exit: tray icon removed");
+        InkHide();
         for (int i = 1; i <= HKI_COUNT; ++i) UnregisterHotKey(hw, i);
         Log(L"exit: leaving the message loop");
         PostQuitMessage(0);

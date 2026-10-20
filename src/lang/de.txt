@@ -145,5 +145,5 @@ Klicken Sie auf ein Feld und drücken Sie die neue Kombination. Rücktaste lösc
 Dieselbe Kombination ist zwei Aktionen zugewiesen.
 keine
 Rote Linien auf dem Bildschirm (an / aus)
-Zeichnen ist an: linke Umschalttaste halten und die Maus bewegen; die rechte löscht alles.
+Zeichnen ist an: mit der linken Maustaste zeichnen, die rechte löscht alles, Esc beendet.
 Zeichnen ist aus.

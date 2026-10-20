@@ -145,5 +145,5 @@ Kliknij pole i naciśnij nową kombinację. Backspace ją usuwa (skrót zostaje 
 Ta sama kombinacja jest przypisana do dwóch działań.
 brak
 Czerwone linie na ekranie (włącz / wyłącz)
-Rysowanie włączone: przytrzymaj lewy Shift i poruszaj myszą; prawy Shift kasuje wszystko.
+Rysowanie włączone: rysuj lewym przyciskiem myszy, prawy kasuje wszystko, Esc kończy.
 Rysowanie wyłączone.

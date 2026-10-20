@@ -145,5 +145,5 @@ Klik sebuah kolom lalu tekan kombinasi baru. Backspace menghapusnya (pintasan me
 Kombinasi yang sama ditetapkan untuk dua tindakan.
 tidak ada
 Garis merah di layar (hidup / mati)
-Menggambar aktif: tahan Shift kiri dan gerakkan mouse; Shift kanan menghapus semuanya.
+Menggambar aktif: gambar dengan tombol kiri mouse, tombol kanan menghapus semuanya, Esc keluar.
 Menggambar nonaktif.

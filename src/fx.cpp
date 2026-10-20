@@ -142,6 +142,23 @@ void FxStop()
 }
 
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err) { *clicksSeen = g_hookCalls; *err = g_hookErr; return g_hook != nullptr; }
+// The mouse pen of the drawing window (it works over windows of any privilege: the input goes to our own window).
+void FxPenPoint(int x, int y, bool newStroke)
+{
+    bool same = false;
+    Lock();
+    if (!newStroke && g_nTrail > g_head) same = g_trail[g_nTrail - 1].x == x && g_trail[g_nTrail - 1].y == y;
+    Unlock();
+    if (!same) AddPoint(x, y, GetTickCount64(), newStroke);
+}
+
+void FxWipe()
+{
+    Lock();
+    if (g_nTrail > g_head) { g_head = g_nTrail = 0; ++g_version; }
+    Unlock();
+}
+
 // The visible points of the trail (for the copy on the screen): newest last; `brk` marks the start of a stroke.
 int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version)
 {

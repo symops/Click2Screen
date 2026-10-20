@@ -145,5 +145,5 @@ Nhấp vào ô rồi nhấn tổ hợp phím mới. Backspace sẽ xóa tổ h�
 Cùng một tổ hợp phím được gán cho hai thao tác.
 không có
 Nét đỏ trên màn hình (bật / tắt)
-Đã bật vẽ: giữ Shift trái và di chuột; Shift phải xóa tất cả.
+Đã bật vẽ: vẽ bằng nút chuột trái, nút phải xóa tất cả, Esc để thoát.
 Đã tắt vẽ.

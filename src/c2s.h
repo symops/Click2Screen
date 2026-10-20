@@ -123,6 +123,8 @@ private:
 // ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), a red trail while Shift is held
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
+void FxPenPoint(int x, int y, bool newStroke);       // a point of the trail given by the drawing window (the pen of the mouse)
+void FxWipe();                                     // wipes all the lines at once
 void FxSample();                                   // reads the Shift keys: the left one adds trail points, the right one wipes the trail (FxDraw does it for every frame)
 void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the Shift trail always, the click waves when `waves`
 int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version);   // the visible trail (the on-screen copy)

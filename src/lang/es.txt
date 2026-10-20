@@ -145,5 +145,5 @@ Haga clic en un campo y pulse la nueva combinación. Retroceso la borra (el ataj
 La misma combinación está asignada a dos acciones.
 ninguno
 Líneas rojas en la pantalla (activar / desactivar)
-Dibujo activado: mantenga la tecla Mayús izquierda y mueva el ratón; la derecha lo borra todo.
+Dibujo activado: dibuje con el botón izquierdo, el derecho lo borra todo, Esc sale.
 Dibujo desactivado.
