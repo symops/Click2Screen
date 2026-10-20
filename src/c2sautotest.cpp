@@ -2570,8 +2570,8 @@ static void T_Effects()
         gk.Grab(rc, true, false, true);
         int redR = 0;
         for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) if (LineAt(gk.Bits(), gbase.Bits(), w, h, x, ty)) ++redR;
-        // a line is a gradient: points drawn at different moments have different colours. A turn of the colour wheel takes 3 s,
-        // so a stroke of 1.2 s (25 points) runs through two fifths of it, whatever the moment is.
+        // a line is a gradient: points drawn at different moments have different colours. A turn of the colour wheel takes 5 s,
+        // so a stroke of 1.2 s (25 points) runs through a quarter of it, whatever the moment is.
         for (int i = 0; i < 25; ++i) FxTestTrail(fr.left + 40 + i * 10, fr.top + ty, i == 0, 1200 - i * 50);
         gk.Grab(rc, true, false, true);
         int cr[25], cg[25], cb[25], good = 0;
@@ -2583,7 +2583,24 @@ static void T_Effects()
         int spread = 0;
         for (int i = 0; i < 25; ++i) for (int j = i + 1; j < 25; ++j) { int d = abs(cr[i] - cr[j]) + abs(cg[i] - cg[j]) + abs(cb[i] - cb[j]); if (d > spread) spread = d; }
         wchar_t gd[200]; _snwprintf(gd, 200, L"%d of 25 pixels on the line, the colours of the stroke differ by up to %d (start %d,%d,%d end %d,%d,%d)", good, spread, cr[0], cg[0], cb[0], cr[24], cg[24], cb[24]);
-        Check(good >= 23 && spread > 150, L"effects: a line is a gradient of colours, not one colour", gd);
+        Check(good >= 23 && spread > 90, L"effects: a line is a gradient of colours, not one colour", gd);
+        // the colours change smoothly along a long segment between two far points (not one colour and then a jump)
+        FxWipe();
+        int span = w - 90 < 300 ? w - 90 : 300;
+        FxTestTrail(fr.left + 40, fr.top + ty, true, 2000);
+        FxTestTrail(fr.left + 40 + span, fr.top + ty, false, 0);
+        gk.Grab(rc, true, false, true);
+        int prevR = -1, prevG = 0, prevB = 0, maxStep = 0, total = 0, firstR = 0, firstG = 0, firstB = 0, lastR = 0, lastG = 0, lastB = 0, samples = 0;
+        for (int x = 46; x < 40 + span - 6; x += 3) {
+            size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; int r = gk.Bits()[o + 2], g = gk.Bits()[o + 1], bl = gk.Bits()[o];
+            if (prevR >= 0) { int d = abs(r - prevR) + abs(g - prevG) + abs(bl - prevB); if (d > maxStep) maxStep = d; }
+            else { firstR = r; firstG = g; firstB = bl; }
+            lastR = r; lastG = g; lastB = bl; ++samples;
+            prevR = r; prevG = g; prevB = bl;
+        }
+        total = abs(firstR - lastR) + abs(firstG - lastG) + abs(firstB - lastB);
+        wchar_t sd[200]; _snwprintf(sd, 200, L"%d samples along %d px: the biggest step between neighbours %d, start %d,%d,%d end %d,%d,%d", samples, span, maxStep, firstR, firstG, firstB, lastR, lastG, lastB);
+        Check(samples > 20 && maxStep < 70 && total > 100, L"effects: the colours of a long segment change smoothly from one end to the other", sd);
         FxStop(); SetCursorPos(2, 2);
         wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points drawn; after the wipe: %d", redL, tL, redR);
         Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are in the frame", kd);

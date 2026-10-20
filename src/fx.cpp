@@ -16,11 +16,11 @@ ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shorten
 
 struct Pt { int x, y; ULONGLONG t; bool brk; unsigned char shade; };   // brk: this point starts a new stroke; shade: 0..31 of the gradient
 
-// The gradient of the lines: all the colours of the rainbow, a full turn in 3 seconds of drawing, so a stroke goes through the
-// colours as it is drawn (the shade, 0..63 round the colour wheel, is kept with each point: nothing changes afterwards).
+// The gradient of the lines: all the colours of the rainbow, a full turn in 5 seconds of drawing, so a stroke goes through the
+// colours slowly as it is drawn (the shade, 0..255 round the colour wheel, is kept with each point: nothing changes afterwards).
 unsigned char ShadeAt(ULONGLONG t)
 {
-    return (unsigned char)((int)((double)(t % 3000) / 3000.0 * 64.0) & 63);
+    return (unsigned char)((int)((double)(t % 5000) / 5000.0 * 256.0) & 255);
 }
 
 CRITICAL_SECTION g_cs;
@@ -158,7 +158,7 @@ void FxWipe()
 // The visible points of the trail (for the copy on the screen): newest last; `brk` marks the start of a stroke.
 COLORREF FxLineColor(unsigned char shade)
 {
-    double h = (shade & 63) * 6.0 / 64.0;                       // 0..6 round the colour wheel, full colours
+    double h = shade * 6.0 / 256.0;                             // 0..6 round the colour wheel, full colours
     int i = (int)h; double f = h - i;
     int up = (int)(255.0 * f + 0.5), down = 255 - up;
     switch (i) {
@@ -169,6 +169,47 @@ COLORREF FxLineColor(unsigned char shade)
     case 4: return RGB(up, 0, 255);
     default: return RGB(255, 0, down);
     }
+}
+
+// The lines of the drawing, in the picture of `dc` (the video frame or the copy on the screen): a thin dark outline under all of
+// them (it shows on a background of any colour), then the gradient. A segment between two points is cut into short pieces whose
+// colour goes from the colour of one point to the colour of the next, so the colours change smoothly however far apart the
+// points are. pt are device points, brk marks the first point of a stroke, shade is 0..255 round the colour wheel.
+void FxPaintLines(HDC dc, const POINT* pt, const unsigned char* brk, const unsigned char* shade, int n, int w)
+{
+    if (n < 1) return;
+    HPEN pens[256]; for (int i = 0; i < 256; ++i) pens[i] = nullptr;           // one pen for each shade, made when it is needed
+    HPEN outline = CreatePen(PS_SOLID, w + 2, RGB(30, 30, 30));
+    HGDIOBJ op = SelectObject(dc, GetStockObject(NULL_PEN));
+    for (int pass = 0; pass < 2; ++pass) {
+        bool down = false; int px = 0, py = 0, ps = 0;
+        for (int i = 0; i < n; ++i) {
+            int x = pt[i].x, y = pt[i].y, sh = shade[i];
+            auto pick = [&](int s) {
+                if (pass == 0) { SelectObject(dc, outline); return; }
+                s &= 255; if (!pens[s]) pens[s] = CreatePen(PS_SOLID, w, FxLineColor((unsigned char)s));
+                SelectObject(dc, pens[s]);
+            };
+            if (brk[i] || !down) {
+                MoveToEx(dc, x, y, nullptr); down = true; px = x; py = y; ps = sh;
+                if (brk[i]) { pick(sh); LineTo(dc, x, y); continue; }
+            }
+            int d = (sh - ps) & 255;                                           // the colour goes on round the wheel in the order of drawing
+            int dist = abs(x - px) > abs(y - py) ? abs(x - px) : abs(y - py);
+            int steps = pass == 0 ? 1 : dist / 2; if (steps < 1) steps = 1; if (steps > 48) steps = 48;
+            int ax = px, ay = py;
+            for (int k = 1; k <= steps; ++k) {
+                int bx = px + (x - px) * k / steps, by = py + (y - py) * k / steps;
+                pick(ps + d * k / steps);
+                MoveToEx(dc, ax, ay, nullptr); LineTo(dc, bx, by);
+                ax = bx; ay = by;
+            }
+            px = x; py = y; ps = sh;
+        }
+    }
+    SelectObject(dc, op);
+    DeleteObject(outline);
+    for (int i = 0; i < 256; ++i) if (pens[i]) DeleteObject(pens[i]);
 }
 
 int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, unsigned char* shade)
@@ -221,30 +262,22 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
 
     Lock();
     Prune(now);                                                                      // the oldest points fade out first
+    POINT* lp = nullptr; unsigned char* lb = nullptr; unsigned char* ls = nullptr; int ln = 0;
     if (g_nTrail > g_head) {
-        int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2;                         // thin, but it survives video compression
-        // Two passes: a thin dark outline under the whole line (it shows on a background of any colour), then the gradient on top.
-        HPEN pens[64]; for (int i = 0; i < 64; ++i) pens[i] = nullptr;           // one pen for each shade, made when it is needed
-        HPEN outline = CreatePen(PS_SOLID, w + 2, RGB(30, 30, 30));
-        HGDIOBJ op = SelectObject(dc, GetStockObject(NULL_PEN));
-        for (int pass = 0; pass < 2; ++pass) {
-            bool pen_down = false; int px = 0, py = 0;
-            for (size_t i = g_head; i < g_nTrail; ++i) {
-                int x = (int)((g_trail[i].x - src.left) * sx), y = (int)((g_trail[i].y - src.top) * sy);
-                int sh = g_trail[i].shade & 63;
-                if (pass == 0) SelectObject(dc, outline);
-                else { if (!pens[sh]) pens[sh] = CreatePen(PS_SOLID, w, FxLineColor((unsigned char)sh)); SelectObject(dc, pens[sh]); }
-                if (g_trail[i].brk || !pen_down) { MoveToEx(dc, x, y, nullptr); pen_down = true; px = x; py = y; if (g_trail[i].brk) { LineTo(dc, x, y); continue; } }
-                MoveToEx(dc, px, py, nullptr); LineTo(dc, x, y); px = x; py = y;
-            }
+        ln = (int)(g_nTrail - g_head);
+        lp = (POINT*)malloc((size_t)ln * sizeof(POINT)); lb = (unsigned char*)malloc((size_t)ln); ls = (unsigned char*)malloc((size_t)ln);
+        if (!lp || !lb || !ls) ln = 0;
+        for (int i = 0; i < ln; ++i) {
+            const Pt& q = g_trail[g_head + i];
+            lp[i].x = (int)((q.x - src.left) * sx); lp[i].y = (int)((q.y - src.top) * sy); lb[i] = q.brk ? 1 : 0; ls[i] = q.shade;
         }
-        SelectObject(dc, op);
-        DeleteObject(outline);
-        for (int i = 0; i < 64; ++i) if (pens[i]) DeleteObject(pens[i]);
     }
     Click cl[kMaxClicks]; int nc = 0;
     for (int i = 0; i < g_nClicks; ++i) if (now - g_clicks[i].t < kWaveMs) cl[nc++] = g_clicks[i];
     Unlock();
+
+    if (ln > 0) { int w = (int)(3.0 * sc + 0.5); if (w < 2) w = 2; FxPaintLines(dc, lp, lb, ls, ln, w); }      // thin, but it survives video compression
+    free(lp); free(lb); free(ls);
 
     for (int i = 0; i < nc && waves; ++i) {
         double p = (double)(now - cl[i].t) / kWaveMs;                                 // 0 .. 1
