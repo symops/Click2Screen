@@ -1,7 +1,7 @@
 // Recording effects drawn into the video: a wave at every mouse click (left button blue, right red, middle purple) and,
-// while Shift is held, a thin red trail behind the pointer that fades away after five minutes - point by point, in the
-// order it was drawn. Clicks come from a low-level mouse hook (the thread that starts it pumps messages); the trail is
-// sampled once per video frame.
+// the red lines drawn in the drawing window (left button draws, right button wipes) that fade away after ten seconds - point by
+// point, in the order they were drawn. Clicks come from a low-level mouse hook (the thread that starts it pumps messages); the
+// points of the lines are given by the drawing window (FxPenPoint).
 #include "c2s.h"
 #include <math.h>
 #include <stdlib.h>
@@ -22,10 +22,7 @@ Click g_clicks[kMaxClicks];
 int g_nClicks;
 Pt* g_trail;
 size_t g_nTrail, g_head, g_capTrail;
-bool g_shiftWas;
-bool g_shiftBlock;                       // the left Shift was already down when the drawing was switched on: ignored until released
 unsigned g_version;                                         // changes whenever the trail does (the on-screen copy redraws then)
-int g_keyOverride = -1;                                  // (the autotest) -1: the real keys; bit 0 left Shift, bit 1 right Shift
 bool g_btnWas[3];
 HHOOK g_hook;
 DWORD g_hookErr;
@@ -79,13 +76,6 @@ void Prune(ULONGLONG now)
     if (g_head != before) ++g_version;
 }
 
-void ReadShifts(bool* left, bool* right)
-{
-    if (g_keyOverride >= 0) { *left = (g_keyOverride & 1) != 0; *right = (g_keyOverride & 2) != 0; return; }
-    *left = (GetAsyncKeyState(VK_LSHIFT) & 0x8000) != 0;
-    *right = (GetAsyncKeyState(VK_RSHIFT) & 0x8000) != 0;
-}
-
 COLORREF WaveColor(int button)
 {
     return button == 0 ? RGB(50, 110, 255) : button == 1 ? RGB(255, 60, 60) : RGB(175, 75, 230);
@@ -126,9 +116,8 @@ void DrawWave(HDC dc, double cx, double cy, double radius, double thick, double 
 void FxStart()
 {
     Lock();
-    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false; ++g_version;
+    g_nClicks = 0; g_nTrail = 0; g_head = 0; ++g_version;
     Unlock();
-    { bool l = false, r = false; ReadShifts(&l, &r); g_shiftBlock = l; }
     if (!g_hook) { g_hook = SetWindowsHookExW(WH_MOUSE_LL, MouseProc, GetModuleHandleW(nullptr), 0); g_hookErr = g_hook ? 0 : GetLastError(); }
     g_hookCalls = 0;
 }
@@ -137,7 +126,7 @@ void FxStop()
 {
     if (g_hook) { UnhookWindowsHookEx(g_hook); g_hook = nullptr; }
     Lock();
-    g_nClicks = 0; g_nTrail = 0; g_head = 0; g_shiftWas = false; ++g_version;
+    g_nClicks = 0; g_nTrail = 0; g_head = 0; ++g_version;
     Unlock();
 }
 
@@ -174,7 +163,6 @@ int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version)
     return n;
 }
 
-void FxTestKeys(int keys) { g_keyOverride = keys; }
 void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }
 void FxTestClick(int x, int y, int button) { AddClick(x, y, button, GetTickCount64()); }
 void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)
@@ -183,36 +171,7 @@ void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)
     AddPoint(x, y, now > ageMs ? now - ageMs : 0, newStroke);
 }
 
-// Called for every video frame (the frame is already in `dc`): samples Shift / the pointer, draws the trail and the waves.
-// The left Shift draws the trail, the right Shift wipes all of it at once.
-static void SampleTrail(ULONGLONG now)
-{
-    bool shiftL = false, shiftR = false;
-    ReadShifts(&shiftL, &shiftR);
-    if (g_shiftBlock) { if (!shiftL) g_shiftBlock = false; else shiftL = false; }       // a Shift still held from the hotkey that switched the drawing on
-    bool shift = shiftL && !shiftR;
-    if (shiftR) {
-        Lock();
-        if (g_nTrail > g_head) { g_head = g_nTrail = 0; ++g_version; }
-        Unlock();
-    }
-    if (shift) {
-        POINT p;
-        if (GetCursorPos(&p)) {
-            bool brk = !g_shiftWas;
-            bool same = false;
-            Lock();
-            if (!brk && g_nTrail > g_head) same = g_trail[g_nTrail - 1].x == p.x && g_trail[g_nTrail - 1].y == p.y;
-            Unlock();
-            if (!same) AddPoint(p.x, p.y, now, brk);
-        }
-    }
-    g_shiftWas = shift;
-
-}
-
-void FxSample() { SampleTrail(GetTickCount64()); }
-
+// Called for every video frame (the frame is already in `dc`): draws the lines and the waves.
 void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
 {
     ULONGLONG now = GetTickCount64();
@@ -237,8 +196,6 @@ void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves)
         }
         g_btnWas[b] = down;
     }
-
-    SampleTrail(now);
 
     Lock();
     Prune(now);                                                                      // the oldest points fade out first

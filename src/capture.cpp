@@ -142,7 +142,7 @@ bool Grabber::Grab(const RECT& src, bool mouse, bool highlight, bool fx)
         SetBrushOrgEx(m_dc, 0, 0, nullptr);
         ok = StretchBlt(m_dc, 0, 0, m_w, m_h, scr, src.left, src.top, sw, sh, SRCCOPY | CAPTUREBLT);
     }
-    if (ok && mouse && fx) FxDraw(m_dc, src, m_w, m_h, highlight);     // the Shift trail, and the click waves with the highlight option: in recordings, with the pointer, under it and its halo
+    if (ok && mouse && fx) FxDraw(m_dc, src, m_w, m_h, highlight);     // the red lines, and the click waves with the highlight option: in recordings, with the pointer, under it and its halo
     const bool halo = highlight && fx;                                 // the yellow circle round the pointer: in recordings only, never in a screenshot
     if (ok && mouse) {
         CURSORINFO ci; memset(&ci, 0, sizeof(ci)); ci.cbSize = sizeof(ci);

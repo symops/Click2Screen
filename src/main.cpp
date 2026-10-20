@@ -409,8 +409,8 @@ void BeginRecord()
     Beep(false);
     SetTimer(g_panel, TIMER_UI, 250, nullptr);
     CountdownHide();
-    FxStart();                                                   // click waves and the Shift trail
-    SetTimer(g_main, TIMER_TRAIL, 40, nullptr);                  // what is drawn with Shift is shown on the screen at once
+    FxStart();                                                   // click waves and the red lines
+    SetTimer(g_main, TIMER_TRAIL, 40, nullptr);                  // what is drawn is shown on the screen at once
     g_frameBlink = true;                                         // the frame blinks while the recording runs
     UpdatePanel();
 }
@@ -808,7 +808,7 @@ void RegisterOverlayClasses()
     RegisterClassW(&wc);
 }
 
-// What is drawn with the left Shift while recording is shown on the screen too (the user sees what he has drawn): a see-through,
+// What is drawn in the drawing window is shown on the screen too (the user sees what he has drawn): a see-through,
 // click-through window with the same trail, excluded from the picture (the frame already has the trail in it).
 HWND g_trailWnd;
 unsigned g_trailVer = 0xFFFFFFFFu;
@@ -1594,7 +1594,7 @@ void RebuildMain(UINT dpi, const RECT* suggested)
     RoundMain();
 }
 
-// The red-line drawing without a recording: the same trail (left Shift draws, right Shift wipes, points live 10 s), shown on the
+// The red-line drawing, with or without a recording: the lines of the drawing window (points live 10 s), shown on the
 // screen by the see-through window. A recording that is on has the effects running already; they stay when the drawing is
 // switched off, and a recording that ends leaves the drawing on.
 bool RecordingEffectsOn() { return g_panel && (g_state == ST_RECORDING || g_state == ST_PAUSED); }
@@ -1648,7 +1648,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         CreateMainControls(hw);
         return 0;
     case WM_NCCREATE: return DefWindowProcW(hw, m, wp, lp);
-    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); else if (wp == TIMER_TRAIL) { FxSample(); TrailOverlayUpdate(); } return 0;
+    case WM_TIMER: if (wp == TIMER_BLINK) FrameBlink(); else if (wp == TIMER_TRAIL) TrailOverlayUpdate(); return 0;
     case WM_ERASEBKGND: return 1;
     case WM_PAINT: { PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps); PaintMain(hw, dc); EndPaint(hw, &ps); return 0; }
     case WM_DRAWITEM: DrawMainItem((const DRAWITEMSTRUCT*)lp); return TRUE;

@@ -62,7 +62,7 @@ struct Settings {
     wchar_t fileName[128];          // template: $Y $M $D $H $N $S, # (digit of the sequence number), %USERNAME%
     int  imageFormat;               // IMG_*
     bool capMouse;                  // pointer in recordings and screenshots
-    bool highlight;                 // translucent halo around the pointer
+    bool highlight;                 // translucent halo around the pointer and a wave at every click (recordings)
     bool sounds;                    // countdown / shutter sounds
     bool notify;                    // notifications (balloons) from the tray icon
     bool loopback;                  // record the sound that goes to the speakers (mixed with the microphone)
@@ -110,7 +110,7 @@ public:
     ~Grabber();
     bool Init(int outW, int outH);
     // Copies the screen rectangle `src` into the bitmap (scaled to the output size), then the pointer.
-    bool Grab(const RECT& src, bool mouse, bool highlight, bool fx = false);   // fx: click waves and the Shift trail (recordings)
+    bool Grab(const RECT& src, bool mouse, bool highlight, bool fx = false);   // fx: the red lines of the drawing window (recordings); with `highlight` also a wave at every click
     uint8_t* Bits() const { return m_bits; }
     int  Width() const { return m_w; }
     int  Height() const { return m_h; }
@@ -120,15 +120,13 @@ private:
     HDC m_dc; HBITMAP m_bmp, m_old; uint8_t* m_bits; int m_w, m_h;
     HDC m_halo; HBITMAP m_haloBmp, m_haloOld;
 };
-// ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), a red trail while Shift is held
+// ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), the red lines of the drawing window
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
 void FxPenPoint(int x, int y, bool newStroke);       // a point of the trail given by the drawing window (the pen of the mouse)
 void FxWipe();                                     // wipes all the lines at once
-void FxSample();                                   // reads the Shift keys: the left one adds trail points, the right one wipes the trail (FxDraw does it for every frame)
-void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the Shift trail always, the click waves when `waves`
+void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the lines always, the click waves when `waves`
 int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version);   // the visible trail (the on-screen copy)
-void FxTestKeys(int keys);                         // (autotest) -1 the real keys; bit 0 left Shift, bit 1 right Shift
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err);   // (autotest) is the hook installed, how many clicks it saw
 void FxTestTrailLifetime(unsigned ms);             // (autotest) how long a trail point lives; 0 = five minutes
 void FxTestClick(int x, int y, int button);        // (autotest) a click at a screen point, now

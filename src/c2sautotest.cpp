@@ -2469,7 +2469,7 @@ static void T_SetupGuiInstall()
 }
 
 
-// ---- recording effects: click waves and the Shift trail are drawn into the frame --------------------------------------
+// ---- recording effects: click waves and the lines of the drawing window are drawn into the frame --------------------------------------
 static void T_Effects()
 {
     MakeFixture(R(320, 520), R(260, 380));
@@ -2526,7 +2526,7 @@ static void T_Effects()
             if (abs(gb.Bits()[o + 2] - ga.Bits()[o + 2]) + abs(gb.Bits()[o + 1] - ga.Bits()[o + 1]) + abs(gb.Bits()[o] - ga.Bits()[o]) > 30) ++ch2;
         Check(ch2 == 0, L"effects: with \"include the pointer\" off a recording has no waves either", ch2 ? L"(something was drawn)" : L"");
     }
-    // the Shift trail: a red line behind the pointer, and a stroke older than five minutes is gone
+    // the drawn lines: red, and a stroke older than its lifetime is gone
     FxStop();
     FxTestTrailLifetime(3000);                                  // a point lives 3 s here (five minutes for real); the old stroke is 5 s old
     int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half: blue and yellow, never red
@@ -2543,50 +2543,26 @@ static void T_Effects()
         ++oldTested; if (Near(RGB(255, 40, 40), c[o2 + 2], c[o2 + 1], c[o2], 40)) ++oldRed;
     }
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points red on the fresh trail, %d of %d on the old one", red, tested, oldRed, oldTested);
-    Check(tested > 5 && red * 10 >= tested * 9, L"effects: the Shift trail is a red line behind the pointer", d2);
+    Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is red in the frame", d2);
     Check(oldTested > 5 && oldRed == 0, L"effects: a trail point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
     FxTestTrailLifetime(0);
     FxStop();
-    // the left Shift draws the trail, the right Shift wipes all of it (the keys are given to the library by the test)
+    // the lines of the drawing window (the left button draws, the right one wipes) are red in the frame, and the wipe takes them all
     {
         Grabber gk; gk.Init(w, h);
-        FxTestKeys(1);                                                   // left Shift held
-        for (int i = 0; i < 12; ++i) { SetCursorPos(fr.left + 40 + i * 14, fr.top + ty); Pump(25); gk.Grab(rc, true, false, true); }
+        FxStart();
+        for (int i = 0; i < 12; ++i) FxPenPoint(fr.left + 40 + i * 14, fr.top + ty, i == 0);
+        gk.Grab(rc, true, false, true);
         int redL = 0, tL = 0;
         for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; ++tL; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redL; }
-        FxTestKeys(2);                                                   // right Shift: everything goes at once
-        Pump(25); gk.Grab(rc, true, false, true);
+        FxWipe();
+        gk.Grab(rc, true, false, true);
         int redR = 0;
         for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redR; }
-        FxTestKeys(3);                                                   // both: the right one wins, nothing is drawn
-        SetCursorPos(fr.left + 60, fr.top + ty); Pump(25); gk.Grab(rc, true, false, true);
-        int redB = 0;
-        for (int x = 46; x < 40 + 11 * 14 - 4; x += 3) { size_t o = ((size_t)(h - 1 - ty) * w + x) * 4; if (Near(RGB(255, 40, 40), gk.Bits()[o + 2], gk.Bits()[o + 1], gk.Bits()[o], 40)) ++redB; }
-        FxTestKeys(-1); FxStop(); SetCursorPos(2, 2);
-        wchar_t kd[160]; _snwprintf(kd, 160, L"left Shift: %d of %d points red; after the right Shift: %d; both held: %d", redL, tL, redR, redB);
-        Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the left Shift draws the trail", kd);
-        Check(redR == 0, L"effects: the right Shift wipes all the lines at once", kd);
-        Check(redB == 0, L"effects: with both Shifts held nothing is drawn (the right one wins)", kd);
-    }
-    // the drawing without a recording: FxSample reads the Shift keys itself (the program calls it from a timer)
-    {
-        POINT pt[4096]; unsigned char br[4096]; unsigned ver = 0;
-        FxTestKeys(1);                                                   // the left Shift is still held from the hotkey that switched the drawing on
-        FxStart();
-        for (int i = 0; i < 6; ++i) { SetCursorPos(fr.left + 40 + i * 12, fr.top + ty); Pump(15); FxSample(); }
-        int held = FxTrailSnapshot(pt, br, 4096, &ver);
-        FxTestKeys(0);                                                   // released: now the next press draws
-        FxSample();
-        FxTestKeys(1);
-        for (int i = 0; i < 10; ++i) { SetCursorPos(fr.left + 40 + i * 12, fr.top + ty + 20); Pump(15); FxSample(); }
-        int drawn = FxTrailSnapshot(pt, br, 4096, &ver);
-        FxTestKeys(2); FxSample();
-        int wiped = FxTrailSnapshot(pt, br, 4096, &ver);
-        FxTestKeys(-1); FxStop(); SetCursorPos(2, 2);
-        wchar_t dd[160]; _snwprintf(dd, 160, L"held from the hotkey: %d points, then drawn: %d, after the right Shift: %d", held, drawn, wiped);
-        Check(held == 0, L"drawing: a Shift still held from the hotkey draws nothing until it is released", dd);
-        Check(drawn >= 6, L"drawing: without a recording the left Shift adds trail points", dd);
-        Check(wiped == 0, L"drawing: the right Shift wipes the lines", dd);
+        FxStop(); SetCursorPos(2, 2);
+        wchar_t kd[160]; _snwprintf(kd, 160, L"%d of %d points red; after the wipe: %d", redL, tL, redR);
+        Check(tL > 5 && redL * 10 >= tL * 8, L"effects: the lines of the drawing window are red in the frame", kd);
+        Check(redR == 0, L"effects: the wipe removes all the lines from the frame at once", kd);
     }
     // the mouse pen of the drawing window: points given by the program itself (works over windows of any privilege)
     {
@@ -2794,7 +2770,7 @@ static void T_AppFrame()
     StopApp(a);
 }
 
-// ---- the whole path: the real program records an AVI while real clicks and a held Shift happen; the frames are checked -------
+// ---- the whole path: the real program records an AVI while real clicks and a line of the drawing window happen; the frames are checked ---
 static void T_AppEffects()
 {
     if (!VideoFormatAvailable(VC_AVI)) { SKIP(L"program effects: no JPEG encoder for the AVI here"); return; }
@@ -2821,13 +2797,20 @@ static void T_AppEffects()
         SetCursorPos(fr.left + cx, fr.top + cy); Pump(150);
         mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0); Sleep(60); mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0);
         Pump(900);
-        keybd_event(VK_LSHIFT, 0x2A, 0, 0);                             // the left Shift held, the pointer moves across the lower half
-        for (int i = 0; i <= 40; ++i) {
-            SetCursorPos(fr.left + 40 + i * 6, fr.top + ty); Pump(40);
-            if (i > 20) { HWND tw = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tw && IsWindowVisible(tw)) overlaySeen = true; }
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);                    // the drawing on: its window takes the mouse; the left button draws across the lower half
+        HWND ink = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        RECT vs = VirtualScreen();
+        if (ink) {
+            PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(fr.left + 40 - vs.left, fr.top + ty - vs.top));
+            for (int i = 0; i <= 40; ++i) {
+                PostMessageW(ink, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(fr.left + 40 + i * 6 - vs.left, fr.top + ty - vs.top)); Pump(40);
+                if (i > 20) { HWND tw = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); if (tw && IsWindowVisible(tw)) overlaySeen = true; }
+            }
+            PostMessageW(ink, WM_LBUTTONUP, 0, MAKELPARAM(fr.left + 280 - vs.left, fr.top + ty - vs.top));
         }
-        keybd_event(VK_LSHIFT, 0x2A, KEYEVENTF_KEYUP, 0);
         Pump(500);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);                    // the drawing off again before the recording is stopped
+        Pump(200);
         SetCursorPos(2, 2); Pump(300);
         PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_STOP, BN_CLICKED), 0);
     }
@@ -2868,11 +2851,8 @@ static void T_AppEffects()
     Check(got && tested > 5, L"program effects: the real program records the AVI", dd);
     if (s.highlight) Check(waveFrames >= 2, L"program effects: a real click is a blue wave in the recorded video (a slow machine records few frames in the 0.65 s a wave lasts)", dd);
     else Check(waveFrames == 0, L"program effects: with the highlight option off a real click leaves no wave in the video", dd);
-    if (trailFrames < 3 && g_wine) SKIP(L"program effects: Wine does not pass a synthetic Shift to GetAsyncKeyState");
-    else {
-        Check(trailFrames >= 3, L"program effects: with the left Shift held a red trail follows the pointer in the recorded video", dd);
-        Check(overlaySeen, L"program effects: the trail is shown on the screen too, while recording", dd);
-    }
+    Check(trailFrames >= 3, L"program effects: a line drawn with the left button in the drawing window is red in the recorded video", dd);
+    Check(overlaySeen, L"program effects: the line is shown on the screen too, while recording", dd);
     StopApp(a);
 }
 
