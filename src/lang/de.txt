@@ -123,8 +123,7 @@ Durchsuchen…
 Ordner für die Installation von Click2Screen wählen
 Fehler: Der Installationsordner ist ungültig (ein vollständiger Pfad wie C:\Programs\Click2Screen ist nötig).
 Neu installieren
-Bilderordner öffnen
-Videoordner öffnen
+Ordner mit Videos und Bildern öffnen
 Formate
 Speichern
 Videooptionen

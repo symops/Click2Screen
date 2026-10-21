@@ -123,8 +123,7 @@ Bladeren…
 Kies de map waarin Click2Screen wordt geïnstalleerd
 Fout: de installatiemap is ongeldig (een volledig pad zoals C:\Programs\Click2Screen is nodig).
 Opnieuw installeren
-Afbeeldingenmap openen
-Videomap openen
+Map met video's en afbeeldingen openen
 Formaten
 Opslaan
 Video-opties

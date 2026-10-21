@@ -123,8 +123,7 @@ Telusuri…
 Pilih folder untuk memasang Click2Screen
 Kesalahan: folder pemasangan tidak valid (diperlukan path lengkap seperti C:\Programs\Click2Screen).
 Pasang ulang
-Buka folder gambar
-Buka folder video
+Buka folder video dan gambar
 Format
 Penyimpanan
 Opsi video

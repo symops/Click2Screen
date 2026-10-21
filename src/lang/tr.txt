@@ -123,8 +123,7 @@ Gözat…
 Click2Screen'in kurulacağı klasörü seçin
 Hata: kurulum klasörü geçersiz (C:\Programs\Click2Screen gibi tam bir yol gerekir).
 Yeniden yükle
-Resimler klasörünü aç
-Videolar klasörünü aç
+Video ve görüntü klasörünü aç
 Biçimler
 Kaydetme
 Video seçenekleri

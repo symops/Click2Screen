@@ -123,8 +123,7 @@ Parcourir…
 Choisissez le dossier d'installation de Click2Screen
 Erreur : le dossier d'installation n'est pas valide (un chemin complet comme C:\Programs\Click2Screen est requis).
 Réinstaller
-Ouvrir le dossier des images
-Ouvrir le dossier des vidéos
+Ouvrir le dossier des vidéos et images
 Formats
 Enregistrement
 Options vidéo

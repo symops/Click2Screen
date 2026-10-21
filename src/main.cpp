@@ -1282,6 +1282,7 @@ void PaintOptions(OptState* o, HDC dc)
     RECT cr; GetClientRect(o->dlg, &cr);
     Box(dc, 0, 0, cr.right, cr.bottom, face);
     RECT pg = { Sc(16), Sc(37), Sc(513), Sc(287) };
+    if (o->sel == 1) Box(dc, Sc(34), Sc(198), Sc(459), 1, RGB(214, 214, 214));          // the faint line between the video settings and the picture format
     Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
     Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
     const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
@@ -1398,8 +1399,8 @@ bool OptionsDialog()
     HWND fp = combo(1, O_FPS, 180, 166, 77);
     static const wchar_t* const fpsText[7] = { L"10", L"15", L"20", L"25", L"30", L"45", L"60" };
     for (const wchar_t* f : fpsText) ComboAdd(fp, f);
-    label(1, S_OPT_IMGFORMAT, 270, 170, 140);
-    HWND fm = combo(1, O_IMGFMT, 405, 166, 88);
+    label(1, S_OPT_IMGFORMAT, 35, 216, 140);                  // below the video block; a faint line between them is drawn by PaintOptions
+    HWND fm = combo(1, O_IMGFMT, 180, 212, 88);
     for (int i = 0; i < IMG_COUNT; ++i) if (ImageFormatAvailable(i)) ComboAdd(fm, ImageFormatName(i), i);
 
     // page 2: saving - the folder for the videos and the pictures, the name template, how a file will be named, the tips
@@ -1566,8 +1567,7 @@ void ShowMainMenu()
     HMENU mn = CreatePopupMenu();
     AppendMenuW(mn, MF_STRING, ID_TRAY_OPTIONS, T(S_OPTIONS));
     AppendMenuW(mn, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(mn, MF_STRING, ID_MENU_PICTURES, T(S_OPEN_PICTURES));
-    AppendMenuW(mn, MF_STRING, ID_MENU_VIDEOS, T(S_OPEN_VIDEOS));
+    AppendMenuW(mn, MF_STRING, ID_MENU_FOLDER, T(S_OPEN_FOLDER_ITEM));
     RECT r; GetWindowRect(GetDlgItem(g_main, IDC_MENU), &r);
     int cmd = TrackPopupMenu(mn, TPM_RIGHTALIGN | TPM_TOPALIGN | TPM_RETURNCMD | TPM_RIGHTBUTTON, r.right, r.bottom, 0, g_main, nullptr);
     DestroyMenu(mn);
@@ -1678,8 +1678,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_MENU: ShowMainMenu(); break;
         case IDC_MIN: ShowWindow(hw, SW_MINIMIZE); break;       // an ordinary minimize: the window waits on the taskbar (one click or Alt+Tab brings it back)
         case IDC_CLOSE: PostMessageW(hw, WM_CLOSE, 0, 0); break;
-        case ID_MENU_PICTURES: OpenFolder(g_cfg.folder); break;
-        case ID_MENU_VIDEOS: OpenFolder(g_cfg.folder); break;
+        case ID_MENU_FOLDER: OpenFolder(g_cfg.folder); break;
         case IDC_OPTIONS:
             if (OptionsDialog()) ApplyLanguage();
             break;

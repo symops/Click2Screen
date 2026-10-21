@@ -123,8 +123,7 @@ Przeglądaj…
 Wybierz folder, w którym zainstalować Click2Screen
 Błąd: folder instalacji jest nieprawidłowy (potrzebna pełna ścieżka, np. C:\Programs\Click2Screen).
 Zainstaluj ponownie
-Otwórz folder z obrazami
-Otwórz folder z wideo
+Otwórz folder z wideo i obrazami
 Formaty
 Zapis
 Opcje wideo

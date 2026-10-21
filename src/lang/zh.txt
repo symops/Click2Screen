@@ -123,8 +123,7 @@ Click2Screen 不会随 Windows 启动。
 选择安装 Click2Screen 的文件夹
 错误：安装文件夹无效（需要完整路径，例如 C:\Programs\Click2Screen）。
 重新安装
-打开图片文件夹
-打开视频文件夹
+打开视频和图像文件夹
 格式
 保存
 视频选项

@@ -123,8 +123,7 @@ Duyệt…
 Chọn thư mục để cài đặt Click2Screen
 Lỗi: thư mục cài đặt không hợp lệ (cần đường dẫn đầy đủ, ví dụ C:\Programs\Click2Screen).
 Cài đặt lại
-Mở thư mục hình ảnh
-Mở thư mục video
+Mở thư mục video và ảnh
 Định dạng
 Lưu
 Tùy chọn video

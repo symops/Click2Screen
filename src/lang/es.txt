@@ -123,8 +123,7 @@ Examinar…
 Elija la carpeta donde instalar Click2Screen
 Error: la carpeta de instalación no es válida (se necesita una ruta completa, como C:\Programs\Click2Screen).
 Reinstalar
-Abrir la carpeta de imágenes
-Abrir la carpeta de vídeos
+Abrir la carpeta de vídeos e imágenes
 Formatos
 Guardado
 Opciones de vídeo

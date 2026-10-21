@@ -123,8 +123,7 @@ Browse…
 Select the folder to install Click2Screen to
 Error: the installation folder is not valid (a full path such as C:\Programs\Click2Screen is needed).
 Reinstall
-Open pictures folder
-Open videos folder
+Open the folder of videos and images
 Formats
 Saving
 Video options

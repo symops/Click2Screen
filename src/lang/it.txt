@@ -123,8 +123,7 @@ Sfoglia…
 Scegli la cartella in cui installare Click2Screen
 Errore: la cartella di installazione non è valida (serve un percorso completo, ad esempio C:\Programs\Click2Screen).
 Reinstalla
-Apri la cartella delle immagini
-Apri la cartella dei video
+Apri la cartella di video e immagini
 Formati
 Salvataggio
 Opzioni video
