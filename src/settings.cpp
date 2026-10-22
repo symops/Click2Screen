@@ -67,15 +67,17 @@ void SettingsDefaults(Settings& s)
 
 int HotkeyDefault(int i)
 {
+    // Ctrl+PrintScreen for the whole desktop, then Ctrl+F6 ... Ctrl+F12 in the order of the Hotkeys page (a plain function key with
+    // Ctrl is not reserved by Windows; Windows refuses a plain F12 only).
     switch (i) {
-    case 0: return (MOD_CONTROL << 16) | VK_SNAPSHOT;
-    case 1: return ((MOD_ALT | MOD_SHIFT) << 16) | '4';
-    case 2: return ((MOD_ALT | MOD_SHIFT) << 16) | '5';
-    case 4: return ((MOD_ALT | MOD_SHIFT) << 16) | '1';
-    case 5: return ((MOD_ALT | MOD_SHIFT) << 16) | '2';
-    case 6: return ((MOD_ALT | MOD_SHIFT) << 16) | '3';
-    case 7: return (MOD_CONTROL << 16) | VK_F12;
-    default: return VK_F11;
+    case 0: return (MOD_CONTROL << 16) | VK_SNAPSHOT;      // screenshot of the desktop
+    case 1: return (MOD_CONTROL << 16) | VK_F6;            // screenshot of a region
+    case 2: return (MOD_CONTROL << 16) | VK_F7;            // screenshot of a window
+    case 4: return (MOD_CONTROL << 16) | VK_F8;            // recording of the desktop
+    case 5: return (MOD_CONTROL << 16) | VK_F9;            // recording of a region
+    case 6: return (MOD_CONTROL << 16) | VK_F10;           // recording of a window
+    case 3: return (MOD_CONTROL << 16) | VK_F11;           // stop the recording
+    default: return (MOD_CONTROL << 16) | VK_F12;          // the drawing on / off
     }
 }
 

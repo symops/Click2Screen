@@ -355,7 +355,18 @@ void UpdatePanel()
     SetCell(g_panel, IDC_P_START, b);
     EnableWindow(GetDlgItem(g_panel, IDC_P_START), g_state != ST_COUNTDOWN);
     EnableWindow(GetDlgItem(g_panel, IDC_P_STOP), g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_ARMED || g_state == ST_COUNTDOWN);
-    { wchar_t hk[80]; HotkeyName(g_cfg.hotkey[3], hk, 80); if (hk[0]) _snwprintf(buf, 96, L"%s: %s", hk, T(S_STOP)); else _snwprintf(buf, 96, L"%s", T(S_STOP)); }
+    {   // "Ctrl+F11: Stop"; where the cell is too narrow for the whole phrase (a long translation or key name) only the key is shown
+        wchar_t hk[80]; HotkeyName(g_cfg.hotkey[3], hk, 80);
+        if (hk[0]) _snwprintf(buf, 96, L"%s: %s", hk, T(S_STOP)); else _snwprintf(buf, 96, L"%s", T(S_STOP));
+        HDC dc = GetDC(g_panel);
+        if (dc && hk[0]) {
+            HGDIOBJ of = SelectObject(dc, g_fontBold);
+            SIZE sz = { 0, 0 }; GetTextExtentPoint32W(dc, buf, (int)wcslen(buf), &sz);
+            SelectObject(dc, of);
+            if (sz.cx > Sc(98) - Sc(10)) _snwprintf(buf, 96, L"%s", hk);
+        }
+        if (dc) ReleaseDC(g_panel, dc);
+    }
     SetCell(g_panel, IDC_P_HINT, buf);
     TrayTip();
 }
@@ -596,7 +607,7 @@ LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
         RECT r; GetClientRect(hw, &r);
         FillStrip(dc, 0, r.right);
-        static const int seps[4] = { 47, 103, 168, 199 };
+        static const int seps[4] = { 40, 80, 178, 204 };
         for (int x : seps) { Box(dc, Sc(x), Sc(6), 1, Sc(kStripH) - Sc(12), kStripSep); }
         EndPaint(hw, &ps);
         return 0; }
@@ -643,8 +654,8 @@ void ShowPanel()
     ExcludeFromCapture(g_panel);
     RoundWindow(g_panel, w, h, Sc(8));
     if (g_ink) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    // time | size | F11: Stop | start / pause | stop  (cells split at 47, 103, 168, 199 of 230 units)
-    static const int cell[6] = { 0, 47, 103, 168, 199, 230 };
+    // time | size | F11: Stop | start / pause | stop  (cells split at 40, 80, 178, 204 of 230 units)
+    static const int cell[6] = { 0, 40, 80, 178, 204, 230 };
     static const int ids[5] = { IDC_P_TIME, IDC_P_SIZE, IDC_P_HINT, IDC_P_START, IDC_P_STOP };
     for (int i = 0; i < 5; ++i) {
         bool button = i >= 3;

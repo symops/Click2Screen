@@ -1228,10 +1228,10 @@ static void T_HotkeyKeys()
     HotkeyName(0, n, 80); bool e = n[0] == 0;
     Check(a && b && c && d && e, L"hotkeys: the names read Ctrl+Alt+Shift+Win+Key and nothing for \"off\"");
     Settings def; SettingsDefaults(def);
-    Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_ALT | MOD_SHIFT, '4') &&
-          def.hotkey[2] == code(MOD_ALT | MOD_SHIFT, '5') && def.hotkey[3] == VK_F11 && def.hotkey[4] == code(MOD_ALT | MOD_SHIFT, '1') &&
-          def.hotkey[5] == code(MOD_ALT | MOD_SHIFT, '2') && def.hotkey[6] == code(MOD_ALT | MOD_SHIFT, '3') && def.hotkey[7] == code(MOD_CONTROL, VK_F12),
-          L"hotkeys: the defaults are Ctrl+PrintScreen, Alt+Shift+4 / 5 for screenshots, Alt+Shift+1 / 2 / 3 for recordings, F11 and Ctrl+F12 for the drawing");
+    Check(def.hotkey[0] == code(MOD_CONTROL, VK_SNAPSHOT) && def.hotkey[1] == code(MOD_CONTROL, VK_F6) && def.hotkey[2] == code(MOD_CONTROL, VK_F7) &&
+          def.hotkey[4] == code(MOD_CONTROL, VK_F8) && def.hotkey[5] == code(MOD_CONTROL, VK_F9) && def.hotkey[6] == code(MOD_CONTROL, VK_F10) &&
+          def.hotkey[3] == code(MOD_CONTROL, VK_F11) && def.hotkey[7] == code(MOD_CONTROL, VK_F12),
+          L"hotkeys: the defaults are Ctrl+PrintScreen for the desktop, then Ctrl+F6 ... Ctrl+F12 (region, window, record desktop / region / window, stop, drawing)");
     bool allUsable = true; for (int i = 0; i < HKI_COUNT; ++i) if (!HotkeyUsable(def.hotkey[i])) allUsable = false;
     Check(allUsable, L"hotkeys: every default is a usable combination");
     {
