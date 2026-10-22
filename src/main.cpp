@@ -509,7 +509,10 @@ void SetCaptureExcluded(HWND w, bool excluded)
 {
     typedef BOOL(WINAPI* SetAff)(HWND, DWORD);
     SetAff aff = (SetAff)(void*)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetWindowDisplayAffinity");
-    if (aff) aff(w, excluded ? 0x11 /*WDA_EXCLUDEFROMCAPTURE*/ : 0 /*WDA_NONE*/);
+    if (aff) {
+        DWORD want = excluded ? 0x11 /*WDA_EXCLUDEFROMCAPTURE*/ : 0 /*WDA_NONE*/;
+        if (!aff(w, want)) Log(L"capture: SetWindowDisplayAffinity(%lx) failed, error %lu", want, GetLastError());
+    }
 }
 
 void ExcludeFromCapture(HWND w)
@@ -1630,6 +1633,7 @@ void RegisterHotkeys()
         UINT mod = ((UINT)g_cfg.hotkey[i] >> 16) | MOD_NOREPEAT, vk = (UINT)g_cfg.hotkey[i] & 0xFFFF;
         if (!RegisterHotKey(g_main, id, mod, vk)) {
             wchar_t n[80]; HotkeyName(g_cfg.hotkey[i], n, 80);
+            Log(L"hotkey: %s (index %d) could not be registered, error %lu", n, i, GetLastError());
             if (bad[0]) wcscat(bad, L", ");
             wcscat(bad, n);
         }
@@ -1642,7 +1646,8 @@ void RegisterStopHotkey()
 {
     UnregisterHotKey(g_main, HK_STOP);
     if (!g_cfg.hotkey[3]) return;
-    RegisterHotKey(g_main, HK_STOP, ((UINT)g_cfg.hotkey[3] >> 16) | MOD_NOREPEAT, (UINT)g_cfg.hotkey[3] & 0xFFFF);   // taken by another program: the panel button and the tray still work
+    if (!RegisterHotKey(g_main, HK_STOP, ((UINT)g_cfg.hotkey[3] >> 16) | MOD_NOREPEAT, (UINT)g_cfg.hotkey[3] & 0xFFFF))    // taken by another program: the panel button and the tray still work
+        Log(L"hotkey: the stop key could not be registered, error %lu", GetLastError());
 }
 
 LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)

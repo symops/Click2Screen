@@ -89,6 +89,7 @@ bool HotkeyUsable(int code)
                  (vk >= 0xBA && vk <= 0xC0) || (vk >= 0xDB && vk <= 0xDF) || (vk >= VK_PRIOR && vk <= VK_DOWN) ||
                  vk == VK_INSERT || vk == VK_DELETE || vk == VK_SPACE || vk == VK_RETURN || vk == VK_TAB || vk == VK_BACK;
     if (!known) return false;
+    if (vk == VK_F12 && mod == 0) return false;                           // Windows keeps a plain F12 for debuggers and refuses it as a hotkey
     return alone || mod != 0;                                             // a plain letter would take the key from every program
 }
 
