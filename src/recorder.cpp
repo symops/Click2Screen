@@ -63,6 +63,7 @@ struct Recorder::Impl {
     FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
     int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
+    LONGLONG lag = 0, maxLag = 0; unsigned statTick = 0;        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
 
     Impl() { InitializeCriticalSection(&cs); QueryPerformanceFrequency(&freq); memset(hdr, 0, sizeof(hdr)); memset(abuf, 0, sizeof(abuf)); }
     ~Impl() { DeleteCriticalSection(&cs); }
@@ -124,6 +125,14 @@ struct Recorder::Impl {
                 Sleep(waitMs > 1 ? (DWORD)(waitMs - 1) : 1);
                 continue;
             }
+            if (sw && ((++statTick & 15) == 0 || lag > fps * 2)) {          // an encoder that lags (software H.264 at a large size): do not pile frames up in memory
+                MF_SINK_WRITER_STATISTICS st; memset(&st, 0, sizeof(st)); st.cb = sizeof(st);
+                if (SUCCEEDED(sw->GetStatistics(vStream, &st))) {
+                    lag = (LONGLONG)st.qwNumSamplesReceived - (LONGLONG)st.qwNumSamplesEncoded;
+                    if (lag > maxLag) maxLag = lag;
+                }
+            }
+            if (lag > fps * 2) { Sleep(10); continue; }
             RECT src = p.rc;
             if (p.hwnd) {
                 if (!IsWindow(p.hwnd)) { limit = 1; break; }       // the recorded window was closed
@@ -513,7 +522,10 @@ bool Recorder::Stop()
     bool ok = !d.failed;
     if (d.alt) { ok = d.alt->Close(ok) && ok; delete d.alt; d.alt = nullptr; }
     if (d.sw) {
+        ULONGLONG before = FileBytes();
+        DWORD t0 = GetTickCount();
         HRESULT hr = d.sw->Finalize();
+        Log(L"recorder finalize: %lu ms, file %llu -> %llu bytes, worst encoder lag %lld frames (%d fps)", (unsigned long)(GetTickCount() - t0), (unsigned long long)before, (unsigned long long)FileBytes(), (long long)d.maxLag, d.fps);
         ok = ok && SUCCEEDED(hr);
         d.sw->Release(); d.sw = nullptr;
     }
