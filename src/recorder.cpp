@@ -6,6 +6,7 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <mferror.h>
+#include <strmif.h>
 #include <codecapi.h>
 #include <mmsystem.h>
 #include <wchar.h>
@@ -15,6 +16,7 @@ namespace {
 
 // CODECAPI_AVEncCommonQualityVsSpeed / ...RateControlMode (codecapi.h), spelled out.
 const GUID kQualityVsSpeed  = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
+const GUID kIidCodecApi    = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
 const GUID kGopSize        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
 const GUID kRateControlMode = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 
@@ -403,6 +405,17 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     hr = d.sw->AddStream(vo, &d.vStream);
     if (SUCCEEDED(hr)) hr = d.sw->SetInputMediaType(d.vStream, vi, nullptr);
     vo->Release(); vi->Release();
+    if (SUCCEEDED(hr) && (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)) {
+        // the key frame interval again, straight on the encoder: the sink writer's config attribute is not honoured by every encoder
+        ICodecAPI* api = nullptr;
+        HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
+        if (SUCCEEDED(hrc) && api) {
+            VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = (ULONG)(d.fps * 5);
+            hrc = api->SetValue(&kGopSize, &v);
+            api->Release();
+        }
+        Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 5, (unsigned long)hrc);
+    }
     if (FAILED(hr)) return fail(fmt == VC_H265 ? L"H.265" : fmt == VC_WMV ? L"WMV" : L"H.264", hr);
 
     // Audio (optional): AAC or MP3 from a 16-bit mono microphone stream.
