@@ -1828,6 +1828,7 @@ static void T_App()
         // the drawing window: it covers the screen, the left button draws, the right one wipes, Esc leaves
         PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
         HWND ink = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        { DWORD vis = GetTickCount() + WMS(4000); while (ink && !IsWindowVisible(ink) && (int)(vis - GetTickCount()) > 0) Sleep(50); }     // found while it is still being created: wait until it is shown
         RECT vs = VirtualScreen(), ir = {};
         if (ink) GetWindowRect(ink, &ir);
         LONG iex = ink ? GetWindowLongW(ink, GWL_EXSTYLE) : 0;
@@ -2913,6 +2914,7 @@ static void T_AppEffects()
         Pump(900);
         PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);                    // the drawing on: its window takes the mouse; the left button draws across the lower half
         HWND ink = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        { DWORD vis = GetTickCount() + WMS(4000); while (ink && !IsWindowVisible(ink) && (int)(vis - GetTickCount()) > 0) Sleep(50); }     // found while it is still being created: wait until it is shown
         RECT vs = VirtualScreen();
         if (ink) {
             PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(fr.left + 40 - vs.left, fr.top + ty - vs.top));

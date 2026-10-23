@@ -149,7 +149,9 @@ void Balloon(const wchar_t* title, const wchar_t* text)
     n.dwInfoFlags = NIIF_INFO;
     wcsncpy(n.szInfoTitle, title, 63); n.szInfoTitle[63] = 0;
     wcsncpy(n.szInfo, text, 255); n.szInfo[255] = 0;
+    ULONGLONG t0 = GetTickCount64();
     Shell_NotifyIconW(NIM_MODIFY, &n);
+    if (GetTickCount64() - t0 > 300) Log(L"tray: the balloon took %lu ms", (unsigned long)(GetTickCount64() - t0));
 }
 
 void Warn(const wchar_t* text)
@@ -175,7 +177,9 @@ void TrayTip()
     NOTIFYICONDATAW n = g_nid;
     n.uFlags = NIF_TIP;
     wcsncpy(n.szTip, s, 127); n.szTip[127] = 0;
+    ULONGLONG t0 = GetTickCount64();
     Shell_NotifyIconW(NIM_MODIFY, &n);
+    if (GetTickCount64() - t0 > 300) Log(L"tray: the tip took %lu ms", (unsigned long)(GetTickCount64() - t0));
 }
 
 void TrayAdd()
@@ -847,9 +851,12 @@ LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_SETCURSOR: SetCursor(LoadCursorW(nullptr, IDC_CROSS)); return TRUE;
     case WM_ERASEBKGND: return 1;
     case WM_LBUTTONDOWN: { POINT p; pt(&p); SetCapture(hw); g_inkDown = true; FxPenPoint(p.x, p.y, true); return 0; }
-    case WM_MOUSEMOVE: if (g_inkDown && (wp & MK_LBUTTON)) { POINT p; pt(&p); FxPenPoint(p.x, p.y, false); } return 0;
+    case WM_MOUSEMOVE:                                    // the button state of the message decides, not the capture: a balloon of the tray can take the capture away in the middle of a stroke
+        if (wp & MK_LBUTTON) { POINT p; pt(&p); FxPenPoint(p.x, p.y, !g_inkDown); g_inkDown = true; }
+        else g_inkDown = false;
+        return 0;
     case WM_LBUTTONUP: g_inkDown = false; if (GetCapture() == hw) ReleaseCapture(); return 0;
-    case WM_CAPTURECHANGED: g_inkDown = false; return 0;
+    case WM_CAPTURECHANGED: if (g_inkDown) Log(L"ink: the capture was taken away in a stroke, the stroke goes on"); return 0;
     case WM_RBUTTONDOWN: FxWipe(); return 0;
     case WM_KEYDOWN: if (wp == VK_ESCAPE) PostMessageW(g_main, WM_HOTKEY, HK_DRAW, 0); return 0;
     case WM_MOUSEACTIVATE: return MA_ACTIVATE;
@@ -859,7 +866,7 @@ LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 
 void InkHide()
 {
-    if (g_ink) { DestroyWindow(g_ink); g_ink = nullptr; }
+    if (g_ink) { DestroyWindow(g_ink); g_ink = nullptr; Log(L"ink: closed"); }
     g_inkDown = false;
 }
 
@@ -875,6 +882,7 @@ void InkShow()
     ExcludeFromCapture(g_ink);
     ShowWindow(g_ink, SW_SHOW);
     SetForegroundWindow(g_ink);                                              // so that Esc reaches it
+    Log(L"ink: shown, visible %d", (int)IsWindowVisible(g_ink));
     if (g_panel) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);     // the recording panel stays in reach
 }
 
@@ -1349,6 +1357,8 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 
 bool OptionsDialog()
 {
+    ULONGLONG t0 = GetTickCount64();
+    Log(L"options: open");
     static bool reg = false;
     if (!reg) {
         INITCOMMONCONTROLSEX ic = { sizeof(ic), ICC_TAB_CLASSES | ICC_UPDOWN_CLASS };
@@ -1479,10 +1489,12 @@ bool OptionsDialog()
     DestroyWindow(d);
     if (quit) { PostQuitMessage(quitCode); return false; }                                // the main loop has to see WM_QUIT too
     if (owner) SetForegroundWindow(owner);
+    Log(L"options: closed, ok %d, %lu ms", (int)o.ok, (unsigned long)(GetTickCount64() - t0));
     if (o.ok) {
         g_cfg = o.s;
         SettingsSave(g_cfg);
         SettingsSetAutostart(g_cfg.runAtStartup);
+        Log(L"options: stored, %lu ms", (unsigned long)(GetTickCount64() - t0));
     }
     return o.ok;
 }
@@ -1493,11 +1505,13 @@ void LayoutMainText();
 // Settings changed: the language and the hotkeys (they are registered again; the stop key only while a recording is on).
 void ApplyLanguage()
 {
+    ULONGLONG t0 = GetTickCount64();
     LangSelect(g_cfg.language);
     LayoutMainText();
     RegisterHotkeys();
     if (g_state != ST_IDLE) RegisterStopHotkey();
     TrayTip();
+    Log(L"options: the language and the hotkeys applied, %lu ms", (unsigned long)(GetTickCount64() - t0));
 }
 
 void LayoutMainText()
@@ -1628,6 +1642,7 @@ void DrawResume()
 void DrawSwitch()
 {
     g_draw = !g_draw;
+    Log(L"draw: %s (recording effects %d)", g_draw ? L"on" : L"off", (int)RecordingEffectsOn());
     if (g_draw) { if (!RecordingEffectsOn()) DrawResume(); InkShow(); }
     else { InkHide(); if (!RecordingEffectsOn()) { TrailOverlayHide(); FxStop(); } }
     Balloon(T(S_APP), T(g_draw ? S_DRAW_ON : S_DRAW_OFF));
