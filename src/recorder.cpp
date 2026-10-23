@@ -15,6 +15,7 @@ namespace {
 
 // CODECAPI_AVEncCommonQualityVsSpeed / ...RateControlMode (codecapi.h), spelled out.
 const GUID kQualityVsSpeed  = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
+const GUID kGopSize        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
 const GUID kRateControlMode = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 
 // Format GUIDs spelled out (not in every header set): the FOURCC / wave-format tag + the Media Foundation base GUID.
@@ -370,13 +371,15 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     // Encoder settings: speed/quality trade-off and variable bit rate.
     IMFAttributes* attrs = nullptr; IMFAttributes* enc = nullptr;
     MFCreateAttributes(&attrs, 4);
-    MFCreateAttributes(&enc, 2);
+    MFCreateAttributes(&enc, 3);
     if (attrs) {
         attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE);
         attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
         if (enc) {
             enc->SetUINT32(kQualityVsSpeed, fmt == VC_H264_FAST ? 25 : 85);
             enc->SetUINT32(kRateControlMode, eAVEncCommonRateControlMode_UnconstrainedVBR);
+            if (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)
+                enc->SetUINT32(kGopSize, (UINT32)(d.fps * 5));        // a key frame every 5 s: they are most of an H.264 file on a still screen
             attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
         }
     }
@@ -388,6 +391,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     // Video: bitrate from the size table, scaled by the frame rate and the quality choice.
     double qk = p.cfg.videoQuality == 0 ? 1.5 : p.cfg.videoQuality == 1 ? 1.0 : 0.6;
     double fk = d.fps / 25.0; if (fk < 0.5) fk = 0.5; if (fk > 2.0) fk = 2.0;
+    if (fmt == VC_H265) qk *= 0.6;                               // H.265 keeps its picture at about 60 % of the H.264 rate
     int bitrate = (int)(AutoBitrate(d.w, d.h) * qk * fk);
     if (bitrate < 200000) bitrate = 200000;
     if (bitrate > 20000000) bitrate = 20000000;
