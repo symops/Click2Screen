@@ -391,7 +391,8 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     // Video: bitrate from the size table, scaled by the frame rate and the quality choice.
     double qk = p.cfg.videoQuality == 0 ? 1.5 : p.cfg.videoQuality == 1 ? 1.0 : 0.6;
     double fk = d.fps / 25.0; if (fk < 0.5) fk = 0.5; if (fk > 2.0) fk = 2.0;
-    if (fmt == VC_H265) qk *= 0.6;                               // H.265 keeps its picture at about 60 % of the H.264 rate
+    if (fmt == VC_H264_BEST || fmt == VC_H264_FAST) qk *= 0.6;   // recordings of a screen are still sharp at well below the table rate
+    else if (fmt == VC_H265) qk *= 0.4;                          // H.265 holds the same picture at about two thirds of the H.264 rate
     int bitrate = (int)(AutoBitrate(d.w, d.h) * qk * fk);
     if (bitrate < 200000) bitrate = 200000;
     if (bitrate > 20000000) bitrate = 20000000;
