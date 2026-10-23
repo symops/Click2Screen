@@ -63,7 +63,9 @@ struct Recorder::Impl {
     FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
     int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
-    LONGLONG lag = 0, maxLag = 0; unsigned statTick = 0;        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
+    LONGLONG lag = 0, maxLag = 0; unsigned statTick = 0;
+    unsigned long grabFails = 0; LONGLONG grabFailStart = 0;
+    LONGLONG grabTime = 0, writeTime = 0, loadT0 = 0; ULONGLONG loadCpu0 = 0; unsigned long loadFrames = 0;   // where the time of the video thread goes   // consecutive failed screen reads        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
 
     Impl() { InitializeCriticalSection(&cs); QueryPerformanceFrequency(&freq); memset(hdr, 0, sizeof(hdr)); memset(abuf, 0, sizeof(abuf)); }
     ~Impl() { DeleteCriticalSection(&cs); }
@@ -140,11 +142,34 @@ struct Recorder::Impl {
                 RECT r;
                 if (WindowVisibleRect(p.hwnd, &r) && r.right - r.left > 1 && r.bottom - r.top > 1) src = r;
             }
-            if (!grab.Grab(src, p.cfg.capMouse, p.cfg.highlight, true)) { Sleep(5); continue; }
+            LONGLONG tg0 = Qpc100ns(freq);
+            SetLastError(0);
+            if (!grab.Grab(src, p.cfg.capMouse, p.cfg.highlight, true)) {
+                // the screen cannot be read (e.g. the Remote Desktop client is minimized): wait longer and longer instead of spinning
+                if (grabFails == 0) { grabFailStart = mt; Log(L"capture: the screen cannot be read (error %lu), waiting", (unsigned long)GetLastError()); }
+                ++grabFails;
+                Sleep(grabFails < 8 ? 20 : grabFails < 40 ? 100 : 250);
+                continue;
+            }
+            if (grabFails) { Log(L"capture: the screen is readable again after %.1f s (%lu failed attempts)", (mt - grabFailStart) / 1e7, grabFails); grabFails = 0; }
+            LONGLONG tg1 = Qpc100ns(freq);
             LONGLONG ts = mt;
             if (ts <= lastVideoTs) ts = lastVideoTs + 1;
             lastVideoTs = ts;
             if (!WriteSample(vStream, grab.Bits(), (DWORD)bytes, ts, interval)) { failed = 1; break; }
+            LONGLONG tw1 = Qpc100ns(freq);
+            grabTime += tg1 - tg0; writeTime += tw1 - tg1; ++loadFrames;
+            if (tw1 - loadT0 >= 20000000LL) {                  // every 2 s: when the process is busy, say where the time goes
+                FILETIME c, e, k, u; ULONGLONG cpu = 0;
+                if (GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u)) cpu = (((ULONGLONG)k.dwHighDateTime << 32) | k.dwLowDateTime) + (((ULONGLONG)u.dwHighDateTime << 32) | u.dwLowDateTime);
+                if (loadCpu0) {
+                    double busy = (double)(cpu - loadCpu0) / (double)(tw1 - loadT0) * 100.0;      // % of one core, both are 100 ns units
+                    if (busy > 40.0 && loadFrames)
+                        Log(L"load: process %.0f %% of a core, per frame: screen read %.1f ms, encoder input %.1f ms, %lu frames in 2 s, encoder lag %lld", busy,
+                            grabTime / 1e4 / loadFrames, writeTime / 1e4 / loadFrames, loadFrames, (long long)lag);
+                }
+                loadCpu0 = cpu; loadT0 = tw1; grabTime = writeTime = 0; loadFrames = 0;
+            }
             n = mt / interval + 1;        // a late frame does not cause a burst of catch-up frames
         }
     }
