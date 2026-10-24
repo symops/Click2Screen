@@ -2145,6 +2145,7 @@ static void T_AppPicks()
             bool driven = DrivePicker(a.pi.dwProcessId, 0, p1, p2);
             if (tiny) {
                 bool box = DismissBox(a.pi.dwProcessId, IDOK, 8000);
+                { DWORD gone = GetTickCount() + WMS(4000); while (FindWin(a.pi.dwProcessId, L"#32770", 0) && (int)(gone - GetTickCount()) > 0) Sleep(50); }     // a slow machine keeps the box on the screen a while: it would cover the next pick
                 Sleep(300);
                 Check(driven && box && FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) == nullptr && AppAlive(a), L"program picks: a region smaller than 16 px is refused with a message, no panel");
                 ShowWindow(a.main, SW_SHOW);
