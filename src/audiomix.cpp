@@ -4,6 +4,9 @@
 #include <initguid.h>
 #include <mmdeviceapi.h>
 #include <audioclient.h>
+#include <mfapi.h>
+#include <mftransform.h>
+#include <mferror.h>
 #include <stdlib.h>
 #include <math.h>
 
@@ -42,6 +45,99 @@ int AudioToMono44k(const float* in, int frames, int channels, int rate, double* 
     *phase = pos - frames;
     if (*phase < 0) *phase = 0;
     *prev = last;
+    return n;
+}
+
+// ---- the Windows audio resampler -----------------------------------------------------------------------------------------
+static const GUID kClsidResampler = { 0xf447b69e, 0x1884, 0x4a7e, { 0x80, 0x55, 0x34, 0x6f, 0x74, 0xd6, 0xed, 0xb3 } };   // CLSID_CResamplerMediaObject
+static const GUID kIidTransform   = { 0xbf94c121, 0x5b05, 0x4e6f, { 0x80, 0x00, 0xba, 0x59, 0x89, 0x61, 0x41, 0x4d } };   // IID_IMFTransform
+
+struct AudioResampler::Impl {
+    IMFTransform* mft = nullptr;
+    bool started = false;
+};
+
+AudioResampler::AudioResampler() : m(new Impl) {}
+AudioResampler::~AudioResampler()
+{
+    if (m->mft) { m->mft->Release(); m->mft = nullptr; }
+    if (m->started) MFShutdown();
+    delete m;
+}
+
+static IMFMediaType* FloatMonoType(int rate)
+{
+    IMFMediaType* t = nullptr;
+    if (FAILED(MFCreateMediaType(&t))) return nullptr;
+    t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+    t->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
+    t->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1);
+    t->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, rate);
+    t->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
+    t->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 4);
+    t->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, rate * 4);
+    t->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+    return t;
+}
+
+bool AudioResampler::Init(int rate)
+{
+    if (m->mft || rate < 8000) return false;
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_LITE))) return false;
+    m->started = true;
+    if (FAILED(CoCreateInstance(kClsidResampler, nullptr, CLSCTX_INPROC_SERVER, kIidTransform, (void**)&m->mft)) || !m->mft) return false;
+    IMFMediaType* in = FloatMonoType(rate); IMFMediaType* out = FloatMonoType(44100);
+    bool ok = in && out && SUCCEEDED(m->mft->SetInputType(0, in, 0)) && SUCCEEDED(m->mft->SetOutputType(0, out, 0));
+    if (in) in->Release();
+    if (out) out->Release();
+    if (!ok) { m->mft->Release(); m->mft = nullptr; return false; }
+    m->mft->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+    m->mft->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    return true;
+}
+
+int AudioResampler::Process(const float* mono, int frames, int16_t* out, int cap)
+{
+    if (!m->mft || frames <= 0 || cap <= 0) return 0;
+    int n = 0;
+    auto drain = [&]() {
+        while (n < cap) {
+            const DWORD bytes = (DWORD)(cap - n) * 4;
+            IMFMediaBuffer* b = nullptr; IMFSample* s = nullptr;
+            if (FAILED(MFCreateMemoryBuffer(bytes, &b))) return;
+            if (FAILED(MFCreateSample(&s))) { b->Release(); return; }
+            s->AddBuffer(b);
+            MFT_OUTPUT_DATA_BUFFER ob; memset(&ob, 0, sizeof(ob)); ob.pSample = s;
+            DWORD status = 0;
+            HRESULT hr = m->mft->ProcessOutput(0, 1, &ob, &status);
+            if (SUCCEEDED(hr)) {
+                BYTE* d = nullptr; DWORD len = 0;
+                if (SUCCEEDED(b->Lock(&d, nullptr, &len))) {
+                    const float* f = (const float*)d;
+                    for (DWORD i = 0; i < len / 4 && n < cap; ++i) {
+                        float v = f[i]; if (v > 1.0f) v = 1.0f; if (v < -1.0f) v = -1.0f;
+                        out[n++] = (int16_t)(v * 32767.0f);
+                    }
+                    b->Unlock();
+                }
+            }
+            if (ob.pEvents) ob.pEvents->Release();
+            s->Release(); b->Release();
+            if (FAILED(hr)) return;                         // MF_E_TRANSFORM_NEED_MORE_INPUT: this block is done
+        }
+    };
+    IMFMediaBuffer* b = nullptr; IMFSample* s = nullptr;
+    if (FAILED(MFCreateMemoryBuffer((DWORD)frames * 4, &b))) return 0;
+    BYTE* d = nullptr;
+    if (SUCCEEDED(b->Lock(&d, nullptr, nullptr))) { memcpy(d, mono, (size_t)frames * 4); b->Unlock(); b->SetCurrentLength((DWORD)frames * 4); }
+    if (SUCCEEDED(MFCreateSample(&s))) {
+        s->AddBuffer(b);
+        HRESULT hr = m->mft->ProcessInput(0, s, 0);
+        if (hr == MF_E_NOTACCEPTING) { drain(); hr = m->mft->ProcessInput(0, s, 0); }
+        if (SUCCEEDED(hr)) drain();
+        s->Release();
+    }
+    b->Release();
     return n;
 }
 
@@ -98,6 +194,8 @@ struct SpeakerCapture::Impl {
     int channels = 0, rate = 0;
     double phase = 0; float prev = 0;
     float* tmp = nullptr; int tmpCap = 0;
+    AudioResampler* rs = nullptr;        // the Windows resampler when the device does not run at 44.1 kHz and it is there
+    float* mono = nullptr; int monoCap = 0;
 };
 
 SpeakerCapture::SpeakerCapture() : m(new Impl) {}
@@ -124,6 +222,10 @@ bool SpeakerCapture::Open()
     if (FAILED(d.client->Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, 10000000, 0, d.fmt, nullptr))) { Close(); return false; }
     if (FAILED(d.client->GetService(kIidAudioCaptureClient, (void**)&d.cap)) || !d.cap) { Close(); return false; }
     if (FAILED(d.client->Start())) { Close(); return false; }
+    if (d.rate != 44100) {
+        d.rs = new AudioResampler;
+        if (!d.rs->Init(d.rate)) { delete d.rs; d.rs = nullptr; }
+    }
     return true;
 }
 
@@ -137,6 +239,8 @@ void SpeakerCapture::Close()
     if (d.dev) { d.dev->Release(); d.dev = nullptr; }
     if (d.en) { d.en->Release(); d.en = nullptr; }
     free(d.tmp); d.tmp = nullptr; d.tmpCap = 0;
+    free(d.mono); d.mono = nullptr; d.monoCap = 0;
+    delete d.rs; d.rs = nullptr;
 }
 
 // Everything the device has played since the last call, as mono 44.1 kHz 16 bit; at most `cap` samples. While nothing plays
@@ -158,7 +262,14 @@ int SpeakerCapture::Pull(int16_t* out, int cap)
                 if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) || !data) memset(d.tmp, 0, (size_t)frames * d.channels * sizeof(float));
                 else if (d.isFloat) memcpy(d.tmp, data, (size_t)frames * d.channels * sizeof(float));
                 else { const int16_t* s = (const int16_t*)data; for (UINT32 i = 0; i < frames * d.channels; ++i) d.tmp[i] = s[i] / 32768.0f; }
-                total += AudioToMono44k(d.tmp, (int)frames, d.channels, d.rate, &d.phase, &d.prev, out + total, cap - total);
+                if (d.rs) {                                                 // the channels averaged, the rate changed by the Windows resampler
+                    if (d.monoCap < (int)frames) { free(d.mono); d.monoCap = (int)frames; d.mono = (float*)malloc((size_t)d.monoCap * sizeof(float)); }
+                    if (d.mono) {
+                        for (UINT32 i = 0; i < frames; ++i) { float sum = 0; for (int c = 0; c < d.channels; ++c) sum += d.tmp[(size_t)i * d.channels + c]; d.mono[i] = sum / d.channels; }
+                        total += d.rs->Process(d.mono, (int)frames, out + total, cap - total);
+                    }
+                } else
+                    total += AudioToMono44k(d.tmp, (int)frames, d.channels, d.rate, &d.phase, &d.prev, out + total, cap - total);
             }
         }
         d.cap->ReleaseBuffer(frames);

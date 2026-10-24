@@ -2764,6 +2764,38 @@ static void T_Audio()
         bool silent = true; for (int i = 0; i < n2; ++i) if (abs(o2[i]) > 2) silent = false;
         Check(n2 > 0 && silent, L"audio: the channels are averaged to mono");
     }
+    // the Windows resampler: a 96 kHz stream with a 1 kHz tone and a 40 kHz one (above the new Nyquist limit): the 40 kHz tone must not
+    // fold into the band as a 4.1 kHz whistle, which linear interpolation lets through
+    {
+        const int rate = 96000, blocks = 100, bf = rate / 100;
+        AudioResampler rs;
+        if (!rs.Init(rate)) SKIP(L"audio: this Windows has no audio resampler to try");
+        else {
+            static int16_t out[200000]; static int16_t lin[200000]; int total = 0, tl = 0;
+            double phase = 0; float prev = 0; double t = 0;
+            float* blk = new float[bf]; float* st = new float[(size_t)bf * 2];
+            for (int b = 0; b < blocks; ++b) {
+                for (int i = 0; i < bf; ++i, t += 1.0 / rate) {
+                    blk[i] = (float)(0.3 * sin(6.283185307179586 * 1000.0 * t) + 0.3 * sin(6.283185307179586 * 40000.0 * t));
+                    st[2 * i] = st[2 * i + 1] = blk[i];
+                }
+                total += rs.Process(blk, bf, out + total, 200000 - total);
+                tl += AudioToMono44k(st, bf, 2, rate, &phase, &prev, lin + tl, 200000 - tl);
+            }
+            delete[] blk; delete[] st;
+            auto level = [](const int16_t* x, int n, double f) {                          // the Goertzel level of one frequency, in units of the sample
+                double w = 6.283185307179586 * f / 44100.0, c = 2.0 * cos(w), s1 = 0, s2 = 0;
+                for (int i = 0; i < n; ++i) { double v = x[i] / 32768.0 + c * s1 - s2; s2 = s1; s1 = v; }
+                return sqrt(s1 * s1 + s2 * s2 - c * s1 * s2) * 2.0 / n;
+            };
+            const int skip = 2000, nn = total - skip;                                       // the filter's start-up is left out
+            double tone = level(out + skip, nn, 1000.0), alias = level(out + skip, nn, 4100.0), aliasLin = level(lin + skip, tl - skip, 4100.0);
+            wchar_t d[240]; _snwprintf(d, 240, L"%d samples (44100 expected), tone %.3f, alias at 4.1 kHz %.4f (linear interpolation: %.4f)", total, tone, alias, aliasLin);
+            Check(abs(total - 44100) <= 600, L"audio: the Windows resampler turns one second at 96 kHz into one second at 44.1 kHz", d);
+            Check(tone > 0.2 && tone < 0.4, L"audio: the Windows resampler keeps the tone and its loudness", d);
+            Check(alias < tone * 0.03 && alias < aliasLin * 0.5, L"audio: the Windows resampler does not fold ultrasound into the band (the linear conversion does)", d);
+        }
+    }
     // the mix is a sum that is clipped, the queue pads with silence and drops the oldest
     {
         int16_t a[4] = { 30000, -30000, 100, 0 }, b[4] = { 30000, -30000, 200, 0 }, o[4];

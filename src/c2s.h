@@ -156,6 +156,17 @@ FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, wchar_t* wh
 // ---- sound (audiomix.cpp) ----------------------------------------------------------------------------------------
 // Mono 44.1 kHz 16 bit from interleaved float frames at any rate (`phase` / `prev` carry over between calls).
 int  AudioToMono44k(const float* in, int frames, int channels, int rate, double* phase, float* prev, int16_t* out, int cap);
+// The sample-rate conversion by the audio resampler that ships with Windows (Media Foundation): mono float in at `rate`, mono
+// 44.1 kHz 16 bit out. Init fails where the resampler is missing: the caller then uses AudioToMono44k.
+class AudioResampler {
+public:
+    AudioResampler(); ~AudioResampler();
+    bool Init(int rate);
+    int  Process(const float* mono, int frames, int16_t* out, int cap);     // the stream goes on between calls; returns the samples written
+private:
+    AudioResampler(const AudioResampler&); void operator=(const AudioResampler&);
+    struct Impl; Impl* m;
+};
 void AudioMix(const int16_t* a, const int16_t* b, int n, int16_t* out);      // a + b, clipped
 class Fifo16 {                                      // a queue of samples; Pop pads with silence
 public:
