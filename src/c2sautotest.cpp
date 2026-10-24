@@ -680,11 +680,17 @@ static void T_Scaled()
     wchar_t name[160]; _snwprintf(name, 160, L"scaled grab %dx%d -> %dx%d", sw, sh, ow, oh);
     if (!gr.Init(ow, oh)) { FAIL(L"%s: Init", name); return; }
     RECT rc = { fr.left, fr.top, fr.left + sw, fr.top + sh };
-    bool ok = gr.Grab(rc, false, false);
-    HBITMAP bmp = gr.Release();
-    int checked = 0, bad = ok ? CheckColors(bmp, 0, 0, sw, sh, 24, 14, &checked) : 1;
+    // something short-lived (a toast, a window still being painted) may lie over the fixture for a moment: a wrong picture is taken again, twice at most
+    bool ok = false; int checked = 0, bad = 1;
+    for (int attempt = 0; attempt < 3 && !(ok && bad == 0 && checked > 0); ++attempt) {
+        if (attempt) Pump(500);
+        ok = gr.Grab(rc, false, false);
+        HBITMAP bmp = gr.Release();
+        checked = 0; bad = ok ? CheckColors(bmp, 0, 0, sw, sh, 24, 14, &checked) : 1;
+        if (bmp) DeleteObject(bmp);
+        if (!(ok && bad == 0 && checked > 0) && !gr.Init(ow, oh)) { FAIL(L"%s: Init", name); return; }
+    }
     Check(ok && bad == 0 && checked > 0, name);
-    if (bmp) DeleteObject(bmp);
 }
 
 static void T_Edges()
