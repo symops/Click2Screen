@@ -63,6 +63,7 @@ struct Recorder::Impl {
     FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
     int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
+    bool writeFailLogged = false;
     LONGLONG lag = 0, maxLag = 0; unsigned statTick = 0;
     unsigned long grabFails = 0; LONGLONG grabFailStart = 0;
     LONGLONG grabTime = 0, writeTime = 0, loadT0 = 0; ULONGLONG loadCpu0 = 0; unsigned long loadFrames = 0;   // where the time of the video thread goes   // consecutive failed screen reads        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
@@ -102,7 +103,9 @@ struct Recorder::Impl {
                     s->SetSampleTime(ts);
                     s->SetSampleDuration(dur);
                     EnterCriticalSection(&cs);
-                    ok = SUCCEEDED(sw->WriteSample(stream, s));
+                    HRESULT hrw = sw->WriteSample(stream, s);
+                    ok = SUCCEEDED(hrw);
+                    if (!ok && !writeFailLogged) { writeFailLogged = true; Log(L"recorder: WriteSample failed, stream %lu, 0x%08lX", (unsigned long)stream, (unsigned long)hrw); }
                     LeaveCriticalSection(&cs);
                 }
             }
@@ -328,6 +331,25 @@ static IMFMediaType* WmaType(int wantBytesPerSec)
     return best;
 }
 
+// Whether this Windows can encode the audio of the given output type from the given input type. A stream cannot be taken out of
+// a sink writer again, so the question is put to a throwaway writer (a small file beside the real one, same container).
+static bool AudioProbe(const wchar_t* path, IMFMediaType* out, IMFMediaType* in)
+{
+    wchar_t probe[MAX_PATH + 16];
+    wcsncpy(probe, path, MAX_PATH - 1); probe[MAX_PATH - 1] = 0;
+    wchar_t* dot = wcsrchr(probe, L'.');
+    const wchar_t* ext = dot ? dot : L".mp4";
+    wchar_t head[MAX_PATH + 16]; wcsncpy(head, probe, MAX_PATH - 1); head[MAX_PATH - 1] = 0;
+    if (dot) head[dot - probe] = 0;
+    wchar_t full[MAX_PATH + 32]; _snwprintf(full, MAX_PATH + 32, L"%s-probe%s", head, ext);
+    IMFSinkWriter* w = nullptr; DWORD idx = 0;
+    bool ok = SUCCEEDED(MFCreateSinkWriterFromURL(full, nullptr, nullptr, &w)) && w &&
+              SUCCEEDED(w->AddStream(out, &idx)) && SUCCEEDED(w->SetInputMediaType(idx, in, nullptr));
+    if (w) w->Release();
+    DeleteFileW(full);
+    return ok;
+}
+
 // ---- Recorder --------------------------------------------------------------------------------------------------
 Recorder::Recorder() : m(new Impl) {}
 Recorder::~Recorder() { if (m->started && !m->finalized) Stop(); delete m; }
@@ -471,8 +493,14 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             bool mp3 = attempt == 0 ? p.cfg.audioCodec == 1 : p.cfg.audioCodec != 1;   // second try: the other codec
             IMFMediaType* ao = AudioType(mp3 ? MFAudioFormat_MP3 : MFAudioFormat_AAC, mp3 ? mp3Bps[q] : aacBps[q], true);
             IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
-            if (ao && ai && SUCCEEDED(d.sw->AddStream(ao, &d.aStream)) && SUCCEEDED(d.sw->SetInputMediaType(d.aStream, ai, nullptr)))
-                ok = true;
+            HRESULT hrA = E_FAIL, hrI = E_FAIL;
+            if (ao && ai && !AudioProbe(p.path, ao, ai)) { Log(L"recorder: this Windows cannot encode %s sound here, trying the other codec", mp3 ? L"MP3" : L"AAC"); hrI = MF_E_INVALIDMEDIATYPE; }
+            else if (ao && ai) {
+                hrA = d.sw->AddStream(ao, &d.aStream);
+                if (SUCCEEDED(hrA)) hrI = d.sw->SetInputMediaType(d.aStream, ai, nullptr);
+                if (SUCCEEDED(hrA) && SUCCEEDED(hrI)) ok = true;
+            }
+            Log(L"recorder: audio %s: AddStream 0x%08lX (stream %lu), SetInputMediaType 0x%08lX, video stream %lu", mp3 ? L"MP3" : L"AAC", (unsigned long)hrA, (unsigned long)d.aStream, (unsigned long)hrI, (unsigned long)d.vStream);
             if (ao) ao->Release();
             if (ai) ai->Release();
         }
@@ -550,7 +578,7 @@ bool Recorder::Stop()
         ULONGLONG before = FileBytes();
         DWORD t0 = GetTickCount();
         HRESULT hr = d.sw->Finalize();
-        Log(L"recorder finalize: %lu ms, file %llu -> %llu bytes, worst encoder lag %lld frames (%d fps)", (unsigned long)(GetTickCount() - t0), (unsigned long long)before, (unsigned long long)FileBytes(), (long long)d.maxLag, d.fps);
+        Log(L"recorder finalize: 0x%08lX, %lu ms, file %llu -> %llu bytes, worst encoder lag %lld frames (%d fps)", (unsigned long)hr, (unsigned long)(GetTickCount() - t0), (unsigned long long)before, (unsigned long long)FileBytes(), (long long)d.maxLag, d.fps);
         ok = ok && SUCCEEDED(hr);
         d.sw->Release(); d.sw = nullptr;
     }
@@ -607,6 +635,54 @@ static bool HasVideoEncoder(const GUID& sub)
     return found;
 }
 
+// Does the encoder really encode? Listing an HEVC encoder is not enough: on a machine whose encoder is a hardware one without the
+// hardware it fails at the first frame. A few frames of a small picture go through a throwaway writer into a temporary file.
+static bool EncoderWorks(const GUID& sub)
+{
+    HRESULT hrc = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    bool ok = false;
+    if (SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) {
+        wchar_t tmp[MAX_PATH], path[MAX_PATH + 40];
+        GetTempPathW(MAX_PATH, tmp);
+        _snwprintf(path, MAX_PATH + 40, L"%sc2s-probe-%lu.mp4", tmp, (unsigned long)GetCurrentProcessId());
+        IMFAttributes* attrs = nullptr; IMFSinkWriter* w = nullptr;
+        MFCreateAttributes(&attrs, 2);
+        if (attrs) { attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE); attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE); }
+        const int W = 320, H = 240, FPS = 25;
+        IMFMediaType* vo = VideoType(sub, W, H, FPS, 800000);
+        IMFMediaType* vi = VideoType(MFVideoFormat_RGB32, W, H, FPS, 0);
+        DWORD st = 0;
+        if (vo && vi && SUCCEEDED(MFCreateSinkWriterFromURL(path, nullptr, attrs, &w)) && w &&
+            SUCCEEDED(w->AddStream(vo, &st)) && SUCCEEDED(w->SetInputMediaType(st, vi, nullptr)) && SUCCEEDED(w->BeginWriting())) {
+            ok = true;
+            for (int i = 0; i < 12 && ok; ++i) {
+                IMFMediaBuffer* b = nullptr; IMFSample* smp = nullptr; BYTE* d = nullptr;
+                const DWORD bytes = W * H * 4;
+                if (FAILED(MFCreateMemoryBuffer(bytes, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) { ok = false; if (b) b->Release(); break; }
+                for (DWORD k = 0; k < bytes; k += 4) { d[k] = (BYTE)(i * 20); d[k + 1] = (BYTE)(k >> 8); d[k + 2] = (BYTE)(255 - i * 10); d[k + 3] = 255; }
+                b->Unlock(); b->SetCurrentLength(bytes);
+                if (FAILED(MFCreateSample(&smp))) ok = false;
+                else {
+                    smp->AddBuffer(b); smp->SetSampleTime((LONGLONG)i * 10000000LL / FPS); smp->SetSampleDuration(10000000LL / FPS);
+                    ok = SUCCEEDED(w->WriteSample(st, smp));
+                    smp->Release();
+                }
+                b->Release();
+            }
+            if (ok) ok = SUCCEEDED(w->Finalize());
+        }
+        if (vo) vo->Release();
+        if (vi) vi->Release();
+        if (w) w->Release();
+        if (attrs) attrs->Release();
+        DeleteFileW(path);
+        MFShutdown();
+    }
+    if (SUCCEEDED(hrc)) CoUninitialize();
+    Log(L"video format probe: the encoder %s", ok ? L"works" : L"does not work");
+    return ok;
+}
+
 bool VideoFormatAvailable(int vc)
 {
     static int cache[VC_COUNT];                                      // 0 unknown, 1 yes, 2 no
@@ -615,7 +691,7 @@ bool VideoFormatAvailable(int vc)
         bool ok = true;
         switch (vc) {
         case VC_H264_BEST: case VC_H264_FAST: ok = true; break;      // always offered (the encoder is part of Windows)
-        case VC_H265: ok = HasVideoEncoder(kVideoHevc); break;
+        case VC_H265: ok = HasVideoEncoder(kVideoHevc) && EncoderWorks(kVideoHevc); break;
         case VC_WMV: ok = HasVideoEncoder(kVideoWmv3); break;
         case VC_AVI: ok = ImageFormatAvailable(IMG_JPG); break;
         case VC_GIF: ok = ImageFormatAvailable(IMG_GIF); break;

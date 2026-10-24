@@ -390,7 +390,14 @@ void BeginRecord()
     Log(L"record: starting");
     wchar_t err[300] = L"";
     g_target.cfg = g_cfg;
-    if (!VideoFormatAvailable(g_cfg.videoCodec)) g_target.cfg.videoCodec = VC_H264_BEST;   // e.g. HEVC chosen on another computer
+    if (!VideoFormatAvailable(g_cfg.videoCodec)) {                 // e.g. HEVC chosen on another computer: the format chosen is the format recorded, or nothing
+        wchar_t what[120], msg[300];
+        _snwprintf(what, 120, L"%s", VideoFormatName(g_cfg.videoCodec));
+        _snwprintf(msg, 300, T(S_ERR_RECORDER), what);
+        Log(L"record: the video format %s is not available on this Windows, nothing is recorded", what);
+        Warn(msg);
+        g_state = ST_ARMED; UpdatePanel(); return;
+    }
     // The whole desktop is one file for each monitor (like the screenshots); a region or a window is one file.
     RECT areas[16]; int n = 1;
     if (g_modeDesktop) { n = MonitorRects(areas, 16); if (n < 1) { areas[0] = g_target.rc; n = 1; } }

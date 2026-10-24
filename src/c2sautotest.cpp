@@ -2105,6 +2105,8 @@ static void T_AppPicks()
     for (int k = 0; k < 4; ++k) {
         int what = order[k];
         wchar_t nm[160];
+        // a box left by the step before (e.g. "the microphone could not be opened" on a machine without one) would lie over the fixture and be picked instead of it
+        for (int n = 0; n < 4 && DismissBox(a.pi.dwProcessId, IDOK, 300); ++n) Sleep(200);
         if (what == 0) {                                               // region screenshot (Alt+Shift+4)
             POINT p1 = { vs.left + R(10, (vs.right - vs.left) - 330), vs.top + R(10, (vs.bottom - vs.top) - 260) };
             POINT p2 = { p1.x + R(40, 320), p1.y + R(40, 250) };
