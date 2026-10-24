@@ -1651,10 +1651,10 @@ void DrawSwitch()
 void RegisterHotkeys()
 {
     wchar_t bad[160] = L"";
+    for (int i = 0; i < HKI_COUNT; ++i) if (i != 3) UnregisterHotKey(g_main, i + 1);      // all of them first: a key may move from one action to another
     for (int i = 0; i < HKI_COUNT; ++i) {
         if (i == 3) continue;                                              // the stop key is registered while a recording is on
         int id = i + 1;
-        UnregisterHotKey(g_main, id);
         if (!g_cfg.hotkey[i]) continue;                                    // switched off in the options
         UINT mod = ((UINT)g_cfg.hotkey[i] >> 16) | MOD_NOREPEAT, vk = (UINT)g_cfg.hotkey[i] & 0xFFFF;
         if (!RegisterHotKey(g_main, id, mod, vk)) {

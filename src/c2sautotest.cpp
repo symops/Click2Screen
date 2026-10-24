@@ -1566,12 +1566,14 @@ static void T_LongRecord()
         Grabber g; RECT rc = FxScreenRect();
         if (g.Init((rc.right - rc.left + 1) & ~1, (rc.bottom - rc.top + 1) & ~1)) {
             LARGE_INTEGER f, a, b; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&a);
-            for (int i = 0; i < 20; ++i) g.Grab(rc, p.cfg.capMouse, false);
+            for (int i = 0; i < 20; ++i) g.Grab(rc, p.cfg.capMouse, p.cfg.highlight, true);        // the same work as the recorder does for a frame
             QueryPerformanceCounter(&b);
             cost = (double)(b.QuadPart - a.QuadPart) / f.QuadPart / 20.0;
         }
     }
-    double capacity = cost > 0 ? 1.0 / (cost * 1.25) : 1e9;           // frames per second the capture can deliver
+    // The recorder takes a frame on a boundary of the frame interval, so a capture that is longer than one interval costs two (or more) of them.
+    double interval = 1.0 / p.cfg.fps;
+    double capacity = cost > 0 ? 1.0 / (ceil(cost * 1.5 / interval) * interval) : 1e9;           // frames per second the capture can deliver
     double rate = p.cfg.fps < capacity ? p.cfg.fps : capacity;
     double expect = el * rate;
     wchar_t d[200]; _snwprintf(d, 200, L"%llu frames in %.2f s at %d fps; one capture takes %.1f ms, so about %.0f frames/s possible (%.0f%% of that)", (unsigned long long)fr, el, p.cfg.fps, cost * 1000, capacity, 100.0 * fr / (el * rate));
@@ -1913,7 +1915,7 @@ static void T_App()
             w.language = R(0, LangCount());
             RandomHotkeys(w.hotkey, true);                          // function keys: pressed without a modifier held
             bool dupKeys = Chance(25);
-            if (dupKeys) { w.hotkey[1] = w.hotkey[0] = VK_F1 + R(0, 23); }
+            if (dupKeys) { int k; do k = VK_F1 + R(0, 23); while (!HotkeyUsable(k)); w.hotkey[1] = w.hotkey[0] = k; }      // a key the box accepts (not a plain F12)
             for (int i = 0; i < HKI_COUNT; ++i) {
                 HWND e = GetDlgItem(o, O_HK0 + i);
                 if (!e) continue;
