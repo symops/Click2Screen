@@ -1633,6 +1633,11 @@ static bool DismissBox(DWORD pid, int button, int waitMs)
 {
     HWND dlg = FindWin(pid, L"#32770", WMS(waitMs));       // scaled under Wine (a recording in AVI / GIF keeps the CPU busy)
     if (!dlg) return false;
+    {   // what the box says: a box nobody expected must be explained by the log
+        wchar_t title[120] = L"", text[300] = L""; WinText(dlg, title, 120);
+        HWND st = GetDlgItem(dlg, 0xFFFF); if (st) WinText(st, text, 300);
+        Rep(L"INFO", L"  a box is closed by the test: [%s] %s", title, text);
+    }
     PostMessageW(dlg, WM_COMMAND, button, 0);
     return true;
 }
@@ -2106,7 +2111,8 @@ static void T_AppPicks()
         int what = order[k];
         wchar_t nm[160];
         // a box left by the step before (e.g. "the microphone could not be opened" on a machine without one) would lie over the fixture and be picked instead of it
-        for (int n = 0; n < 4 && DismissBox(a.pi.dwProcessId, IDOK, 300); ++n) Sleep(200);
+        Pump(WMS(700));                                                // a box may come a moment after the step before
+        for (int n = 0; n < 4 && DismissBox(a.pi.dwProcessId, IDOK, 300); ++n) Sleep(300);
         if (what == 0) {                                               // region screenshot (Alt+Shift+4)
             POINT p1 = { vs.left + R(10, (vs.right - vs.left) - 330), vs.top + R(10, (vs.bottom - vs.top) - 260) };
             POINT p2 = { p1.x + R(40, 320), p1.y + R(40, 250) };
