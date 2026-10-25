@@ -3117,6 +3117,47 @@ static void T_AppHotkeyMove()
     StopApp(a, false);
 }
 
+// The key frames of a real H.264 recording are rare (the original has one every 20-24 s): a still screen is mostly key frames
+// otherwise. The sync-sample table ('stss') of the finished file tells how many there are.
+static int Mp4KeyFrames(const wchar_t* path, int* total)
+{
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return -1;
+    LARGE_INTEGER sz; GetFileSizeEx(h, &sz);
+    if (sz.QuadPart <= 0 || sz.QuadPart > 200000000LL) { CloseHandle(h); return -1; }
+    unsigned char* b = (unsigned char*)malloc((size_t)sz.QuadPart);
+    DWORD rd = 0; bool ok = b && ReadFile(h, b, (DWORD)sz.QuadPart, &rd, nullptr) && rd == (DWORD)sz.QuadPart;
+    CloseHandle(h);
+    int keys = -1; *total = -1;
+    for (DWORD i = 4; ok && i + 16 < rd; ++i) {
+        if (!memcmp(b + i, "stss", 4) && keys < 0) keys = (int)((b[i + 8] << 24) | (b[i + 9] << 16) | (b[i + 10] << 8) | b[i + 11]);
+        if (!memcmp(b + i, "stsz", 4) && *total < 0) *total = (int)((b[i + 12] << 24) | (b[i + 13] << 16) | (b[i + 14] << 8) | b[i + 15]);   // sample_count after version/flags and sample_size
+    }
+    free(b);
+    return keys;
+}
+
+static void T_KeyInterval()
+{
+    if (g_wine || !VideoFormatAvailable(VC_H264_BEST)) { SKIP(L"key frames: there is no real H.264 encoder here"); return; }
+    MakeFixture(R(300, 600), R(220, 400));
+    RecParams p; memset(&p, 0, sizeof(p));
+    SettingsDefaults(p.cfg); p.cfg.mic = false; p.cfg.loopback = false;
+    p.cfg.videoCodec = VC_H264_BEST; p.cfg.fps = 10;
+    p.rc = FxScreenRect();
+    wcscpy(p.path, g_dir); wcscat(p.path, L"\\keys.mp4");
+    Recorder rec; wchar_t err[200];
+    if (!rec.Start(p, err, 200)) { FAIL(L"key frames: Start failed: %s", err); return; }
+    DWORD t0 = GetTickCount();
+    while ((int)(GetTickCount() - t0) < 24000) Pump(200);
+    double el = rec.ElapsedSec();
+    bool stopped = rec.Stop();
+    int total = 0, keys = Mp4KeyFrames(p.path, &total);
+    wchar_t d[200]; _snwprintf(d, 200, L"%d key frames of %d samples in %.1f s", keys, total, el);
+    Check(stopped && keys >= 1, L"key frames: the file has a sync-sample table", d);
+    Check(keys >= 1 && keys <= 3, L"key frames: one every 20 s, not one every few seconds", d);
+}
+
 // A flood of hotkeys and commands: the program takes what it can, ignores the rest and stays up.
 static void T_AppFlood()
 {
@@ -3264,7 +3305,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
