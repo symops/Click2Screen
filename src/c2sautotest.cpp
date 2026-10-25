@@ -3072,6 +3072,45 @@ static void T_AppCrashRestart()
     StopApp(b);
 }
 
+// Hotkeys that move between actions: every new key is the old key of another action (F2/F3/F4 rotated). The program must free all
+// the old keys before it takes the new ones, or it loses the key it still holds itself (error 1409).
+static void T_AppHotkeyMove()
+{
+    Settings s; PrepareApp(s);
+    for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = 0;
+    s.hotkey[0] = VK_F2; s.hotkey[1] = VK_F3; s.hotkey[2] = VK_F4;
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"hotkey move: the program did not start"); StopApp(a, false); return; }
+    PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
+    HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
+    Check(o != nullptr, L"hotkey move: Options opens its window");
+    if (o) {
+        const int nk[3] = { VK_F3, VK_F4, VK_F2 };
+        for (int i = 0; i < 3; ++i) {
+            HWND e = GetDlgItem(o, O_HK0 + i);
+            if (!e) continue;
+            SendMessageW(e, WM_KEYDOWN, VK_BACK, 0);
+            SendMessageW(e, WM_KEYDOWN, nk[i], 0);
+        }
+        PostMessageW(o, WM_COMMAND, IDOK, 0);
+        DWORD end = GetTickCount() + WMS(10000);
+        while (IsWindow(o) && (int)(end - GetTickCount()) > 0) Sleep(50);
+        Sleep(WMS(500));
+        HWND hw2 = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, GetModuleHandleW(nullptr), nullptr);
+        int taken = 0;
+        const int keys[3] = { VK_F2, VK_F3, VK_F4 };
+        for (int k = 0; k < 3; ++k) {
+            if (!RegisterHotKey(hw2, 90 + k, 0, (UINT)keys[k])) ++taken; else UnregisterHotKey(hw2, 90 + k);
+        }
+        if (hw2) DestroyWindow(hw2);
+        wchar_t d[100]; _snwprintf(d, 100, L"%d of 3 moved keys are held by the program", taken);
+        Check(!IsWindow(o) && taken == 3, L"hotkey move: keys that move between actions are all registered by the program", d);
+    }
+    PostMessageW(a.main, WM_COMMAND, ID_TRAY_EXIT, 0);
+    WaitForSingleObject(a.pi.hProcess, WMS(15000));
+    StopApp(a, false);
+}
+
 // A flood of hotkeys and commands: the program takes what it can, ignores the rest and stays up.
 static void T_AppFlood()
 {
@@ -3219,7 +3258,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
