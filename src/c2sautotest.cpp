@@ -3132,7 +3132,15 @@ static int Mp4KeyFrames(const wchar_t* path, int* total)
     CloseHandle(h);
     int keys = -1; *total = -1;
     for (DWORD i = 4; ok && i + 16 < rd; ++i) {
-        if (!memcmp(b + i, "stss", 4) && keys < 0) keys = (int)((b[i + 8] << 24) | (b[i + 9] << 16) | (b[i + 10] << 8) | b[i + 11]);
+        if (!memcmp(b + i, "stss", 4) && keys < 0) {
+            keys = (int)((b[i + 8] << 24) | (b[i + 9] << 16) | (b[i + 10] << 8) | b[i + 11]);
+            wchar_t list[300] = L""; int n = 0;                                    // which samples are the key ones (counted from 1)
+            for (int k = 0; k < keys && k < 14 && i + 12 + 4 * (k + 1) <= rd; ++k) {
+                DWORD o = i + 12 + 4 * k; int smp = (int)((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]);
+                n += _snwprintf(list + n, 300 - n, L"%d ", smp);
+            }
+            Rep(L"INFO", L"  key samples: %s", list);
+        }
         if (!memcmp(b + i, "stsz", 4) && *total < 0) *total = (int)((b[i + 12] << 24) | (b[i + 13] << 16) | (b[i + 14] << 8) | b[i + 15]);   // sample_count after version/flags and sample_size
     }
     free(b);

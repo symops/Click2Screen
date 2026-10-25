@@ -17,6 +17,7 @@ namespace {
 // CODECAPI_AVEncCommonQualityVsSpeed / ...RateControlMode (codecapi.h), spelled out.
 const GUID kQualityVsSpeed  = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
 const GUID kIidCodecApi    = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
+const GUID kMaxKeyDist    = { 0x2987123a, 0xba93, 0x4704, { 0xb4, 0x89, 0xec, 0x1e, 0x5f, 0x25, 0x29, 0x2c } };   // CODECAPI_AVEncVideoMaxKeyframeDistance
 const GUID kGopSize        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
 const GUID kRateControlMode = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 
@@ -437,7 +438,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             enc->SetUINT32(kQualityVsSpeed, fmt == VC_H264_FAST ? 25 : 85);
             enc->SetUINT32(kRateControlMode, eAVEncCommonRateControlMode_UnconstrainedVBR);
             if (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)
-                enc->SetUINT32(kGopSize, (UINT32)(d.fps * 20));       // a key frame every 20 s (the original: every 20-24 s): they are most of an H.264 file on a still screen
+                { enc->SetUINT32(kMaxKeyDist, (UINT32)(d.fps * 20)); enc->SetUINT32(kGopSize, (UINT32)(d.fps * 20)); }       // a key frame every 20 s (the original: every 20-24 s): they are most of an H.264 file on a still screen
             attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
         }
     }
@@ -467,7 +468,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
         if (SUCCEEDED(hrc) && api) {
             VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = (ULONG)(d.fps * 20);
+            HRESULT hrM = api->SetValue(&kMaxKeyDist, &v);
             hrc = api->SetValue(&kGopSize, &v);
+            Log(L"video encoder: max key frame distance set: 0x%08lX", (unsigned long)hrM);
             api->Release();
         }
         Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 20, (unsigned long)hrc);
