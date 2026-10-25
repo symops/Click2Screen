@@ -3087,9 +3087,11 @@ static void T_AppHotkeyMove()
     s.hotkey[0] = VK_F2; s.hotkey[1] = VK_F3; s.hotkey[2] = VK_F4;
     App a;
     if (!StartApp(a, s)) { FAIL(L"hotkey move: the program did not start"); StopApp(a, false); return; }
+    DWORD tOpen = GetTickCount();
     PostMessageW(a.main, WM_COMMAND, IDC_OPTIONS, 0);
     HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
-    Check(o != nullptr, L"hotkey move: Options opens its window");
+    DWORD openMs = GetTickCount() - tOpen;
+    { wchar_t d[100]; _snwprintf(d, 100, L"Options took %lu ms to appear", (unsigned long)openMs); Check(o != nullptr && (int)openMs < WMS(6000), L"hotkey move: Options opens its window without a long freeze", d); }
     if (o) {
         const int nk[3] = { VK_F3, VK_F4, VK_F2 };
         for (int i = 0; i < 3; ++i) {

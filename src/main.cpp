@@ -1807,6 +1807,8 @@ void ShowInExplorer(const wchar_t* path)
     ShellExecuteW(nullptr, L"open", L"explorer.exe", args, nullptr, SW_SHOWNORMAL);
 }
 
+static DWORD WINAPI WarmFormats(LPVOID) { for (int i = 0; i < VC_COUNT; ++i) VideoFormatAvailable(i); return 0; }
+
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
 {
     g_inst = inst;
@@ -1864,6 +1866,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     if (cmd && wcsstr(cmd, L"/dev-options")) PostMessageW(g_main, WM_COMMAND, IDC_OPTIONS, 0);
     if (cmd && wcsstr(cmd, L"/dev-panel")) PostMessageW(g_main, WM_COMMAND, IDC_REC_DESKTOP, 0);
 
+    {   // which video formats this Windows really encodes (the HEVC probe encodes a few frames): found now, in the background, not while Options opens
+        HANDLE th = CreateThread(nullptr, 0, WarmFormats, nullptr, 0, nullptr);
+        if (th) CloseHandle(th);
+    }
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         if (g_main && IsDialogMessageW(g_main, &msg)) continue;

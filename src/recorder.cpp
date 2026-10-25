@@ -686,7 +686,10 @@ static bool EncoderWorks(const GUID& sub)
 bool VideoFormatAvailable(int vc)
 {
     static int cache[VC_COUNT];                                      // 0 unknown, 1 yes, 2 no
+    static SRWLOCK lock = SRWLOCK_INIT;                               // the program asks from a thread of its own at start-up (the HEVC probe takes a moment)
     if (vc < 0 || vc >= VC_COUNT) return false;
+    AcquireSRWLockExclusive(&lock);
+    struct Unlock { SRWLOCK* l; ~Unlock() { ReleaseSRWLockExclusive(l); } } unlock = { &lock };
     if (cache[vc] == 0) {
         bool ok = true;
         switch (vc) {
