@@ -226,7 +226,14 @@ int ImageFormatFromPath(const wchar_t* path)
 
 bool ImageFormatAvailable(int fmt)
 {
+    // Asked every time the options window is built, and every format loads its own codec libraries: the answer is kept (and asked once
+    // at start-up from a thread of its own, see WarmFormats in main.cpp).
+    static int cache[IMG_COUNT];                                     // 0 unknown, 1 yes, 2 no
+    static SRWLOCK lock = SRWLOCK_INIT;
     if (fmt < 0 || fmt >= IMG_COUNT) return false;
+    AcquireSRWLockExclusive(&lock);
+    struct Unlock { SRWLOCK* l; ~Unlock() { ReleaseSRWLockExclusive(l); } } unlock = { &lock };
+    if (cache[fmt]) return cache[fmt] == 1;
     HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     bool ok = false;
     IWICImagingFactory* f = nullptr;
@@ -236,6 +243,7 @@ bool ImageFormatAvailable(int fmt)
         f->Release();
     }
     if (SUCCEEDED(hrInit)) CoUninitialize();
+    cache[fmt] = ok ? 1 : 2;
     return ok;
 }
 

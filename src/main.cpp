@@ -1807,7 +1807,7 @@ void ShowInExplorer(const wchar_t* path)
     ShellExecuteW(nullptr, L"open", L"explorer.exe", args, nullptr, SW_SHOWNORMAL);
 }
 
-static DWORD WINAPI WarmFormats(LPVOID) { for (int i = 0; i < VC_COUNT; ++i) VideoFormatAvailable(i); return 0; }
+static DWORD WINAPI WarmFormats(LPVOID) { for (int i = 0; i < IMG_COUNT; ++i) ImageFormatAvailable(i); for (int i = 0; i < VC_COUNT; ++i) VideoFormatAvailable(i); return 0; }
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
 {
