@@ -3149,15 +3149,24 @@ static void T_KeyInterval()
     p.rc = FxScreenRect();
     wcscpy(p.path, g_dir); wcscat(p.path, L"\\keys.mp4");
     Recorder rec; wchar_t err[200];
+    auto cpuNow = []() -> double {                                     // CPU time of this process (kernel + user), seconds
+        FILETIME c, e, k, u;
+        if (!GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u)) return 0;
+        return (double)(((ULONGLONG)k.dwHighDateTime << 32 | k.dwLowDateTime) + ((ULONGLONG)u.dwHighDateTime << 32 | u.dwLowDateTime)) / 1e7;
+    };
     if (!rec.Start(p, err, 200)) { FAIL(L"key frames: Start failed: %s", err); return; }
-    DWORD t0 = GetTickCount();
+    DWORD t0 = GetTickCount(); double cpu0 = cpuNow();
     while ((int)(GetTickCount() - t0) < 24000) Pump(200);
+    double cpuUsed = cpuNow() - cpu0, wall = (GetTickCount() - t0) / 1000.0;
     double el = rec.ElapsedSec();
     bool stopped = rec.Stop();
     int total = 0, keys = Mp4KeyFrames(p.path, &total);
     wchar_t d[200]; _snwprintf(d, 200, L"%d key frames of %d samples in %.1f s", keys, total, el);
     Check(stopped && keys >= 1, L"key frames: the file has a sync-sample table", d);
     Check(keys >= 1 && keys <= 3, L"key frames: one every 20 s, not one every few seconds", d);
+    // a still screen at 10 frames a second is cheap: the recording must not eat a big part of a core (the complaint was CPU bursts)
+    wchar_t dc[160]; _snwprintf(dc, 160, L"%.1f s of CPU in %.1f s: %.0f %% of one core (window %dx%d at 10 fps)", cpuUsed, wall, 100.0 * cpuUsed / wall, (int)(p.rc.right - p.rc.left), (int)(p.rc.bottom - p.rc.top));
+    Check(wall > 5 && cpuUsed / wall < 0.8, L"key frames: recording a still screen does not load the CPU heavily", dc);
 }
 
 // A flood of hotkeys and commands: the program takes what it can, ignores the rest and stays up.
