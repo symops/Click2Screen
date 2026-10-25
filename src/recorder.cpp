@@ -437,7 +437,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             enc->SetUINT32(kQualityVsSpeed, fmt == VC_H264_FAST ? 25 : 85);
             enc->SetUINT32(kRateControlMode, eAVEncCommonRateControlMode_UnconstrainedVBR);
             if (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)
-                enc->SetUINT32(kGopSize, (UINT32)(d.fps * 10));       // a key frame every 10 s: they are most of an H.264 file on a still screen
+                enc->SetUINT32(kGopSize, (UINT32)(d.fps * 20));       // a key frame every 20 s (the original: every 20-24 s): they are most of an H.264 file on a still screen
             attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
         }
     }
@@ -466,11 +466,11 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         ICodecAPI* api = nullptr;
         HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
         if (SUCCEEDED(hrc) && api) {
-            VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = (ULONG)(d.fps * 10);
+            VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = (ULONG)(d.fps * 20);
             hrc = api->SetValue(&kGopSize, &v);
             api->Release();
         }
-        Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 10, (unsigned long)hrc);
+        Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 20, (unsigned long)hrc);
     }
     if (FAILED(hr)) return fail(fmt == VC_H265 ? L"H.265" : fmt == VC_WMV ? L"WMV" : L"H.264", hr);
 
