@@ -3153,7 +3153,8 @@ static void T_KeyInterval()
     MakeFixture(R(300, 600), R(220, 400));
     RecParams p; memset(&p, 0, sizeof(p));
     SettingsDefaults(p.cfg); p.cfg.mic = false; p.cfg.loopback = false;
-    p.cfg.videoCodec = VC_H264_BEST; p.cfg.fps = 10;
+    p.cfg.videoCodec = Chance(30) ? VC_H264_FAST : VC_H264_BEST;
+    { static const int f[] = { 10, 15, 25 }; p.cfg.fps = f[R(0, 2)]; }          // the interval is a time (20 s), whatever the frame rate
     p.rc = FxScreenRect();
     wcscpy(p.path, g_dir); wcscat(p.path, L"\\keys.mp4");
     Recorder rec; wchar_t err[200];
@@ -3173,7 +3174,7 @@ static void T_KeyInterval()
     Check(stopped && keys >= 1, L"key frames: the file has a sync-sample table", d);
     Check(keys >= 1 && keys <= 3, L"key frames: one every 20 s, not one every few seconds", d);
     // a still screen at 10 frames a second is cheap: the recording must not eat a big part of a core (the complaint was CPU bursts)
-    wchar_t dc[160]; _snwprintf(dc, 160, L"%.1f s of CPU in %.1f s: %.0f %% of one core (window %dx%d at 10 fps)", cpuUsed, wall, 100.0 * cpuUsed / wall, (int)(p.rc.right - p.rc.left), (int)(p.rc.bottom - p.rc.top));
+    wchar_t dc[160]; _snwprintf(dc, 160, L"%.1f s of CPU in %.1f s: %.0f %% of one core (window %dx%d at %d fps)", cpuUsed, wall, 100.0 * cpuUsed / wall, (int)(p.rc.right - p.rc.left), (int)(p.rc.bottom - p.rc.top), p.cfg.fps);
     Check(wall > 5 && cpuUsed / wall < 0.8, L"key frames: recording a still screen does not load the CPU heavily", dc);
 }
 
