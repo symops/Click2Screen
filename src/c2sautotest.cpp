@@ -2482,11 +2482,13 @@ static void T_NoNetwork()
             if (!(d[i] == 'h' && d[i + 1] == 't' && d[i + 2] == 't' && d[i + 3] == 'p')) continue;
             const char* t = (const char*)d + i;
             if (!strncmp(t, "http://schemas.microsoft.com/", 29)) continue;
+            if (!strcmp(nm, "Click2Screen-Setup.exe") && !strncmp(t, "https://github.com/symops/Click2Screen", 38) && (unsigned char)t[38] < 33) continue;     // the link of the installer to the project page: opened only by a click, in the browser
             if (!strncmp(t, "http://", 7) || !strncmp(t, "https://", 8)) { ++problems; char u[80]; strncpy(u, t, 79); u[79] = 0; for (char* c = u; *c; ++c) if ((unsigned char)*c < 32) *c = 0; Rep(L"INFO", L"  %S contains the address %S", nm, u); }
         }
         // wide strings too
         for (DWORD i = 0; i + 20 < n; i += 2) {
             const wchar_t* w = (const wchar_t*)(d + i);
+            if (!strcmp(nm, "Click2Screen-Setup.exe") && !wcsncmp(w, L"https://github.com/symops/Click2Screen", 38) && w[38] < 33) continue;      // the same link, wide
             if ((!wcsncmp(w, L"http://", 7) || !wcsncmp(w, L"https://", 8)) && wcsncmp(w, L"http://schemas.microsoft.com/", 29)) { ++problems; Rep(L"INFO", L"  %S contains a wide address %.60s", nm, w); }
         }
         delete[] d;
@@ -2550,7 +2552,7 @@ static void T_SetupGui()
         WinText(GetDlgItem(w, SU_TITLE), got, 500); if (wcscmp(got, T(S_APP))) ++bad;
         WinText(GetDlgItem(w, SU_SUB), got, 500); if (wcscmp(got, T(S_SU_SUB))) { ++bad; Rep(L"INFO", L"  subtitle [%s] expected [%s]", got, T(S_SU_SUB)); }
         wchar_t vn[100]; _snwprintf(vn, 100, T(S_SU_VERSION), ver);
-        _snwprintf(want, 500, L"%s   \x00B7   %s, %s", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);       // version · author, e-mail (as the references)
+        _snwprintf(want, 500, L"%s   \x00B7   %s, %s   \x00B7", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);       // version · author, e-mail · (the link to the project follows, as its own control)
         WinText(GetDlgItem(w, SU_VERSION), got, 500); if (wcscmp(got, want)) { ++bad; Rep(L"INFO", L"  version line [%s] expected [%s]", got, want); }
         WinText(GetDlgItem(w, SU_INSTALL), got, 500);
         if (wcscmp(got, T(S_SU_INSTALL)) && wcscmp(got, T(S_SU_UPDATE))) { ++bad; Rep(L"INFO", L"  install button [%s]", got); }

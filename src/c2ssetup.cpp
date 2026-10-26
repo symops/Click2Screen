@@ -20,7 +20,7 @@ namespace {
 int g_lang = 0;          // language chosen in the window: index in the table
 
 // ---- state -----------------------------------------------------------------------------------------------------
-enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE, IDC_VERSION, IDC_GROUP, IDC_RUNAFTER };
+enum { IDC_TITLE = 100, IDC_SUB, IDC_STATE, IDC_DESKTOP, IDC_START, IDC_AUTO, IDC_LOG, IDC_INSTALL, IDC_REMOVE, IDC_LAUNCH, IDC_CLOSE, IDC_LANGLBL, IDC_LANG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE, IDC_VERSION, IDC_GROUP, IDC_RUNAFTER, IDC_LINK };
 enum { ACT_INSTALL = 1, ACT_REMOVE };
 #define WM_APP_LOG  (WM_APP + 1)
 #define WM_APP_DONE (WM_APP + 2)
@@ -31,7 +31,10 @@ const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 
 HINSTANCE g_inst;
 HWND g_wnd;
-HFONT g_font, g_fontTitle;
+HFONT g_font, g_fontTitle, g_fontLink;
+// The page of the project: opened in the browser only when the user clicks it (the installer itself never talks to a network).
+static const wchar_t kProjectUrl[] = L"https://github.com/symops/Click2Screen";
+static const wchar_t kProjectText[] = L"github.com/symops/Click2Screen";
 HICON g_icon, g_big;       // g_big: the 64-unit icon of the white header
 const int kHeadH = 94;     // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
 HANDLE g_worker;
@@ -324,8 +327,13 @@ void Refresh()
     SetWindowTextW(Ctl(IDC_SUB), T(S_SU_SUB));
     wchar_t vl[200], vn[100];
     _snwprintf(vn, 100, T(S_SU_VERSION), L"" C2S_VER_STR);
-    _snwprintf(vl, 200, L"%s   ·   %s, %s", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);
+    _snwprintf(vl, 200, L"%s   ·   %s, %s   ·", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);       // the link to the project follows on the same line
     SetWindowTextW(Ctl(IDC_VERSION), vl);
+    {   // the link stands right behind the text of the line (its width depends on the language of the version word)
+        HDC dc = GetDC(Ctl(IDC_VERSION)); SIZE sz = { 0, 0 };
+        if (dc) { HGDIOBJ of = SelectObject(dc, g_font); GetTextExtentPoint32W(dc, vl, (int)wcslen(vl), &sz); SelectObject(dc, of); ReleaseDC(Ctl(IDC_VERSION), dc); }
+        SetWindowPos(Ctl(IDC_LINK), nullptr, Sc(100) + sz.cx + Sc(8), Sc(71), Sc(190), Sc(19), SWP_NOZORDER | SWP_NOACTIVATE);
+    }
     SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
     SetWindowTextW(Ctl(IDC_DESKTOP), T(S_SU_DESKTOP));
     SetWindowTextW(Ctl(IDC_START), T(S_SU_STARTMENU));
@@ -410,12 +418,14 @@ void BuildControls()
     HWND hw = g_wnd;
     if (g_font) DeleteObject(g_font);
     if (g_fontTitle) DeleteObject(g_fontTitle);
+    if (g_fontLink) DeleteObject(g_fontLink);
     NONCLIENTMETRICSW ncm; memset(&ncm, 0, sizeof(ncm)); ncm.cbSize = sizeof(ncm);
     SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
     ncm.lfMessageFont.lfHeight = MulDiv(ncm.lfMessageFont.lfHeight, (int)g_dpi, Dpi96());
     g_font = CreateFontIndirectW(&ncm.lfMessageFont);
     LOGFONTW lf = ncm.lfMessageFont; lf.lfWeight = FW_BOLD; lf.lfHeight = lf.lfHeight * 2;
     g_fontTitle = CreateFontIndirectW(&lf);
+    { LOGFONTW ll = ncm.lfMessageFont; ll.lfUnderline = TRUE; g_fontLink = CreateFontIndirectW(&ll); }
     // 600 x 452 units, laid out as Speak2Mic / Show2Cam: a white header (icon, name, subtitle, version · author, the language
     // list in its right corner), a status group, the buttons, the log, the install folder, the boxes, Close.
     Add(L"STATIC", L"", SS_LEFT, 100, 12, 340, 36, IDC_TITLE, g_fontTitle);
@@ -424,6 +434,7 @@ void BuildControls()
     SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
     Add(L"STATIC", L"", SS_LEFT, 100, 50, 480, 20, IDC_SUB);
     Add(L"STATIC", L"", SS_LEFT, 100, 71, 480, 19, IDC_VERSION);
+    Add(L"STATIC", kProjectText, SS_LEFT | SS_NOTIFY, 100, 71, 190, 19, IDC_LINK, g_fontLink);          // moved right after the author in Refresh
     Add(L"BUTTON", L"", BS_GROUPBOX, 12, 106, 576, 46, IDC_GROUP);
     Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 26, 126, 550, 20, IDC_STATE);
     Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 322, 162, 144, 30, IDC_INSTALL);
@@ -483,6 +494,7 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDC_LAUNCH: Launch(); break;
         case IDC_BROWSE: Browse(); break;
         case IDC_CLOSE: DestroyWindow(hw); break;
+        case IDC_LINK: if (HIWORD(wp) == STN_CLICKED) ShellExecuteW(hw, L"open", kProjectUrl, nullptr, nullptr, SW_SHOWNORMAL); break;
         case IDC_LANG:
             if (HIWORD(wp) == CBN_SELCHANGE) { g_lang = (int)SendMessageW(Ctl(IDC_LANG), CB_GETCURSEL, 0, 0); LangSelect(g_lang + 1); Refresh(); }
             break;
@@ -509,11 +521,19 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             return (LRESULT)GetStockObject(WHITE_BRUSH);
         }
         }
+        if (GetDlgCtrlID((HWND)lp) == IDC_LINK) {
+            SetTextColor((HDC)wp, RGB(0, 102, 204));
+            SetBkColor((HDC)wp, RGB(255, 255, 255));
+            return (LRESULT)GetStockObject(WHITE_BRUSH);
+        }
         if (GetDlgCtrlID((HWND)lp) == IDC_STATE) {
             SetTextColor((HDC)wp, g_stateColor);
             SetBkColor((HDC)wp, GetSysColor(COLOR_BTNFACE));
             return (LRESULT)GetSysColorBrush(COLOR_BTNFACE);
         }
+        break;
+    case WM_SETCURSOR:
+        if ((HWND)wp == Ctl(IDC_LINK)) { SetCursor(LoadCursorW(nullptr, IDC_HAND)); return TRUE; }
         break;
     case WM_DPICHANGED: Rescale(HIWORD(wp), (const RECT*)lp); return 0;
     case WM_APP_LOG: {
