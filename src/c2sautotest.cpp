@@ -3101,6 +3101,22 @@ static void T_AppHotkeyMove()
     HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
     DWORD openMs = GetTickCount() - tOpen;
     { wchar_t d[100]; _snwprintf(d, 100, L"Options took %lu ms to appear", (unsigned long)openMs); Check(o != nullptr && (int)openMs < WMS(6000), L"hotkey move: Options opens its window without a long freeze", d); }
+    {   // the probe the program makes at start-up in the background keeps its answer in the registry (beside the settings), per Windows build
+        wchar_t key[200]; _snwprintf(key, 200, L"%s\\Probe", SettingsKeyName());
+        DWORD stopAt = GetTickCount() + WMS(25000); bool stored = false; DWORD build = 0, hevc = 99;
+        while (!stored && (int)(stopAt - GetTickCount()) > 0) {
+            HKEY k;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, key, 0, KEY_READ, &k) == ERROR_SUCCESS) {
+                DWORD n = 4, t = 0;
+                stored = RegQueryValueExW(k, L"Build", nullptr, &t, (BYTE*)&build, &n) == ERROR_SUCCESS; n = 4;
+                RegQueryValueExW(k, L"Hevc", nullptr, &t, (BYTE*)&hevc, &n);
+                RegCloseKey(k);
+            }
+            if (!stored) Sleep(200);
+        }
+        wchar_t d[120]; _snwprintf(d, 120, L"Windows build %lu, HEVC encoder %s", (unsigned long)build, hevc == 1 ? L"works" : hevc == 0 ? L"does not work" : L"unknown");
+        Check(stored && hevc <= 1, L"hotkey move: the start-up probe of the video formats stores its answer in the registry", d);
+    }
     if (o) {
         const int nk[3] = { VK_F3, VK_F4, VK_F2 };
         for (int i = 0; i < 3; ++i) {
