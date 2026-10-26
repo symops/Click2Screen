@@ -2112,10 +2112,14 @@ static void T_AppPicks()
         wchar_t nm[160];
         // a box left by the step before (e.g. "the microphone could not be opened" on a machine without one) would lie over the fixture and be picked instead of it
         {   // a box may come a moment after the step before (a slow machine shows the "area too small" box late): wait for a quiet spell
-            DWORD stop = GetTickCount() + WMS(10000); int quiet = 0;
+            DWORD stop = GetTickCount() + WMS(10000); int quiet = 0; HWND last = nullptr;
             while (quiet < 3 && (int)(stop - GetTickCount()) > 0) {
-                if (DismissBox(a.pi.dwProcessId, IDOK, 300)) { quiet = 0; Sleep(300); }
-                else { ++quiet; Pump(300); }
+                HWND bx = FindWin(a.pi.dwProcessId, L"#32770", WMS(300));
+                if (bx) {
+                    if (bx == last) PostMessageW(bx, WM_CLOSE, 0, 0);          // the same box is still there after OK: close it the other way
+                    else DismissBox(a.pi.dwProcessId, IDOK, 300);
+                    last = bx; quiet = 0; Sleep(300);
+                } else { last = nullptr; ++quiet; Pump(300); }
             }
         }
         if (what == 0) {                                               // region screenshot (Alt+Shift+4)
