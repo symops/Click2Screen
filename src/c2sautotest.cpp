@@ -1855,7 +1855,7 @@ static void T_App()
             PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x0, y0));
             for (int i = 1; i <= 12; ++i) PostMessageW(ink, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x0 + i * 9, y0 + i * 5));
             PostMessageW(ink, WM_LBUTTONUP, 0, MAKELPARAM(x0 + 108, y0 + 60));
-            HWND tr = nullptr; DWORD te = GetTickCount() + WMS(3000);
+            HWND tr = nullptr; DWORD te = GetTickCount() + WMS(g_scale > 1 ? 8000 : 3000);
             RECT trc = {}; bool placed = false;
             while ((int)(te - GetTickCount()) > 0) {
                 tr = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0);
@@ -3226,7 +3226,7 @@ static void T_AppFlood()
         if (Chance(30)) Pump(R(1, 30));
     }
     // answer whatever opened (options windows, boxes) until things are quiet
-    for (int round = 0; round < 40; ++round) {
+    for (int round = 0; round < 40 * (g_scale > 1 ? 3 : 1); ++round) {       // a slow machine builds every options window in seconds, and the burst holds a dozen of them
         Pump(300);
         HWND o = FindWin(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 0);
         if (o) PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
@@ -3234,7 +3234,7 @@ static void T_AppFlood()
         if (box) PostMessageW(box, WM_COMMAND, IDOK, 0);
     }
     DWORD_PTR res = 0;
-    bool answers = SendMessageTimeoutW(a.main, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, WMS(10000), &res) != 0;
+    bool answers = SendMessageTimeoutW(a.main, WM_NULL, 0, 0, SMTO_ABORTIFHUNG, WMS(g_scale > 1 ? 30000 : 10000), &res) != 0;
     int files = CountFiles(s.folder);
     wchar_t d[100]; _snwprintf(d, 100, L"%d messages sent, %d pictures saved", n, files);
     Check(AppAlive(a) && answers, L"flood: the program is alive and answering after a burst of hotkeys and commands", d);
