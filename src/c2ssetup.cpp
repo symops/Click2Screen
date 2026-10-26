@@ -344,7 +344,9 @@ void Refresh()
         const int x0 = Sc(100), y0 = Sc(71), h = Sc(19), gap = Sc(8), pad = Sc(6);
         SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, h, SWP_NOZORDER | SWP_NOACTIVATE);
         bool sameLine = x0 + s1.cx + gap + s2.cx + pad <= cr.right - Sc(12);
-        SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + h - Sc(2), s2.cx + pad, h - Sc(1), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        int lh = s2.cy + Sc(4); if (lh < h) lh = h;                    // the height of the font and a little more: the tail of the "g" must not be cut off
+        SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + h - Sc(2), s2.cx + pad, lh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, s1.cy + Sc(4) > h ? s1.cy + Sc(4) : h, SWP_NOZORDER | SWP_NOACTIVATE);
         InvalidateRect(g_wnd, nullptr, FALSE);
     }
     SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
