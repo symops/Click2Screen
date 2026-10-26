@@ -66,7 +66,7 @@ struct Recorder::Impl {
     volatile LONG vFrames = 0;
     bool writeFailLogged = false;
     LONGLONG lag = 0, maxLag = 0; unsigned statTick = 0;
-    unsigned long grabFails = 0; LONGLONG grabFailStart = 0;
+    unsigned long grabFails = 0; LONGLONG grabFailStart = 0; bool haveFrame = false; LONGLONG lastGrabTry = 0;
     LONGLONG grabTime = 0, writeTime = 0, loadT0 = 0; ULONGLONG loadCpu0 = 0; unsigned long loadFrames = 0;   // where the time of the video thread goes   // consecutive failed screen reads        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
 
     Impl() { InitializeCriticalSection(&cs); QueryPerformanceFrequency(&freq); memset(hdr, 0, sizeof(hdr)); memset(abuf, 0, sizeof(abuf)); }
@@ -140,22 +140,28 @@ struct Recorder::Impl {
             }
             if (lag > fps * 2) { Sleep(10); continue; }
             RECT src = p.rc;
+            bool again = false;                                    // the picture of the last frame goes in once more (nothing new can be read)
             if (p.hwnd) {
                 if (!IsWindow(p.hwnd)) { limit = 1; break; }       // the recorded window was closed
-                if (IsIconic(p.hwnd)) { Sleep(20); continue; }
+                if (IsIconic(p.hwnd)) { if (!haveFrame) { Sleep(20); continue; } again = true; }     // minimized: the last picture stands
                 RECT r;
-                if (WindowVisibleRect(p.hwnd, &r) && r.right - r.left > 1 && r.bottom - r.top > 1) src = r;
+                if (!again && WindowVisibleRect(p.hwnd, &r) && r.right - r.left > 1 && r.bottom - r.top > 1) src = r;
             }
+            if (!again && grabFails && haveFrame && mt - lastGrabTry < 2500000LL) again = true;       // while the screen is lost it is tried four times a second
+            if (!again) lastGrabTry = mt;
             LONGLONG tg0 = Qpc100ns(freq);
             SetLastError(0);
-            if (!grab.Grab(src, p.cfg.capMouse, p.cfg.highlight, true)) {
-                // the screen cannot be read (e.g. the Remote Desktop client is minimized): wait longer and longer instead of spinning
-                if (grabFails == 0) { grabFailStart = mt; Log(L"capture: the screen cannot be read (error %lu), waiting", (unsigned long)GetLastError()); }
+            if (!again && !grab.Grab(src, p.cfg.capMouse, p.cfg.highlight, true)) {
+                // The screen cannot be read (e.g. the Remote Desktop client is minimized, error 5). The frames must not stop: a gap of the
+                // time stamps would be filled by the encoder at once after it (a Remote Desktop gap of 150 s was ~3700 frames made in a
+                // burst: 8 cores for 20 s and a file that grew by tens of megabytes). So the last picture goes in on the usual schedule.
+                if (grabFails == 0) { grabFailStart = mt; Log(L"capture: the screen cannot be read (error %lu), the last picture is repeated", (unsigned long)GetLastError()); }
                 ++grabFails;
-                Sleep(grabFails < 8 ? 20 : grabFails < 40 ? 100 : 250);
-                continue;
+                if (!haveFrame) { Sleep(grabFails < 8 ? 20 : grabFails < 40 ? 100 : 250); continue; }
+                again = true;
             }
-            if (grabFails) { Log(L"capture: the screen is readable again after %.1f s (%lu failed attempts)", (mt - grabFailStart) / 1e7, grabFails); grabFails = 0; }
+            if (!again && grabFails) { Log(L"capture: the screen is readable again after %.1f s (%lu failed attempts)", (mt - grabFailStart) / 1e7, grabFails); grabFails = 0; }
+            if (!again) haveFrame = true;
             LONGLONG tg1 = Qpc100ns(freq);
             LONGLONG ts = mt;
             if (ts <= lastVideoTs) ts = lastVideoTs + 1;
