@@ -344,6 +344,23 @@ static bool BmpPixel(HBITMAP bmp, int x, int y, int* r, int* g, int* b, int* bw,
 }
 
 // Checks `samples` random safe points of the capture of fixture sub-rectangle (ox, oy, cw, ch), scaled by sx, sy.
+// Which windows lie over the fixture (above it in the z-order, visible, overlapping): a colour that is wrong because something stands
+// in front of the fixture is explained by this list.
+static BOOL CALLBACK CoverProc(HWND hw, LPARAM lp)
+{
+    int* state = (int*)lp;                                            // 0 above the fixture, 1 reached it
+    if (hw == g_fx.hw) { *state = 1; return FALSE; }
+    if (!IsWindowVisible(hw)) return TRUE;
+    RECT r, f, x; GetWindowRect(hw, &r); GetWindowRect(g_fx.hw, &f);
+    if (!IntersectRect(&x, &r, &f)) return TRUE;
+    wchar_t cls[80] = L"", title[100] = L""; GetClassNameW(hw, cls, 80); GetWindowTextW(hw, title, 100);
+    DWORD pid = 0; GetWindowThreadProcessId(hw, &pid);
+    LONG ex = GetWindowLongW(hw, GWL_EXSTYLE);
+    Rep(L"INFO", L"  in front of the fixture: [%s] \"%s\" %ld,%ld %ldx%ld pid %lu%s", cls, title, (long)r.left, (long)r.top, (long)(r.right - r.left), (long)(r.bottom - r.top), (unsigned long)pid, (ex & WS_EX_LAYERED) ? L" layered" : L"");
+    return TRUE;
+}
+static void LogCoveringWindows() { int st = 0; EnumWindows(CoverProc, (LPARAM)&st); }
+
 static int CheckColors(HBITMAP bmp, int ox, int oy, int cw, int ch, int tol, int samples, int* checked)
 {
     int bad = 0; *checked = 0;
@@ -360,6 +377,7 @@ static int CheckColors(HBITMAP bmp, int ox, int oy, int cw, int ch, int tol, int
         ++*checked;
         if (!Near(e, r, g, b, tol)) { ++bad; Rep(L"INFO", L"  pixel (%d,%d) = %d,%d,%d, expected %d,%d,%d", x, y, r, g, b, GetRValue(e), GetGValue(e), GetBValue(e)); }
     }
+    if (bad) LogCoveringWindows();
     return bad;
 }
 
