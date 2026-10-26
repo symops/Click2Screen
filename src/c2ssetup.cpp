@@ -36,8 +36,8 @@ HFONT g_font, g_fontTitle, g_fontLink;
 static const wchar_t kProjectUrl[] = L"https://github.com/symops/Click2Screen";
 static const wchar_t kProjectText[] = L"github.com/symops/Click2Screen";
 HICON g_icon, g_big;       // g_big: the 64-unit icon of the white header
-const int kDy = 18;        // one more row in the header: the link to the project goes under the version line when it does not fit beside it
-const int kHeadH = 94 + kDy; // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
+const int kHeadH = 94;     // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
+int g_dy;                  // pixels the header is higher than that: one more row, only when the link to the project does not fit beside the author's line
 HANDLE g_worker;
 int g_action;
 bool g_ok, g_silent, g_selfDelete;
@@ -314,6 +314,30 @@ bool Installed(wchar_t* ver, wchar_t* loc)
            (GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", loc, MAX_PATH) || true);
 }
 
+// The window is as high as the plain layout plus the extra row of the header (the client area; the frame is kept).
+void FitWindowHeight()
+{
+    RECT wr, cr; GetWindowRect(g_wnd, &wr); GetClientRect(g_wnd, &cr);
+    int frame = (wr.bottom - wr.top) - cr.bottom;
+    SetWindowPos(g_wnd, nullptr, 0, 0, wr.right - wr.left, frame + Sc(452) + g_dy, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// The header gets `dy` pixels higher (0: the plain header): everything under it moves down, the window grows.
+void SetHeaderExtra(int dy)
+{
+    if (dy == g_dy) return;
+    static const int below[] = { IDC_GROUP, IDC_STATE, IDC_INSTALL, IDC_REMOVE, IDC_LOG, IDC_PATHLBL, IDC_PATH, IDC_BROWSE, IDC_DESKTOP, IDC_START, IDC_RUNAFTER, IDC_AUTO, IDC_LAUNCH, IDC_CLOSE };
+    const int delta = dy - g_dy;
+    for (int id : below) {
+        HWND c = Ctl(id); if (!c) continue;
+        RECT r; GetWindowRect(c, &r); MapWindowPoints(nullptr, g_wnd, (POINT*)&r, 2);
+        SetWindowPos(c, nullptr, r.left, r.top + delta, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    g_dy = dy;
+    FitWindowHeight();
+    InvalidateRect(g_wnd, nullptr, TRUE);
+}
+
 void Refresh()
 {
     wchar_t ver[64], loc[MAX_PATH], text[MAX_PATH + 100];
@@ -347,6 +371,10 @@ void Refresh()
         SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, rowH, SWP_NOZORDER | SWP_NOACTIVATE);
         bool sameLine = x0 + s1.cx + gap + s2.cx + pad <= cr.right - Sc(12);
         SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + rowH, s2.cx + pad, rowH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        {   // the header ends under the last row (with a little air); the plain header already has room for one row
+            int need = (sameLine ? y0 + rowH : y0 + 2 * rowH) + Sc(4) - Sc(kHeadH);
+            SetHeaderExtra(need > 0 ? need : 0);
+        }
         InvalidateRect(g_wnd, nullptr, FALSE);
     }
     SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
@@ -387,7 +415,6 @@ void Start(int action)
 
 HWND Add(const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id, HFONT f = nullptr, DWORD ex = 0)
 {
-    if (y >= 100) y += kDy;                                 // everything under the header lies lower by the extra row of the header
     HWND c = CreateWindowExW(ex, cls, text, WS_CHILD | WS_VISIBLE | style, Sc(x), Sc(y), Sc(w), Sc(h), g_wnd, (HMENU)(INT_PTR)id, g_inst, nullptr);
     SendMessageW(c, WM_SETFONT, (WPARAM)(f ? f : g_font), TRUE);
     return c;
@@ -432,6 +459,7 @@ void Launch()
 void BuildControls()
 {
     HWND hw = g_wnd;
+    g_dy = 0;                                               // the controls below are made for the plain header; Refresh makes room when it needs a row more
     if (g_font) DeleteObject(g_font);
     if (g_fontTitle) DeleteObject(g_fontTitle);
     if (g_fontLink) DeleteObject(g_fontLink);
@@ -494,6 +522,7 @@ void Rescale(UINT dpi, const RECT* suggested)
     if (log) { SetWindowTextW(Ctl(IDC_LOG), log); free(log); }
     if (suggested)
         SetWindowPos(g_wnd, nullptr, suggested->left, suggested->top, suggested->right - suggested->left, suggested->bottom - suggested->top, SWP_NOZORDER | SWP_NOACTIVATE);
+    FitWindowHeight();
 }
 
 LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
@@ -520,11 +549,11 @@ LRESULT CALLBACK Proc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     case WM_PAINT: {
         PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
         RECT cr; GetClientRect(hw, &cr);
-        RECT head = { 0, 0, cr.right, Sc(kHeadH) }, body = { 0, Sc(kHeadH), cr.right, cr.bottom };
+        RECT head = { 0, 0, cr.right, Sc(kHeadH) + g_dy }, body = { 0, Sc(kHeadH) + g_dy, cr.right, cr.bottom };
         FillRect(dc, &head, (HBRUSH)GetStockObject(WHITE_BRUSH));
         FillRect(dc, &body, GetSysColorBrush(COLOR_BTNFACE));
         HPEN pen = CreatePen(PS_SOLID, 1, RGB(160, 160, 160)); HGDIOBJ op = SelectObject(dc, pen);
-        MoveToEx(dc, 0, Sc(kHeadH), nullptr); LineTo(dc, cr.right, Sc(kHeadH));
+        MoveToEx(dc, 0, Sc(kHeadH) + g_dy, nullptr); LineTo(dc, cr.right, Sc(kHeadH) + g_dy);
         SelectObject(dc, op); DeleteObject(pen);
         if (g_big) DrawIconEx(dc, Sc(21), Sc(16), g_big, Sc(64), Sc(64), 0, nullptr, DI_NORMAL);
         EndPaint(hw, &ps);
@@ -618,7 +647,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     wc.lpfnWndProc = Proc; wc.hInstance = inst; wc.lpszClassName = L"Click2ScreenSetup";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    RECT r = { 0, 0, Sc(600), Sc(452 + kDy) };
+    RECT r = { 0, 0, Sc(600), Sc(452) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     HWND w = CreateWindowExW(0, L"Click2ScreenSetup", L"Click2Screen", style, CW_USEDEFAULT, CW_USEDEFAULT,
