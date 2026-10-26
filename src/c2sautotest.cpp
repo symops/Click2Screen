@@ -381,7 +381,26 @@ static BOOL CALLBACK CoverProc(HWND hw, LPARAM lp)
     Rep(L"INFO", L"  in front of the fixture: [%s] \"%s\" %ld,%ld %ldx%ld pid %lu%s", cls, title, (long)r.left, (long)r.top, (long)(r.right - r.left), (long)(r.bottom - r.top), (unsigned long)pid, (ex & WS_EX_LAYERED) ? L" layered" : L"");
     return TRUE;
 }
-static void LogCoveringWindows() { int st = 0; EnumWindows(CoverProc, (LPARAM)&st); }
+static void LogCoveringWindows()
+{
+    int st = 0; EnumWindows(CoverProc, (LPARAM)&st);
+    // Where the fixture is, what GetPixel sees in it, and the whole screen as a picture beside the program's logs (the first two times in a run).
+    RECT f; GetWindowRect(g_fx.hw, &f);
+    HDC dc = GetDC(nullptr); COLORREF c = dc ? GetPixel(dc, f.left + g_fx.w / 4, f.top + g_fx.h / 4) : CLR_INVALID; if (dc) ReleaseDC(nullptr, dc);
+    COLORREF e = Expected(g_fx.w / 4, g_fx.h / 4, g_fx.w, g_fx.h);
+    Rep(L"INFO", L"  the fixture is at %ld,%ld %dx%d (visible %d, topmost %d); GetPixel of its first quarter: %d,%d,%d (expected %d,%d,%d)", (long)f.left, (long)f.top, g_fx.w, g_fx.h,
+        (int)IsWindowVisible(g_fx.hw), (GetWindowLongW(g_fx.hw, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, GetRValue(c), GetGValue(c), GetBValue(c), GetRValue(e), GetGValue(e), GetBValue(e));
+    static int shots = 0;
+    if (shots < 2) {
+        wchar_t pd[MAX_PATH] = L"";
+        if (GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH) > 0) {
+            wchar_t path[MAX_PATH + 40]; _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\colour-fail-%d.png", pd, ++shots);
+            RECT vs = VirtualScreen();
+            HBITMAP b = CaptureRect(vs, false, false);
+            if (b) { bool ok = SaveBitmap(b, path, IMG_PNG); DeleteObject(b); Rep(L"INFO", L"  the screen was saved: %s (%d)", path, (int)ok); }
+        }
+    }
+}
 
 static int CheckColors(HBITMAP bmp, int ox, int oy, int cw, int ch, int tol, int samples, int* checked)
 {
