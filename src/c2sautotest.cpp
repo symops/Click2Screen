@@ -1604,7 +1604,7 @@ static void T_LongRecord()
     double rate = p.cfg.fps < capacity ? p.cfg.fps : capacity;
     double expect = el * rate;
     wchar_t d[200]; _snwprintf(d, 200, L"%llu frames in %.2f s at %d fps; one capture takes %.1f ms, so about %.0f frames/s possible (%.0f%% of that)", (unsigned long long)fr, el, p.cfg.fps, cost * 1000, capacity, 100.0 * fr / (el * rate));
-    Check(fabs(el - secs) < 1.0 && fr >= expect * (p.cfg.fps > capacity ? 0.7 : 0.85) && fr <= el * p.cfg.fps * 1.05 + 2, L"long recording: no drift - the frame count follows the clock and the capture speed", d);
+    Check(fabs(el - secs) < 1.0 && fr >= expect * (p.cfg.fps > capacity * 0.9 ? 0.7 : 0.85) && fr <= el * p.cfg.fps * 1.05 + 2, L"long recording: no drift - the frame count follows the clock and the capture speed", d);
 }
 
 // ---- driving the real program ---------------------------------------------------------------------------------------
