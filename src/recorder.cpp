@@ -686,8 +686,54 @@ static bool EncoderWorks(const GUID& sub)
     return ok;
 }
 
+// The HEVC probe encodes a few frames, which takes seconds on a slow machine. Its answer is kept in the registry beside the number
+// of the Windows build it was made on: the options window reads it at once, the probe at start-up (RefreshFormatProbes) renews it.
+static DWORD WindowsBuild()
+{
+    typedef LONG(WINAPI* RtlGetVersionFn)(OSVERSIONINFOW*);
+    RtlGetVersionFn fn = (RtlGetVersionFn)(void*)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+    OSVERSIONINFOW v; memset(&v, 0, sizeof(v)); v.dwOSVersionInfoSize = sizeof(v);
+    return fn && fn(&v) == 0 ? v.dwBuildNumber : 0;
+}
+static void ProbeKey(wchar_t* out, int n) { _snwprintf(out, n, L"%s\\Probe", SettingsKeyName()); out[n - 1] = 0; }
+static int LoadHevcProbe()                                           // 0 nothing stored for this build, 1 works, 2 does not
+{
+    HKEY k; DWORD val = 0, build = 0, n = 4, n2 = 4, t = 0;
+    int r = 0; wchar_t key[200]; ProbeKey(key, 200);
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, key, 0, KEY_READ, &k) == ERROR_SUCCESS) {
+        if (RegQueryValueExW(k, L"Hevc", nullptr, &t, (BYTE*)&val, &n) == ERROR_SUCCESS && RegQueryValueExW(k, L"Build", nullptr, &t, (BYTE*)&build, &n2) == ERROR_SUCCESS && build == WindowsBuild() && build)
+            r = val ? 1 : 2;
+        RegCloseKey(k);
+    }
+    return r;
+}
+static void SaveHevcProbe(bool ok)
+{
+    HKEY k; wchar_t key[200]; ProbeKey(key, 200);
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, key, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) == ERROR_SUCCESS) {
+        DWORD v = ok ? 1 : 0, b = WindowsBuild();
+        RegSetValueExW(k, L"Hevc", 0, REG_DWORD, (const BYTE*)&v, 4);
+        RegSetValueExW(k, L"Build", 0, REG_DWORD, (const BYTE*)&b, 4);
+        RegCloseKey(k);
+    }
+}
+static volatile LONG g_hevcState = 0;                                // 0 unknown, 1 works, 2 does not (read without a lock)
+
+// Start-up, from a thread of its own: probe again whatever the registry said, and keep the answer for the next start.
+void RefreshFormatProbes()
+{
+    if (!HasVideoEncoder(kVideoHevc)) { g_hevcState = 2; SaveHevcProbe(false); return; }
+    bool ok = EncoderWorks(kVideoHevc);
+    g_hevcState = ok ? 1 : 2;
+    SaveHevcProbe(ok);
+}
+
 bool VideoFormatAvailable(int vc)
 {
+    if (vc == VC_H265) {
+        if (g_hevcState == 0) { int r = LoadHevcProbe(); if (r) InterlockedCompareExchange(&g_hevcState, r, 0); }
+        if (g_hevcState) return g_hevcState == 1;                      // never waits for a probe that is running
+    }
     static int cache[VC_COUNT];                                      // 0 unknown, 1 yes, 2 no
     static SRWLOCK lock = SRWLOCK_INIT;                               // the program asks from a thread of its own at start-up (the HEVC probe takes a moment)
     if (vc < 0 || vc >= VC_COUNT) return false;
@@ -697,7 +743,7 @@ bool VideoFormatAvailable(int vc)
         bool ok = true;
         switch (vc) {
         case VC_H264_BEST: case VC_H264_FAST: ok = true; break;      // always offered (the encoder is part of Windows)
-        case VC_H265: ok = HasVideoEncoder(kVideoHevc) && EncoderWorks(kVideoHevc); break;
+        case VC_H265: ok = HasVideoEncoder(kVideoHevc) && EncoderWorks(kVideoHevc); g_hevcState = ok ? 1 : 2; SaveHevcProbe(ok); break;
         case VC_WMV: ok = HasVideoEncoder(kVideoWmv3); break;
         case VC_AVI: ok = ImageFormatAvailable(IMG_JPG); break;
         case VC_GIF: ok = ImageFormatAvailable(IMG_GIF); break;

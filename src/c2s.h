@@ -53,6 +53,8 @@ int  ImageFormatFromPath(const wchar_t* path);        // by the extension; -1 wh
 void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h);   // FitSize, and the smaller frame a GIF gets
 const wchar_t* VideoFormatName(int vc);               // "H.264 (MP4, slower)" ...
 const wchar_t* VideoFormatExt(int vc);                // "mp4", "wmv", "avi", "gif"
+const wchar_t* SettingsKeyName();                   // the registry key under HKCU the settings live in
+void RefreshFormatProbes();                         // start-up, from a thread: probes the HEVC encoder again and keeps the answer for the next start
 bool VideoFormatAvailable(int vc);                    // the encoder exists on this Windows (HEVC needs the Microsoft extension)
 struct Settings {
     wchar_t folder[MAX_PATH];       // where the videos and the pictures go (one folder for both)

@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 static wchar_t g_keyBuf[160] = L"Software\\Click2Screen";
+const wchar_t* SettingsKeyName() { return g_keyBuf; }                   // the registry key of the settings (the autotest has its own)
 #define KEY g_keyBuf
 
 void SettingsUseKey(const wchar_t* key)
