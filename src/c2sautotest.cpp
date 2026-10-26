@@ -258,6 +258,8 @@ static LRESULT CALLBACK FxProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
     return DefWindowProcW(hw, m, wp, lp);
 }
 
+static RECT FxScreenRect();
+static COLORREF Expected(int lx, int ly, int fw, int fh);
 static void MakeFixture(int w, int h)
 {
     static bool reg = false;
@@ -280,6 +282,26 @@ static void MakeFixture(int w, int h)
     SetTimer(g_fx.hw, 1, 40, nullptr);
     UpdateWindow(g_fx.hw);
     Pump(250);
+    // The window is on the screen only when the desktop shows its colours: Windows 11 composes a new window a moment after it is shown,
+    // and a capture taken before that sees what was behind it. Wait for a pixel of each of two quarters (up to a few seconds).
+    {
+        RECT fr = FxScreenRect();
+        DWORD until = GetTickCount() + WMS(1500);
+        for (;;) {
+            HDC dc = GetDC(nullptr); bool ok = true;
+            if (dc) {
+                const int px[2][2] = { { w / 4, h / 4 }, { w * 3 / 4, h * 3 / 4 } };
+                for (int i = 0; i < 2 && ok; ++i) {
+                    COLORREF e = Expected(px[i][0], px[i][1], w, h), c = GetPixel(dc, fr.left + px[i][0], fr.top + px[i][1]);
+                    if (c == CLR_INVALID) continue;
+                    if (abs((int)GetRValue(c) - (int)GetRValue(e)) + abs((int)GetGValue(c) - (int)GetGValue(e)) + abs((int)GetBValue(c) - (int)GetBValue(e)) > 60) ok = false;
+                }
+                ReleaseDC(nullptr, dc);
+            }
+            if (ok || (int)(until - GetTickCount()) <= 0) break;
+            Pump(100);
+        }
+    }
 }
 
 static RECT FxScreenRect() { RECT r; GetWindowRect(g_fx.hw, &r); return r; }
