@@ -36,7 +36,8 @@ HFONT g_font, g_fontTitle, g_fontLink;
 static const wchar_t kProjectUrl[] = L"https://github.com/symops/Click2Screen";
 static const wchar_t kProjectText[] = L"github.com/symops/Click2Screen";
 HICON g_icon, g_big;       // g_big: the 64-unit icon of the white header
-const int kHeadH = 94;     // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
+const int kDy = 14;        // one more row in the header: the link to the project goes under the version line when it does not fit beside it
+const int kHeadH = 94 + kDy; // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
 HANDLE g_worker;
 int g_action;
 bool g_ok, g_silent, g_selfDelete;
@@ -329,10 +330,22 @@ void Refresh()
     _snwprintf(vn, 100, T(S_SU_VERSION), L"" C2S_VER_STR);
     _snwprintf(vl, 200, L"%s   ·   %s, %s   ·", vn, L"" C2S_AUTHOR_STR, L"" C2S_EMAIL_STR);       // the link to the project follows on the same line
     SetWindowTextW(Ctl(IDC_VERSION), vl);
-    {   // the link stands right behind the text of the line (its width depends on the language of the version word)
-        HDC dc = GetDC(Ctl(IDC_VERSION)); SIZE sz = { 0, 0 };
-        if (dc) { HGDIOBJ of = SelectObject(dc, g_font); GetTextExtentPoint32W(dc, vl, (int)wcslen(vl), &sz); SelectObject(dc, of); ReleaseDC(Ctl(IDC_VERSION), dc); }
-        SetWindowPos(Ctl(IDC_LINK), nullptr, Sc(100) + sz.cx + Sc(8), Sc(71), Sc(190), Sc(19), SWP_NOZORDER | SWP_NOACTIVATE);
+    {   // The version line is as wide as its text (the label must not lie under the link: it would be painted over it at every refresh), the link
+        // stands right behind it, and on the next line when it does not fit in the window (a long text of another language, a large font).
+        HWND ver = Ctl(IDC_VERSION), lnk = Ctl(IDC_LINK);
+        SIZE s1 = { 0, 0 }, s2 = { 0, 0 };
+        HDC dc = GetDC(ver);
+        if (dc) {
+            HGDIOBJ of = SelectObject(dc, g_font); GetTextExtentPoint32W(dc, vl, (int)wcslen(vl), &s1);
+            SelectObject(dc, g_fontLink ? g_fontLink : g_font); GetTextExtentPoint32W(dc, kProjectText, (int)wcslen(kProjectText), &s2);
+            SelectObject(dc, of); ReleaseDC(ver, dc);
+        }
+        RECT cr; GetClientRect(g_wnd, &cr);
+        const int x0 = Sc(100), y0 = Sc(71), h = Sc(19), gap = Sc(8), pad = Sc(6);
+        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        bool sameLine = x0 + s1.cx + gap + s2.cx + pad <= cr.right - Sc(12);
+        SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + h - Sc(2), s2.cx + pad, h - Sc(1), SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        InvalidateRect(g_wnd, nullptr, FALSE);
     }
     SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
     SetWindowTextW(Ctl(IDC_DESKTOP), T(S_SU_DESKTOP));
@@ -372,6 +385,7 @@ void Start(int action)
 
 HWND Add(const wchar_t* cls, const wchar_t* text, DWORD style, int x, int y, int w, int h, int id, HFONT f = nullptr, DWORD ex = 0)
 {
+    if (y >= 100) y += kDy;                                 // everything under the header lies lower by the extra row of the header
     HWND c = CreateWindowExW(ex, cls, text, WS_CHILD | WS_VISIBLE | style, Sc(x), Sc(y), Sc(w), Sc(h), g_wnd, (HMENU)(INT_PTR)id, g_inst, nullptr);
     SendMessageW(c, WM_SETFONT, (WPARAM)(f ? f : g_font), TRUE);
     return c;
@@ -602,7 +616,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
     wc.lpfnWndProc = Proc; wc.hInstance = inst; wc.lpszClassName = L"Click2ScreenSetup";
     wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1); wc.hIcon = g_icon;
     RegisterClassW(&wc);
-    RECT r = { 0, 0, Sc(600), Sc(452) };
+    RECT r = { 0, 0, Sc(600), Sc(452 + kDy) };
     DWORD style = WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
     AdjustWindowRect(&r, style, FALSE);
     HWND w = CreateWindowExW(0, L"Click2ScreenSetup", L"Click2Screen", style, CW_USEDEFAULT, CW_USEDEFAULT,
