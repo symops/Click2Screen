@@ -57,7 +57,7 @@ Dateinamenvorlage:
 Tipps: # – eine Ziffer der laufenden Nummer, $Y Jahr, $M Monat, $D Tag, $H Stunde, $N Minute, $S Sekunde, %USERNAME% – Benutzername. Beispiel: File $D.$M.$Y $H-$N-$S oder Img####
 Durchsuchen...
 Systemsprache
-H.264, beste Qualität (langsamer)
+H.264 (MP4)
 H.264, schnell
 AAC (langsamer)
 MP3 (schneller)

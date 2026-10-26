@@ -3237,7 +3237,7 @@ static void T_KeyInterval()
     MakeFixture(R(300, 600), R(220, 400));
     RecParams p; memset(&p, 0, sizeof(p));
     SettingsDefaults(p.cfg); p.cfg.mic = false; p.cfg.loopback = false;
-    p.cfg.videoCodec = Chance(30) ? VC_H264_FAST : VC_H264_BEST;
+    p.cfg.videoCodec = VC_H264_BEST;
     { static const int f[] = { 10, 15, 25 }; p.cfg.fps = f[R(0, 2)]; }          // the interval is a time (20 s), whatever the frame rate
     p.rc = FxScreenRect();
     wcscpy(p.path, g_dir); wcscat(p.path, L"\\keys.mp4");

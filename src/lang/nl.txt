@@ -57,7 +57,7 @@ Sjabloon voor bestandsnaam:
 Tips: # – één cijfer van het volgnummer, $Y jaar, $M maand, $D dag, $H uur, $N minuut, $S seconde, %USERNAME% – gebruikersnaam. Voorbeeld: File $D.$M.$Y $H-$N-$S of Img####
 Bladeren...
 Systeemtaal
-H.264, beste kwaliteit (langzamer)
+H.264 (MP4)
 H.264, snel
 AAC (langzamer)
 MP3 (sneller)

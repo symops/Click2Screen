@@ -57,7 +57,7 @@ Modelo do nome do arquivo:
 Dicas: # – um dígito do número sequencial, $Y ano, $M mês, $D dia, $H hora, $N minuto, $S segundo, %USERNAME% – nome do usuário. Exemplo: File $D.$M.$Y $H-$N-$S ou Img####
 Procurar...
 Idioma do sistema
-H.264, melhor qualidade (mais lento)
+H.264 (MP4)
 H.264, rápido
 AAC (mais lento)
 MP3 (mais rápido)

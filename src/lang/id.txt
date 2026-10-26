@@ -57,7 +57,7 @@ Templat nama berkas:
 Tips: # – satu digit nomor urut, $Y tahun, $M bulan, $D hari, $H jam, $N menit, $S detik, %USERNAME% – nama pengguna. Contoh: File $D.$M.$Y $H-$N-$S atau Img####
 Telusuri...
 Bahasa sistem
-H.264, kualitas terbaik (lebih lambat)
+H.264 (MP4)
 H.264, cepat
 AAC (lebih lambat)
 MP3 (lebih cepat)

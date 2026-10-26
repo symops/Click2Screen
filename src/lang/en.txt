@@ -57,7 +57,7 @@ File name template:
 Tips: # - one digit of the sequential number, $Y year, $M month, $D day, $H hour, $N minute, $S second, %USERNAME% - user name. Example: File $D.$M.$Y $H-$N-$S, or Img####
 Browse...
 System language
-H.264, best quality (slower)
+H.264 (MP4)
 H.264, fast
 AAC (slower)
 MP3 (faster)

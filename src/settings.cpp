@@ -149,6 +149,7 @@ void SettingsLoad(Settings& s)
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
     s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
     s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, VC_COUNT - 1);
+    if (s.videoCodec == VC_H264_FAST) s.videoCodec = VC_H264_BEST;                    // the second H.264 profile is gone from the options: its recordings are the first one now
     s.audioCodec   = Clamp((int)GetDw(k, L"AudioCodec", d.audioCodec), 0, 1);
     s.videoQuality = Clamp((int)GetDw(k, L"VideoQuality", d.videoQuality), 0, 2);
     s.audioQuality = Clamp((int)GetDw(k, L"AudioQuality", d.audioQuality), 0, 2);
@@ -451,7 +452,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
     if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
-    if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v;
+    if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v == VC_H264_FAST ? VC_H264_BEST : v;
     if (IniGetInt(path, L"AudioCodec", 0, 1, &v)) s.audioCodec = v;
     if (IniGetInt(path, L"VideoQuality", 0, 2, &v)) s.videoQuality = v;
     if (IniGetInt(path, L"AudioQuality", 0, 2, &v)) s.audioQuality = v;

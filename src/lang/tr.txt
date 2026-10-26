@@ -57,7 +57,7 @@ Dosya adı şablonu:
 İpuçları: # – sıra numarasının bir basamağı, $Y yıl, $M ay, $D gün, $H saat, $N dakika, $S saniye, %USERNAME% – kullanıcı adı. Örnek: File $D.$M.$Y $H-$N-$S veya Img####
 Gözat...
 Sistem dili
-H.264, en iyi kalite (daha yavaş)
+H.264 (MP4)
 H.264, hızlı
 AAC (daha yavaş)
 MP3 (daha hızlı)

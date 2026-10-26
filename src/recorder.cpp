@@ -748,7 +748,8 @@ bool VideoFormatAvailable(int vc)
     if (cache[vc] == 0) {
         bool ok = true;
         switch (vc) {
-        case VC_H264_BEST: case VC_H264_FAST: ok = true; break;      // always offered (the encoder is part of Windows)
+        case VC_H264_BEST: ok = true; break;                          // always offered (the encoder is part of Windows)
+        case VC_H264_FAST: ok = false; break;                         // not offered any more: one H.264 profile is enough (old settings are moved to the first)
         case VC_H265: ok = HasVideoEncoder(kVideoHevc) && EncoderWorks(kVideoHevc); g_hevcState = ok ? 1 : 2; SaveHevcProbe(ok); break;
         case VC_WMV: ok = HasVideoEncoder(kVideoWmv3); break;
         case VC_AVI: ok = ImageFormatAvailable(IMG_JPG); break;

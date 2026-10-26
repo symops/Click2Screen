@@ -57,7 +57,7 @@ Modello del nome file:
 Suggerimenti: # – una cifra del numero progressivo, $Y anno, $M mese, $D giorno, $H ora, $N minuto, $S secondo, %USERNAME% – nome utente. Esempio: File $D.$M.$Y $H-$N-$S oppure Img####
 Sfoglia...
 Lingua di sistema
-H.264, qualità migliore (più lento)
+H.264 (MP4)
 H.264, veloce
 AAC (più lento)
 MP3 (più veloce)

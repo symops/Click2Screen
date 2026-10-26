@@ -57,7 +57,7 @@ Mẫu tên tệp:
 Mẹo: # – một chữ số của số thứ tự, $Y năm, $M tháng, $D ngày, $H giờ, $N phút, $S giây, %USERNAME% – tên người dùng. Ví dụ: File $D.$M.$Y $H-$N-$S hoặc Img####
 Duyệt...
 Ngôn ngữ hệ thống
-H.264, chất lượng tốt nhất (chậm hơn)
+H.264 (MP4)
 H.264, nhanh
 AAC (chậm hơn)
 MP3 (nhanh hơn)

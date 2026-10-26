@@ -57,7 +57,7 @@ Plantilla del nombre de archivo:
 Consejos: # – un dígito del número de secuencia, $Y año, $M mes, $D día, $H hora, $N minuto, $S segundo, %USERNAME% – nombre de usuario. Ejemplo: File $D.$M.$Y $H-$N-$S o Img####
 Examinar...
 Idioma del sistema
-H.264, mejor calidad (más lento)
+H.264 (MP4)
 H.264, rápido
 AAC (más lento)
 MP3 (más rápido)
