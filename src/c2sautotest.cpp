@@ -16,6 +16,7 @@
 #include "c2s.h"
 #include "uiids.h"
 #include <mmsystem.h>
+#include <dwmapi.h>
 #include <wincodec.h>
 #include <mfapi.h>
 #include <mfidl.h>
@@ -275,6 +276,7 @@ static void MakeFixture(int w, int h)
     g_fx.w = w; g_fx.h = h;
     g_fx.hw = CreateWindowExW(WS_EX_TOPMOST, L"C2SAutotestFixture", L"c2s fixture", WS_POPUP | WS_VISIBLE, x, y, w, h,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    { int dontRound = 1; DwmSetWindowAttribute(g_fx.hw, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &dontRound /*DWMWCP_DONOTROUND*/, sizeof(dontRound)); }   // Windows 11 rounds the corners of every window: the colour points near them would see the desktop
     SetTimer(g_fx.hw, 1, 40, nullptr);
     UpdateWindow(g_fx.hw);
     Pump(250);
@@ -289,6 +291,7 @@ static COLORREF Expected(int lx, int ly, int fw, int fh)     // colour of the fi
 static bool SafePoint(int lx, int ly, int fw, int fh)        // away from the quarter borders and the strip
 {
     if (abs(lx - fw / 2) < 8 || abs(ly - fh / 2) < 8) return false;
+    if ((lx < 14 || lx >= fw - 14) && (ly < 14 || ly >= fh - 24)) return false;          // not in the corners (Windows 11 rounds them, the shadow of a window may reach in)
     return ly < fh - 16 && lx >= 2 && lx < fw - 2 && ly >= 2;
 }
 // A line of the gradient (any colour) is found by comparing with the same frame without it: a pixel of the line or of its dark outline
@@ -3015,11 +3018,12 @@ static void T_AppEffects()
                 ++tested;
                 if (!ref) { ref = new uint8_t[(size_t)dw * dh * 4]; memcpy(ref, px, (size_t)dw * dh * 4); refW = dw; }
                 int wave = 0, trail = 0;
+                auto blueish = [](const uint8_t* q) { return q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60; };
                 for (int y = 0; y < dh; ++y)
                     for (int x = 0; x < dw; ++x) {
                         const uint8_t* q = px + ((size_t)y * dw + x) * 4;
                         int dx = x - cx, dy = y - cy;
-                        if (dx * dx + dy * dy < 80 * 80 && dx * dx + dy * dy >= 22 * 22 && q[0] > 150 && q[2] < 130 && q[1] < 200 && q[1] > 60) ++wave;        // blue-ish over the green quarter, outside the 22 px the pointer itself covers (the blue "busy" ring of Windows 10/11 is no wave)
+                        if (dx * dx + dy * dy < 80 * 80 && dx * dx + dy * dy >= 22 * 22 && blueish(q) && (!ref || ref == px || !blueish(ref + ((size_t)y * dw + x) * 4))) ++wave;        // blue-ish over the green quarter, outside the 22 px the pointer itself covers (the blue "busy" ring of Windows 10/11 is no wave)
                         if (y > h / 2 + 8 && abs(y - ty) < 8 && ref) { const uint8_t* rq = ref + ((size_t)y * dw + x) * 4; if (abs(q[0] - rq[0]) + abs(q[1] - rq[1]) + abs(q[2] - rq[2]) > 120) ++trail; }   // differs from the first picture: the line or its outline
                     }
                 if (wave >= 24) ++waveFrames;
