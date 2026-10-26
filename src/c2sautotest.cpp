@@ -3143,6 +3143,19 @@ static void T_AppHotkeyMove()
         wchar_t d[100]; _snwprintf(d, 100, L"%d of 3 moved keys are held by the program", taken);
         Check(!IsWindow(o) && taken == 3, L"hotkey move: keys that move between actions are all registered by the program", d);
     }
+    {   // a program that does nothing does not use the processor (a busy loop would show here): 6 s of its own CPU time while it is idle
+        Pump(WMS(3000));                                                 // the start-up work (probes, the options window just closed) settles first
+        auto cpuOf = [&]() -> double {
+            FILETIME c, e, k, u;
+            if (!GetProcessTimes(a.pi.hProcess, &c, &e, &k, &u)) return -1;
+            return (double)(((ULONGLONG)k.dwHighDateTime << 32 | k.dwLowDateTime) + ((ULONGLONG)u.dwHighDateTime << 32 | u.dwLowDateTime)) / 1e7;
+        };
+        double c0 = cpuOf(); DWORD t0 = GetTickCount();
+        Pump(6000);
+        double used = cpuOf() - c0, wall = (GetTickCount() - t0) / 1000.0;
+        wchar_t d[120]; _snwprintf(d, 120, L"%.2f s of CPU in %.1f s idle: %.1f %% of a core", used, wall, 100.0 * used / wall);
+        Check(c0 >= 0 && used / wall < 0.15, L"hotkey move: an idle program does not load the processor", d);
+    }
     PostMessageW(a.main, WM_COMMAND, ID_TRAY_EXIT, 0);
     WaitForSingleObject(a.pi.hProcess, WMS(15000));
     StopApp(a, false);
