@@ -36,7 +36,7 @@ HFONT g_font, g_fontTitle, g_fontLink;
 static const wchar_t kProjectUrl[] = L"https://github.com/symops/Click2Screen";
 static const wchar_t kProjectText[] = L"github.com/symops/Click2Screen";
 HICON g_icon, g_big;       // g_big: the 64-unit icon of the white header
-const int kDy = 14;        // one more row in the header: the link to the project goes under the version line when it does not fit beside it
+const int kDy = 18;        // one more row in the header: the link to the project goes under the version line when it does not fit beside it
 const int kHeadH = 94 + kDy; // the header (icon, name, version, language) is white, as in Speak2Mic / Show2Cam
 HANDLE g_worker;
 int g_action;
@@ -341,12 +341,12 @@ void Refresh()
             SelectObject(dc, of); ReleaseDC(ver, dc);
         }
         RECT cr; GetClientRect(g_wnd, &cr);
-        const int x0 = Sc(100), y0 = Sc(71), h = Sc(19), gap = Sc(8), pad = Sc(6);
-        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        // rows as high as the font needs, one under the other, so nothing overlaps at any scale of the screen
+        const int x0 = Sc(100), y0 = Sc(67), gap = Sc(8), pad = Sc(6);
+        const int rowH = (s1.cy > s2.cy ? s1.cy : s2.cy) + Sc(3);
+        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, rowH, SWP_NOZORDER | SWP_NOACTIVATE);
         bool sameLine = x0 + s1.cx + gap + s2.cx + pad <= cr.right - Sc(12);
-        int lh = s2.cy + Sc(4); if (lh < h) lh = h;                    // the height of the font and a little more: the tail of the "g" must not be cut off
-        SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + h - Sc(2), s2.cx + pad, lh, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, s1.cy + Sc(4) > h ? s1.cy + Sc(4) : h, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + rowH, s2.cx + pad, rowH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         InvalidateRect(g_wnd, nullptr, FALSE);
     }
     SetWindowTextW(Ctl(IDC_GROUP), T(S_SU_STATUS));
@@ -448,9 +448,9 @@ void BuildControls()
     HWND lg = Add(L"COMBOBOX", L"", WS_TABSTOP | CBS_DROPDOWNLIST | WS_VSCROLL, 450, 14, 138, 300, IDC_LANG);
     for (int i = 0; i < LangCount(); ++i) SendMessageW(lg, CB_ADDSTRING, 0, (LPARAM)LangName(i));
     SendMessageW(lg, CB_SETCURSEL, g_lang, 0);
-    Add(L"STATIC", L"", SS_LEFT, 100, 50, 480, 20, IDC_SUB);
-    Add(L"STATIC", L"", SS_LEFT, 100, 71, 480, 19, IDC_VERSION);
-    Add(L"STATIC", kProjectText, SS_LEFT | SS_NOTIFY, 100, 71, 190, 19, IDC_LINK, g_fontLink);          // moved right after the author in Refresh
+    Add(L"STATIC", L"", SS_LEFT, 100, 49, 480, 18, IDC_SUB);
+    Add(L"STATIC", L"", SS_LEFT, 100, 67, 480, 19, IDC_VERSION);
+    Add(L"STATIC", kProjectText, SS_LEFT | SS_NOTIFY, 100, 67, 190, 19, IDC_LINK, g_fontLink);          // moved right after the author in Refresh
     Add(L"BUTTON", L"", BS_GROUPBOX, 12, 106, 576, 46, IDC_GROUP);
     Add(L"STATIC", L"", SS_LEFT | SS_PATHELLIPSIS, 26, 126, 550, 20, IDC_STATE);
     Add(L"BUTTON", L"", WS_TABSTOP | BS_DEFPUSHBUTTON, 322, 162, 144, 30, IDC_INSTALL);
