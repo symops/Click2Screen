@@ -1083,7 +1083,8 @@ static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, b
     Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
     Check(a.idxCount == a.vChunks + a.aChunks && a.total == a.vChunks, L"recorder: AVI index lists every chunk, the frame count is the video chunk count", dd);
     Check(a.fps == (unsigned)fps && fabs((double)a.total / (fps ? fps : 1) - el) < 1.2, L"recorder: AVI duration matches the recorded time", dd);
-    Check(a.vChunks > a.emptyV * 1 && (double)(a.vChunks - a.emptyV) > el * fps * 0.2, L"recorder: AVI holds real pictures at about the frame rate", dd);
+    // a picture that has not changed is an empty chunk (a repeat of the last frame): what counts is a real picture and a chunk for every frame of the rate
+    Check(a.vChunks > a.emptyV && (double)a.vChunks > el * fps * 0.8, L"recorder: AVI holds real pictures at about the frame rate", dd);
     if (wantAudio) {
         if (a.aChunks > 0) Check(fabs((double)a.aBytes / 88200.0 - el) < 1.5, L"recorder: AVI sound is as long as the picture", dd);
         else WARN(L"recorder: no audio in the AVI (no microphone in this session?)");
@@ -3306,6 +3307,57 @@ static int Mp4KeyFrames(const wchar_t* path, int* total)
     return keys;
 }
 
+// The audio codec of the first sound track of an MP4: 0x40 AAC, 0x6B / 0x69 MP3 (the object type of the esds box), 0 none found.
+static int Mp4AudioObjectType(const wchar_t* path)
+{
+    HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return 0;
+    DWORD sz = GetFileSize(f, nullptr), got = 0;
+    uint8_t* b = (uint8_t*)malloc(sz ? sz : 1);
+    int type = 0;
+    if (b && ReadFile(f, b, sz, &got, nullptr)) {
+        for (DWORD i = 0; i + 60 < got && !type; ++i) {
+            if (memcmp(b + i, "esds", 4)) continue;
+            DWORD k = i + 8;                                           // after the name, the version and flags
+            for (DWORD e = k + 40; k < e && k + 4 < got; ++k) if (b[k] == 0x04) {          // DecoderConfigDescriptor
+                DWORD q = k + 1; while (q < got && (b[q] & 0x80)) ++q; ++q;                 // its length
+                if (q < got) type = b[q];
+                break;
+            }
+        }
+    }
+    free(b); CloseHandle(f);
+    return type;
+}
+
+// The codec chosen in the settings is the codec in the file, or the recording is refused: never the other one in silence.
+static void T_AudioCodecs()
+{
+    if (g_wine || !VideoFormatAvailable(VC_H264_BEST)) { SKIP(L"audio codecs: there is no real encoder here"); return; }
+    MakeFixture(R(300, 500), R(220, 360));
+    for (int codec = 0; codec <= 1; ++codec) {
+        RecParams p; memset(&p, 0, sizeof(p));
+        SettingsDefaults(p.cfg); p.cfg.mic = false; p.cfg.loopback = true; p.cfg.videoCodec = VC_H264_BEST; p.cfg.audioCodec = codec; p.cfg.fps = 10;
+        p.rc = FxScreenRect();
+        wcscpy(p.path, g_dir); wcscat(p.path, L"\\acodec.mp4");
+        DeleteFileW(p.path);
+        Recorder rec; wchar_t err[200] = L"";
+        const wchar_t* nm = codec ? L"MP3" : L"AAC";
+        if (!rec.Start(p, err, 200)) {
+            if (codec) Rep(L"WARN", L"audio codecs: %s is refused with a message, not replaced (this Windows has no %s encoder?): %s", nm, nm, err);
+            else FAIL(L"audio codecs: %s: Start failed: %s", nm, err);
+            continue;
+        }
+        DWORD t0 = GetTickCount();
+        while ((int)(GetTickCount() - t0) < 3000) Pump(100);
+        bool stopped = rec.Stop();
+        int type = Mp4AudioObjectType(p.path);
+        wchar_t d[120]; _snwprintf(d, 120, L"chosen %s, object type 0x%02X in the file", nm, type);
+        bool right = codec ? (type == 0x6B || type == 0x69) : type == 0x40;
+        Check(stopped && right, L"audio codecs: the codec chosen is the codec recorded", d);
+    }
+}
+
 static void T_KeyInterval()
 {
     if (g_wine || !VideoFormatAvailable(VC_H264_BEST)) { SKIP(L"key frames: there is no real H.264 encoder here"); return; }
@@ -3774,6 +3826,74 @@ static void DirectOne(const DirectCfg& c)
 }
 } // namespace
 
+// ---- audio lab: which MP3 / AAC output types does this Windows accept in an MP4 sink writer? ------------------------------------------
+static bool AudioLabTry(const wchar_t* what, IMFMediaType* out, IMFMediaType* in)
+{
+    wchar_t pd[MAX_PATH] = L"", path[MAX_PATH + 40];
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\audiolab.mp4", pd);
+    DeleteFileW(path);
+    IMFSinkWriter* w = nullptr; DWORD idx = 0;
+    HRESULT h1 = MFCreateSinkWriterFromURL(path, nullptr, nullptr, &w), h2 = E_FAIL, h3 = E_FAIL;
+    if (SUCCEEDED(h1) && w) { h2 = w->AddStream(out, &idx); if (SUCCEEDED(h2)) h3 = w->SetInputMediaType(idx, in, nullptr); }
+    if (w) w->Release();
+    DeleteFileW(path);
+    Rep(L"INFO", L"audiolab [%s]: writer 0x%08lX, AddStream 0x%08lX, SetInputMediaType 0x%08lX", what, (unsigned long)h1, (unsigned long)h2, (unsigned long)h3);
+    return SUCCEEDED(h3);
+}
+
+static int RunAudioLab()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"audiolab: MFStartup failed"); return 1; }
+    auto pcm = [](int rate, int ch) {
+        IMFMediaType* t = nullptr; MFCreateMediaType(&t);
+        t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio); t->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+        t->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16); t->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, rate); t->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, ch);
+        t->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, rate * 2 * ch); t->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 2 * ch);
+        return t;
+    };
+    auto ours = [](const GUID& sub, int bps, int rate, int ch) {
+        IMFMediaType* t = nullptr; MFCreateMediaType(&t);
+        t->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio); t->SetGUID(MF_MT_SUBTYPE, sub);
+        t->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16); t->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, rate); t->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, ch);
+        t->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, bps); t->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+        if (sub == MFAudioFormat_AAC) { t->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0); t->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29); }
+        return t;
+    };
+    Rep(L"INFO", L"audiolab: the types of the program (44.1 kHz mono, bytes a second 16000 / 12000 / 8000 for MP3, 3000 / 2000 / 1500 for AAC)");
+    IMFMediaType* in = pcm(44100, 1);
+    const int mp3Bps[3] = { 16000, 12000, 8000 }, aacBps[3] = { 24000, 16000, 12000 };
+    for (int i = 0; i < 3; ++i) { IMFMediaType* o = ours(MFAudioFormat_MP3, mp3Bps[i], 44100, 1); wchar_t n[64]; _snwprintf(n, 64, L"program MP3 %d", mp3Bps[i]); AudioLabTry(n, o, in); o->Release(); }
+    for (int i = 0; i < 3; ++i) { IMFMediaType* o = ours(MFAudioFormat_AAC, aacBps[i], 44100, 1); wchar_t n[64]; _snwprintf(n, 64, L"program AAC %d", aacBps[i]); AudioLabTry(n, o, in); o->Release(); }
+    in->Release();
+    // the types Windows itself lists for the MP3 encoder
+    Rep(L"INFO", L"audiolab: MFTranscodeGetAudioOutputAvailableTypes(MP3)");
+    IMFCollection* col = nullptr;
+    HRESULT hr = MFTranscodeGetAudioOutputAvailableTypes(MFAudioFormat_MP3, MFT_ENUM_FLAG_ALL, nullptr, &col);
+    DWORD n = 0; if (SUCCEEDED(hr) && col) col->GetElementCount(&n);
+    Rep(L"INFO", L"  0x%08lX, %lu types", (unsigned long)hr, (unsigned long)n);
+    int tried = 0;
+    for (DWORD i = 0; SUCCEEDED(hr) && col && i < n && tried < 40; ++i) {
+        IUnknown* u = nullptr; IMFMediaType* t = nullptr;
+        if (FAILED(col->GetElement(i, &u)) || !u) continue;
+        if (SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+            UINT32 rate = 0, ch = 0, bps = 0, ba = 0, ud = 0; t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
+            t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps); t->GetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, &ba); t->GetBlobSize(MF_MT_USER_DATA, &ud);
+            if (rate == 44100 && ch == 1) {
+                wchar_t nm[100]; _snwprintf(nm, 100, L"system MP3 %lu Hz %lu ch %lu B/s align %lu userdata %lu", (unsigned long)rate, (unsigned long)ch, (unsigned long)bps, (unsigned long)ba, (unsigned long)ud);
+                IMFMediaType* pin = pcm(44100, 1); AudioLabTry(nm, t, pin); pin->Release(); ++tried;
+            }
+            t->Release();
+        }
+        u->Release();
+    }
+    if (col) col->Release();
+    MFShutdown();
+    Rep(L"INFO", L"audiolab: done");
+    return 0;
+}
+
 static int RunKeyLab7()
 {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -3978,6 +4098,7 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab5")) return RunKeyLab5();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab6")) return RunKeyLab6();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab7")) return RunKeyLab7();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--audiolab")) return RunAudioLab();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
@@ -4006,7 +4127,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();

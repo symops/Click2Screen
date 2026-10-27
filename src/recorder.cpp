@@ -310,6 +310,34 @@ static IMFMediaType* AudioType(const GUID& sub, int bytesPerSec, bool compressed
     return t;
 }
 
+// An MP3 output type for 44.1 kHz mono, the available bit rate closest to the wanted one. The type is taken from the list Windows gives for
+// its MP3 encoder: a hand-made one lacks the MPEGLAYER3 fields (MF_MT_USER_DATA) and Windows 10 refuses it (MF_E_INVALIDMEDIATYPE, measured).
+static IMFMediaType* Mp3Type(int wantBytesPerSec)
+{
+    IMFCollection* col = nullptr;
+    if (FAILED(MFTranscodeGetAudioOutputAvailableTypes(MFAudioFormat_MP3, MFT_ENUM_FLAG_ALL, nullptr, &col)) || !col) return nullptr;
+    DWORD n = 0; col->GetElementCount(&n);
+    IMFMediaType* best = nullptr; int bestDiff = 0x7fffffff;
+    for (DWORD i = 0; i < n; ++i) {
+        IUnknown* u = nullptr;
+        if (FAILED(col->GetElement(i, &u)) || !u) continue;
+        IMFMediaType* t = nullptr;
+        if (SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+            UINT32 rate = 0, ch = 0, bps = 0;
+            t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch); t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps);
+            int diff = (int)bps - wantBytesPerSec; if (diff < 0) diff = -diff;
+            if (rate == (UINT32)kAudioRate && ch == 1 && diff < bestDiff) {
+                if (best) best->Release();
+                best = t; t->AddRef(); bestDiff = diff;
+            }
+            t->Release();
+        }
+        u->Release();
+    }
+    col->Release();
+    return best;
+}
+
 // A Windows Media Audio output type for 44.1 kHz mono, the available bit rate closest to the wanted one.
 static IMFMediaType* WmaType(int wantBytesPerSec)
 {
@@ -540,12 +568,13 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             if (ao) ao->Release();
             if (ai) ai->Release();
         }
-        for (int attempt = 0; attempt < 2 && !ok && fmt != VC_WMV; ++attempt) {
-            bool mp3 = attempt == 0 ? p.cfg.audioCodec == 1 : p.cfg.audioCodec != 1;   // second try: the other codec
-            IMFMediaType* ao = AudioType(mp3 ? MFAudioFormat_MP3 : MFAudioFormat_AAC, mp3 ? mp3Bps[q] : aacBps[q], true);
+        HRESULT hrAudio = S_OK;
+        const bool mp3 = p.cfg.audioCodec == 1;                          // the codec chosen is the codec recorded, or nothing: no silent switch to the other one
+        for (int attempt = 0; attempt < 1 && !ok && fmt != VC_WMV; ++attempt) {
+            IMFMediaType* ao = mp3 ? Mp3Type(mp3Bps[q]) : AudioType(MFAudioFormat_AAC, aacBps[q], true);
             IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
             HRESULT hrA = E_FAIL, hrI = E_FAIL;
-            if (ao && ai && !AudioProbe(p.path, ao, ai)) { Log(L"recorder: this Windows cannot encode %s sound here, trying the other codec", mp3 ? L"MP3" : L"AAC"); hrI = MF_E_INVALIDMEDIATYPE; }
+            if (ao && ai && !AudioProbe(p.path, ao, ai)) { Log(L"recorder: this Windows cannot encode %s sound here", mp3 ? L"MP3" : L"AAC"); hrI = MF_E_INVALIDMEDIATYPE; }
             else if (ao && ai) {
                 hrA = d.sw->AddStream(ao, &d.aStream);
                 if (SUCCEEDED(hrA)) hrI = d.sw->SetInputMediaType(d.aStream, ai, nullptr);
@@ -554,6 +583,11 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             Log(L"recorder: audio %s: AddStream 0x%08lX (stream %lu), SetInputMediaType 0x%08lX, video stream %lu", mp3 ? L"MP3" : L"AAC", (unsigned long)hrA, (unsigned long)d.aStream, (unsigned long)hrI, (unsigned long)d.vStream);
             if (ao) ao->Release();
             if (ai) ai->Release();
+            hrAudio = FAILED(hrA) ? hrA : hrI;
+        }
+        if (!ok) {                                                           // the sound asked for cannot be recorded: an error, not a silent file
+            d.CloseAudio();
+            return fail(fmt == VC_WMV ? L"WMA audio encoder" : mp3 ? L"MP3 audio encoder" : L"AAC audio encoder", hrAudio ? hrAudio : MF_E_INVALIDMEDIATYPE);
         }
         bool micOk = !p.cfg.mic || (ok && d.OpenAudio());                  // the microphone: a message when it is refused
         if (ok) d.hasAudio = true;                                          // the stream exists; the mix is silence where a source gives nothing
