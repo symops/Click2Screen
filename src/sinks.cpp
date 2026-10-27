@@ -37,7 +37,7 @@ public:
     ~AviSink() override
     {
         if (m_file != INVALID_HANDLE_VALUE) CloseHandle(m_file);
-        free(m_idx); free(m_flip);
+        free(m_idx); free(m_flip); free(m_prev);
         if (m_wic) m_wic->Release();
     }
 
@@ -62,6 +62,17 @@ public:
         LONGLONG gap = want - m_nextFrame;
         if (gap > 2000) gap = 2000;
         for (LONGLONG i = 0; i < gap; ++i) if (!Chunk('0', '0', 'd', 'c', nullptr, 0, 0)) return false;   // repeat the last picture
+        // A picture that is the same as the last one is not encoded again: empty chunks repeat the last picture (a still screen then costs
+        // nothing, not a full JPEG of 100-400 KB 25 times a second).
+        const size_t bytes = (size_t)m_w * m_h * 4;
+        if (m_prev && m_havePrev && !memcmp(dib, m_prev, bytes)) {
+            if (!Chunk('0', '0', 'd', 'c', nullptr, 0, 0)) return false;
+            m_nextFrame = want + 1;
+            if (m_pos > 3900000000ULL) m_full = true;
+            return true;
+        }
+        if (!m_prev) m_prev = (u8*)malloc(bytes);
+        if (m_prev) { memcpy(m_prev, dib, bytes); m_havePrev = true; }
         FlipRows(dib, m_flip, m_w, m_h);
         IWICBitmap* bmp = nullptr;
         if (FAILED(m_wic->CreateBitmapFromMemory(m_w, m_h, GUID_WICPixelFormat32bppBGR, m_w * 4, (UINT)((size_t)m_w * m_h * 4), m_flip, &bmp))) return false;
@@ -150,6 +161,9 @@ private:
                 PROPBAG2 opt; memset(&opt, 0, sizeof(opt)); opt.pstrName = (LPOLESTR)L"ImageQuality";
                 VARIANT v; VariantInit(&v); v.vt = VT_R4; v.fltVal = (float)m_q;
                 props->Write(1, &opt, &v);
+                PROPBAG2 sub; memset(&sub, 0, sizeof(sub)); sub.pstrName = (LPOLESTR)L"JpegYCrCbSubsampling";      // 4:2:0: the colour at half the size, as any video
+                VARIANT vs; VariantInit(&vs); vs.vt = VT_UI1; vs.bVal = 1;                                         // WICJpegYCrCbSubsampling420
+                props->Write(1, &sub, &vs);
             }
             WICPixelFormatGUID pf = GUID_WICPixelFormat24bppBGR;
             if (SUCCEEDED(fr->Initialize(props)) && SUCCEEDED(fr->SetSize(m_w, m_h)) && SUCCEEDED(fr->SetPixelFormat(&pf)) &&
@@ -215,6 +229,7 @@ private:
     IWICImagingFactory* m_wic = nullptr;
     HANDLE m_file = INVALID_HANDLE_VALUE;
     u8* m_flip = nullptr;
+    u8* m_prev = nullptr; bool m_havePrev = false;         // the last picture as it came, to tell an unchanged one
     uint64_t m_pos = 0;
     LONGLONG m_interval = 400000;
     LONGLONG m_nextFrame = 0;
@@ -353,7 +368,7 @@ private:
 
 FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality, bool audio, wchar_t* why, int whyLen)
 {
-    static const double q[3] = { 0.9, 0.8, 0.6 };
+    static const double q[3] = { 0.8, 0.65, 0.45 };      // high / medium / low (a screen with text stays readable far below the 0.9 of a photograph)
     AviSink* s = new AviSink(w, h, fps, q[quality < 0 ? 0 : quality > 2 ? 2 : quality], audio);
     if (!s->Open(path, why, whyLen)) { delete s; DeleteFileW(path); return nullptr; }
     return s;

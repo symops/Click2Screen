@@ -2850,6 +2850,33 @@ static void T_Effects()
 }
 
 // ---- sound: the conversion, the mix, the queue, and the speakers themselves ---------------------------------------------
+// The AVI sink: a still picture is written once and then repeated (empty chunks), and a changed one is written again. 60 frames of one picture
+// and one different at the end must make exactly two real JPEG chunks.
+static void T_AviStill()
+{
+    if (!ImageFormatAvailable(IMG_JPG)) { SKIP(L"avi still: no JPEG encoder here"); return; }
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\still.avi", g_dir);
+    const int W = 320, H = 200, FPS = 25;
+    wchar_t why[160] = L"";
+    FrameSink* sink = CreateAviSink(path, W, H, FPS, 1, false, why, 160);
+    if (!sink) { FAIL(L"avi still: the sink could not be made: %s", why); return; }
+    uint8_t* dib = new uint8_t[(size_t)W * H * 4];
+    for (size_t i = 0; i < (size_t)W * H; ++i) ((uint32_t*)dib)[i] = (i / W) % 2 ? 0x00FF8000u : 0x000080FFu;      // stripes: not a flat picture
+    bool ok = true;
+    for (int i = 0; i < 60 && ok; ++i) ok = sink->Video(dib, (LONGLONG)i * 10000000LL / FPS);
+    ((uint32_t*)dib)[1000] ^= 0x00FFFFFF;                                                                 // one pixel changes
+    ok = ok && sink->Video(dib, (LONGLONG)60 * 10000000LL / FPS);
+    ok = sink->Close(ok) && ok;
+    delete sink; delete[] dib;
+    uint8_t* keep = nullptr; AviInfo a = ReadAvi(path, 0, &keep); delete[] keep;
+    LARGE_INTEGER sz; sz.QuadPart = 0;
+    HANDLE hf = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (hf != INVALID_HANDLE_VALUE) { GetFileSizeEx(hf, &sz); CloseHandle(hf); }
+    wchar_t d[160]; _snwprintf(d, 160, L"%u video chunks, %u empty, the file is %lld bytes", a.vChunks, a.emptyV, (long long)sz.QuadPart);
+    Check(ok && a.ok && a.vChunks == 61 && a.emptyV == 59, L"avi still: a picture that does not change is written once, then repeated", d);
+    DeleteFileW(path);
+}
+
 static void T_Audio()
 {
     // 48 kHz stereo -> mono 44.1 kHz: the length, the pitch and the loudness stay, the stream is continuous over the blocks
@@ -3776,7 +3803,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
