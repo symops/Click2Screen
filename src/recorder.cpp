@@ -484,6 +484,18 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         }
         Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 20, (unsigned long)hrc);
     }
+    if (SUCCEEDED(hr) && fmt == VC_WMV) {
+        // The WMV encoder ignores the quality setting of the sink writer's config but takes it through ICodecAPI; its default (a high
+        // complexity) costs 3-4 times the processor of 25 (measured, 1080p: 370-460 ms of CPU a frame against 120 ms, the file not bigger).
+        ICodecAPI* api = nullptr;
+        HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
+        if (SUCCEEDED(hrc) && api) {
+            VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = 25;
+            hrc = api->SetValue(&kQualityVsSpeed, &v);
+            api->Release();
+        }
+        Log(L"video encoder: WMV quality vs speed 25 set: 0x%08lX", (unsigned long)hrc);
+    }
     if (FAILED(hr)) return fail(fmt == VC_H265 ? L"H.265" : fmt == VC_WMV ? L"WMV" : L"H.264", hr);
 
     // Audio (optional): AAC or MP3 from a 16-bit mono microphone stream.

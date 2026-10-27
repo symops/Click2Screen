@@ -3461,6 +3461,11 @@ const GUID kLabRate       = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x
 const GUID kLabQvS        = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
 const GUID kLabQuality    = { 0xfcbf57a3, 0x7ea5, 0x4b0c, { 0x96, 0x44, 0x69, 0xb4, 0x0c, 0x39, 0xc3, 0x91 } };
 const GUID kLabMaxSpacing = { 0xc16eb52b, 0x73a1, 0x476f, { 0x8d, 0x62, 0x83, 0x9d, 0x6a, 0x02, 0x06, 0x52 } };   // MF_MT_MAX_KEYFRAME_SPACING
+const GUID kLabContentType = { 0x66117aca, 0xeb77, 0x459d, { 0x93, 0x0c, 0xa4, 0x8d, 0x9d, 0x06, 0x83, 0xfc } };
+const GUID kLabRealTime    = { 0x143a0ff6, 0xa131, 0x43da, { 0xb8, 0x1e, 0x98, 0xfb, 0xb8, 0xec, 0x37, 0x8e } };
+const GUID kLabCommonLow   = { 0x9d3ecd55, 0x89e8, 0x490a, { 0x97, 0x0a, 0x0c, 0x95, 0x48, 0xd5, 0xa5, 0x6e } };
+const GUID kLabTemporal    = { 0x19caebff, 0xb74d, 0x4cfd, { 0x8c, 0x27, 0xc2, 0xf9, 0xd9, 0x7d, 0x5f, 0x52 } };
+const GUID kLabMaxRef      = { 0x964829ed, 0x94f9, 0x43b4, { 0xb7, 0x4d, 0xef, 0x40, 0x94, 0x4b, 0x69, 0xa0 } };
 const GUID kLabIidApi     = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
 const GUID kLabIidSwEx    = { 0x588d72ab, 0x5bc1, 0x496a, { 0x87, 0x14, 0xb7, 0x06, 0x17, 0x14, 0x1b, 0x25 } };
 
@@ -3494,6 +3499,7 @@ static double LabCpuSeconds()
 }
 
 // One sink writer: H.264 or WMV, 10 fps unless told, a picture that is red above and blue below with a white square.
+struct LabEx { const GUID* g; int vt; int val; const wchar_t* name; };          // vt: 1 unsigned, 2 boolean
 struct LabCfg {
     const wchar_t* name;
     bool wmv;
@@ -3509,6 +3515,9 @@ struct LabCfg {
     int stride;         // MF_MT_DEFAULT_STRIDE of the input: 0 not set, -1 bottom-up
     bool topDown;       // the pixels are given top-down
     int frames;
+    const struct LabEx* ex;   // more properties through ICodecAPI (round 3)
+    int nex;
+    bool ranges;        // write the range the encoder gives for the key frame interval and the quality
 };
 
 static void LabOne(const LabCfg& c, int idx, bool keep)
@@ -3542,8 +3551,8 @@ static void LabOne(const LabCfg& c, int idx, bool keep)
     DWORD st = 0;
     hr = w->AddStream(vo, &st);
     if (SUCCEEDED(hr)) hr = w->SetInputMediaType(st, vi, nullptr);
-    wchar_t info[300] = L"";
-    auto cat = [&](const wchar_t* fmt, ...) { va_list ap; va_start(ap, fmt); size_t n = wcslen(info); _vsnwprintf(info + n, 300 - n - 1, fmt, ap); va_end(ap); };
+    wchar_t info[600] = L"";
+    auto cat = [&](const wchar_t* fmt, ...) { va_list ap; va_start(ap, fmt); size_t n = wcslen(info); _vsnwprintf(info + n, 600 - n - 1, fmt, ap); va_end(ap); };
     if (SUCCEEDED(hr)) {
         ICodecAPI* api = nullptr;
         if (SUCCEEDED(w->GetServiceForStream(st, GUID_NULL, kLabIidApi, (void**)&api)) && api) {
@@ -3552,6 +3561,21 @@ static void LabOne(const LabCfg& c, int idx, bool keep)
             if (c.gopApi) setU(kLabGop, (unsigned)c.gopApi, L"GOP");
             if (c.qvsApi >= 0) setU(kLabQvS, (unsigned)c.qvsApi, L"QvS");
             if (c.rcApi) setU(kLabRate, c.rcApi == 1 ? eAVEncCommonRateControlMode_UnconstrainedVBR : eAVEncCommonRateControlMode_CBR, L"rate");
+            for (int e = 0; e < c.nex; ++e) {
+                const LabEx& x = c.ex[e];
+                HRESULT sup = api->IsSupported(x.g);
+                v.vt = x.vt == 2 ? VT_BOOL : VT_UI4; if (x.vt == 2) v.boolVal = x.val ? VARIANT_TRUE : VARIANT_FALSE; else v.ulVal = (ULONG)x.val;
+                HRESULT r = api->SetValue(x.g, &v);
+                cat(L" %s=%d(%s)", x.name, x.val, r == S_OK ? L"ok" : sup == S_OK ? L"refused" : L"unsupported");
+            }
+            if (c.ranges) {
+                struct { const GUID* g; const wchar_t* n; } rg[] = { { &kLabGop, L"GOP" }, { &kLabQvS, L"QvS" } };
+                for (auto& q : rg) {
+                    VARIANT lo, hi, stp; VariantInit(&lo); VariantInit(&hi); VariantInit(&stp);
+                    HRESULT r = api->GetParameterRange(q.g, &lo, &hi, &stp);
+                    if (SUCCEEDED(r)) cat(L" range[%s]=%lu..%lu step %lu", q.n, (unsigned long)lo.ulVal, (unsigned long)hi.ulVal, (unsigned long)stp.ulVal); else cat(L" range[%s]:0x%08lX", q.n, (unsigned long)r);
+                }
+            }
             VARIANT g; VariantInit(&g);
             if (api->IsSupported(&kLabQvS) == S_OK && SUCCEEDED(api->GetValue(&kLabQvS, &g))) cat(L" QvS now %lu", (unsigned long)g.ulVal);
             api->Release();
@@ -3626,6 +3650,48 @@ static void LabRecorderWmv()
 }
 } // namespace
 
+static int RunKeyLab3()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab3: MFStartup failed"); return 1; }
+    static const LabEx exContent[] = { { &kLabContentType, 1, 1, L"ContentType(FixedCameraAngle)" } };
+    static const LabEx exRtOff[] = { { &kLabRealTime, 2, 0, L"RealTime" } };
+    static const LabEx exRtOn[] = { { &kLabRealTime, 2, 1, L"RealTime" } };
+    static const LabEx exLowOn[] = { { &kLabCommonLow, 2, 1, L"CommonLowLatency" } };
+    static const LabEx exLowOff[] = { { &kLabCommonLow, 2, 0, L"CommonLowLatency" } };
+    static const LabEx exLayer[] = { { &kLabTemporal, 1, 1, L"TemporalLayers" } };
+    static const LabEx exRef1[] = { { &kLabMaxRef, 1, 1, L"MaxNumRefFrame" } };
+    static const LabEx exCombo[] = { { &kLabRealTime, 2, 0, L"RealTime" }, { &kLabCommonLow, 2, 0, L"CommonLowLatency" }, { &kLabContentType, 1, 1, L"ContentType" } };
+    //             name                                           wmv    w     h    fps bitrate  jump gopA gopApi spac qvsA qvsApi rc stride topDown frames ex nex ranges
+    static const LabCfg cfgs[] = {
+        { L"H.264 1080p, GOP 200, the ranges",                    false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, true },
+        { L"H.264 1080p, QvS 0",                                  false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, 0,  0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, QvS 20",                                 false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, 20, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, QvS 50",                                 false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, 50, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, QvS 85",                                 false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, 85, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, QvS 100",                                false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, 100, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, content type: fixed camera",             false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exContent, 1, false },
+        { L"H.264 1080p, real time off",                          false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exRtOff, 1, false },
+        { L"H.264 1080p, real time on",                           false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exRtOn, 1, false },
+        { L"H.264 1080p, common low latency on",                  false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exLowOn, 1, false },
+        { L"H.264 1080p, common low latency off",                 false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exLowOff, 1, false },
+        { L"H.264 1080p, one temporal layer",                     false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exLayer, 1, false },
+        { L"H.264 1080p, one reference frame",                    false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exRef1, 1, false },
+        { L"H.264 1080p, real time off + low latency off + fixed camera", false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, exCombo, 3, false },
+        { L"H.264 1080p, CBR + GOP 200",                          false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 3, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, GOP 100 (10 s) to see whether any value counts", false, 1920, 1080, 10, 2400000, 0, 0, 100, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, GOP 5 (half a second)",                  false, 1920, 1080, 10, 2400000, 0, 0, 5, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, GOP 15 (1.5 s)",                         false, 1920, 1080, 10, 2400000, 0, 0, 15, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false },
+        { L"H.264 1080p, GOP 25 (2.5 s)",                         false, 1920, 1080, 10, 2400000, 0, 0, 25, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false },
+    };
+    int idx = 100;
+    Rep(L"INFO", L"keylab3: H.264 1080p, 10 fps, 300 frames of a picture that never changes");
+    for (const LabCfg& c : cfgs) LabOne(c, ++idx, false);
+    MFShutdown();
+    Rep(L"INFO", L"keylab3: done");
+    return 0;
+}
+
 static int RunKeyLab()
 {
     HRESULT hrc = CoInitializeEx(nullptr, COINIT_MULTITHREADED); (void)hrc;
@@ -3681,6 +3747,7 @@ int wmain(int argc, wchar_t** argv)
     bool keep = false;
     const wchar_t* only = nullptr;
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab")) return RunKeyLab();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab3")) return RunKeyLab3();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
