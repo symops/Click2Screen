@@ -472,7 +472,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     if (SUCCEEDED(hr)) hr = d.sw->SetInputMediaType(d.vStream, vi, nullptr);
     vo->Release(); vi->Release();
     if (SUCCEEDED(hr) && (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)) {
-        // the key frame interval again, straight on the encoder: the sink writer's config attribute is not honoured by every encoder
+        // The key frame interval, straight on the encoder: the sink writer's config attributes are ignored (measured). The software H.264 encoder of
+        // Windows 11 takes this value and reads it back but does not use it: it keys every second of media time whatever is asked (the encoder of
+        // Windows 10 and, presumably, the hardware ones keep the interval). Nothing else sets it there: see the notes in the repository history.
         ICodecAPI* api = nullptr;
         HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
         if (SUCCEEDED(hrc) && api) {
