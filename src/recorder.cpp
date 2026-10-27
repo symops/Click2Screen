@@ -470,11 +470,11 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     if (fmt == VC_WMV) vi->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(LONG)(-(LONG)d.w * 4));
     hr = d.sw->AddStream(vo, &d.vStream);
     if (SUCCEEDED(hr)) hr = d.sw->SetInputMediaType(d.vStream, vi, nullptr);
-    vo->Release(); vi->Release();
+    vo->Release();
     if (SUCCEEDED(hr) && (fmt == VC_H264_BEST || fmt == VC_H264_FAST || fmt == VC_H265)) {
         // The key frame interval, straight on the encoder: the sink writer's config attributes are ignored (measured). The software H.264 encoder of
-        // Windows 11 takes this value and reads it back but does not use it: it keys every second of media time whatever is asked (the encoder of
-        // Windows 10 and, presumably, the hardware ones keep the interval). Nothing else sets it there: see the notes in the repository history.
+        // Windows 11 takes this value and reads it back but uses it only after the types are negotiated again (see below; the encoder of
+        // Windows 10 and, presumably, the hardware ones take it at once).
         ICodecAPI* api = nullptr;
         HRESULT hrc = d.sw->GetServiceForStream(d.vStream, GUID_NULL, kIidCodecApi, (void**)&api);
         if (SUCCEEDED(hrc) && api) {
@@ -483,6 +483,30 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             hrc = api->SetValue(&kGopSize, &v);
             Log(L"video encoder: max key frame distance set: 0x%08lX", (unsigned long)hrM);
             api->Release();
+            // The software encoder of Windows 11 reads the interval back but applies it only when its types are set again (measured on the
+            // encoder alone and through the sink writer: set after the types - a key frame every second, the types set again on the encoder -
+            // every 20 s, the file 4-5 times smaller). The sink writer does nothing on its own SetInputMediaType again: the types go straight
+            // to the encoder, the second transform of the stream (the first is the colour converter).
+            IMFSinkWriterEx* wx = nullptr;
+            if (SUCCEEDED(d.sw->QueryInterface(__uuidof(IMFSinkWriterEx), (void**)&wx)) && wx) {
+                int redone = 0;
+                for (DWORD ti = 0; ti < 6; ++ti) {
+                    IMFTransform* t = nullptr; GUID cg = GUID_NULL;
+                    if (FAILED(wx->GetTransformForStream(d.vStream, ti, &cg, &t)) || !t) break;
+                    if (IsEqualGUID(cg, MFT_CATEGORY_VIDEO_ENCODER)) {
+                        IMFMediaType* to = nullptr; IMFMediaType* ti2 = nullptr;
+                        t->GetOutputCurrentType(0, &to); t->GetInputCurrentType(0, &ti2);
+                        HRESULT r1 = to ? t->SetOutputType(0, to, 0) : E_FAIL, r2 = ti2 ? t->SetInputType(0, ti2, 0) : E_FAIL;
+                        Log(L"video encoder: types set again on the encoder: 0x%08lX / 0x%08lX", (unsigned long)r1, (unsigned long)r2);
+                        if (to) to->Release();
+                        if (ti2) ti2->Release();
+                        ++redone;
+                    }
+                    t->Release();
+                }
+                if (!redone) Log(L"video encoder: the sink writer shows no encoder transform");
+                wx->Release();
+            }
         }
         Log(L"video encoder: key frame interval %d frames, set directly: 0x%08lX", d.fps * 20, (unsigned long)hrc);
     }
@@ -498,6 +522,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         }
         Log(L"video encoder: WMV quality vs speed 25 set: 0x%08lX", (unsigned long)hrc);
     }
+    vi->Release();
     if (FAILED(hr)) return fail(fmt == VC_H265 ? L"H.265" : fmt == VC_WMV ? L"WMV" : L"H.264", hr);
 
     // Audio (optional): AAC or MP3 from a 16-bit mono microphone stream.

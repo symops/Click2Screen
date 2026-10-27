@@ -3520,6 +3520,7 @@ struct LabCfg {
     bool ranges;        // write the range the encoder gives for the key frame interval and the quality
     int declFps;        // the frame rate told to the encoder in the media types (0: fps)
     int ptsFps;         // the rate of the time stamps of the samples (0: fps)
+    int renego;         // after the values: 1 the same input type again through the sink writer, 2 the types set again on the encoder itself (IMFSinkWriterEx), 3 a changed input type, 4 flush + types on the encoder
 };
 
 static void LabOne(const LabCfg& c, int idx, bool keep)
@@ -3577,6 +3578,30 @@ static void LabOne(const LabCfg& c, int idx, bool keep)
                     HRESULT r = api->GetParameterRange(q.g, &lo, &hi, &stp);
                     if (SUCCEEDED(r)) cat(L" range[%s]=%lu..%lu step %lu", q.n, (unsigned long)lo.ulVal, (unsigned long)hi.ulVal, (unsigned long)stp.ulVal); else cat(L" range[%s]:0x%08lX", q.n, (unsigned long)r);
                 }
+            }
+            if (c.renego == 1) cat(L" renego1:0x%08lX", (unsigned long)w->SetInputMediaType(st, vi, nullptr));
+            if (c.renego == 3) { vi->SetUINT32(MF_MT_VIDEO_NOMINAL_RANGE, MFNominalRange_0_255); cat(L" renego3:0x%08lX", (unsigned long)w->SetInputMediaType(st, vi, nullptr)); }
+            if (c.renego == 2 || c.renego == 4) {
+                IMFSinkWriterEx* wx = nullptr;
+                HRESULT rx = w->QueryInterface(__uuidof(IMFSinkWriterEx), (void**)&wx);
+                cat(L" ex:0x%08lX", (unsigned long)rx);
+                for (DWORD ti2 = 0; SUCCEEDED(rx) && ti2 < 6; ++ti2) {
+                    IMFTransform* t = nullptr; GUID cg = GUID_NULL;
+                    if (FAILED(wx->GetTransformForStream(st, ti2, &cg, &t)) || !t) break;
+                    const bool isEnc = IsEqualGUID(cg, MFT_CATEGORY_VIDEO_ENCODER) != 0;
+                    cat(L" [t%lu %s", (unsigned long)ti2, isEnc ? L"encoder" : cg.Data1 == MFT_CATEGORY_VIDEO_PROCESSOR.Data1 ? L"processor" : L"other");
+                    if (isEnc) {
+                        IMFMediaType* to = nullptr; IMFMediaType* ti = nullptr;
+                        HRESULT r1 = t->GetOutputCurrentType(0, &to), r2 = t->GetInputCurrentType(0, &ti);
+                        if (c.renego == 4) t->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0);
+                        HRESULT r3 = to ? t->SetOutputType(0, to, 0) : r1, r4 = ti ? t->SetInputType(0, ti, 0) : r2;
+                        cat(L" cur:0x%08lX/0x%08lX set:0x%08lX/0x%08lX", (unsigned long)r1, (unsigned long)r2, (unsigned long)r3, (unsigned long)r4);
+                        if (to) to->Release(); if (ti) ti->Release();
+                    }
+                    cat(L"]");
+                    t->Release();
+                }
+                if (wx) wx->Release();
             }
             VARIANT g; VariantInit(&g);
             if (api->IsSupported(&kLabQvS) == S_OK && SUCCEEDED(api->GetValue(&kLabQvS, &g))) cat(L" QvS now %lu", (unsigned long)g.ulVal);
@@ -3652,6 +3677,178 @@ static void LabRecorderWmv()
     if (g_fx.hw) { DestroyWindow(g_fx.hw); g_fx.hw = nullptr; }
 }
 } // namespace
+
+
+// ---- round 5: the H.264 encoder MFT used directly (no sink writer, no MP4): where are its IDR frames? ------------------------------------
+namespace {
+static const GUID kClsidH264Enc = { 0x6ca50344, 0x051a, 0x4ded, { 0x97, 0x79, 0xa4, 0x33, 0x05, 0x16, 0x5e, 0x35 } };    // CLSID_CMSH264EncoderMFT
+static const GUID kIidTransformLab = { 0xbf94c121, 0x5b05, 0x4e6f, { 0x80, 0x00, 0xba, 0x59, 0x89, 0x61, 0x41, 0x4d } };
+
+struct DirectCfg { const wchar_t* name; int gop; int when; /* 0 never set, 1 before the types, 2 after the types, 3 after BEGIN_STREAMING */ int w, h, fps; bool mp4; const wchar_t* file; };
+
+static void DirectOne(const DirectCfg& c)
+{
+    IMFTransform* mft = nullptr;
+    HRESULT hr = CoCreateInstance(kClsidH264Enc, nullptr, CLSCTX_INPROC_SERVER, kIidTransformLab, (void**)&mft);
+    if (FAILED(hr) || !mft) { Rep(L"INFO", L"direct [%s]: the encoder MFT cannot be made 0x%08lX", c.name, (unsigned long)hr); return; }
+    ICodecAPI* api = nullptr; mft->QueryInterface(kLabIidApi, (void**)&api);
+    auto setGop = [&]() -> HRESULT { if (!api || !c.gop) return S_OK; VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = (ULONG)c.gop; return api->SetValue(&kLabGop, &v); };
+    HRESULT hrGop = S_OK;
+    if (c.when == 1) hrGop = setGop();
+    IMFMediaType* out = nullptr; IMFMediaType* in = nullptr;
+    MFCreateMediaType(&out); MFCreateMediaType(&in);
+    out->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); out->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    out->SetUINT32(MF_MT_AVG_BITRATE, 2400000); out->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive); out->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main);
+    MFSetAttributeSize(out, MF_MT_FRAME_SIZE, c.w, c.h); MFSetAttributeRatio(out, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(out, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    in->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); in->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12); in->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(in, MF_MT_FRAME_SIZE, c.w, c.h); MFSetAttributeRatio(in, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(in, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    HRESULT hrO = mft->SetOutputType(0, out, 0), hrI = mft->SetInputType(0, in, 0);
+    if (c.when == 2) hrGop = setGop();
+    if (c.when == 4) { hrGop = setGop(); hrO = mft->SetOutputType(0, out, 0); hrI = mft->SetInputType(0, in, 0); }           // set, then negotiate the types again
+    if (c.when == 5) { hrGop = setGop(); mft->ProcessMessage(MFT_MESSAGE_COMMAND_FLUSH, 0); hrO = mft->SetOutputType(0, out, 0); hrI = mft->SetInputType(0, in, 0); }
+    mft->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
+    mft->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM, 0);
+    if (c.when == 3) hrGop = setGop();
+    VARIANT gv; VariantInit(&gv); unsigned gopNow = 0;
+    if (api && api->IsSupported(&kLabGop) == S_OK && SUCCEEDED(api->GetValue(&kLabGop, &gv))) gopNow = gv.ulVal;
+    // an NV12 picture: red above, blue below
+    const size_t ySize = (size_t)c.w * c.h, frameBytes = ySize * 3 / 2;
+    BYTE* pic = (BYTE*)malloc(frameBytes);
+    for (int y = 0; y < c.h; ++y) memset(pic + (size_t)y * c.w, y < c.h / 2 ? 81 : 41, c.w);
+    for (int y = 0; y < c.h / 2; ++y) { BYTE* uv = pic + ySize + (size_t)y * c.w; for (int x = 0; x < c.w; x += 2) { bool top = y < c.h / 4; uv[x] = top ? 90 : 240; uv[x + 1] = top ? 240 : 110; } }
+    IMFSinkWriter* sw = nullptr; DWORD st = 0; HRESULT hrSw = S_OK, hrWr = S_OK;
+    if (c.mp4) {
+        IMFAttributes* at = nullptr; MFCreateAttributes(&at, 2); at->SetGUID(MF_TRANSCODE_CONTAINERTYPE, MFTranscodeContainerType_MPEG4);
+        IMFMediaType* cur = nullptr; hrSw = mft->GetOutputCurrentType(0, &cur);
+        if (SUCCEEDED(hrSw)) hrSw = MFCreateSinkWriterFromURL(c.file, nullptr, at, &sw);
+        if (SUCCEEDED(hrSw)) hrSw = sw->AddStream(cur, &st);
+        if (SUCCEEDED(hrSw)) hrSw = sw->SetInputMediaType(st, cur, nullptr);
+        if (SUCCEEDED(hrSw)) hrSw = sw->BeginWriting();
+        if (cur) cur->Release(); at->Release();
+    }
+    MFT_OUTPUT_STREAM_INFO info; memset(&info, 0, sizeof(info)); mft->GetOutputStreamInfo(0, &info);
+    int frames = c.fps * 30, outSamples = 0, idrs = 0; int idrAt[40] = {};
+    for (int i = 0; i < frames && SUCCEEDED(hrI) && SUCCEEDED(hrO); ++i) {
+        IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+        if (FAILED(MFCreateMemoryBuffer((DWORD)frameBytes, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) break;
+        memcpy(d, pic, frameBytes); b->Unlock(); b->SetCurrentLength((DWORD)frameBytes);
+        MFCreateSample(&sm); sm->AddBuffer(b);
+        sm->SetSampleTime((LONGLONG)i * 10000000LL / c.fps); sm->SetSampleDuration(10000000LL / c.fps);
+        HRESULT r = mft->ProcessInput(0, sm, 0); sm->Release(); b->Release();
+        if (FAILED(r)) break;
+        for (;;) {
+            MFT_OUTPUT_DATA_BUFFER ob; memset(&ob, 0, sizeof(ob));
+            IMFSample* os = nullptr; IMFMediaBuffer* obuf = nullptr;
+            if (!(info.dwFlags & (MFT_OUTPUT_STREAM_PROVIDES_SAMPLES | MFT_OUTPUT_STREAM_CAN_PROVIDE_SAMPLES))) {
+                MFCreateSample(&os); MFCreateMemoryBuffer(info.cbSize ? info.cbSize : (DWORD)frameBytes, &obuf); os->AddBuffer(obuf); ob.pSample = os;
+            }
+            DWORD status = 0; HRESULT ro = mft->ProcessOutput(0, 1, &ob, &status);
+            if (ro == S_OK && ob.pSample) {
+                IMFMediaBuffer* mb = nullptr; ob.pSample->ConvertToContiguousBuffer(&mb);
+                BYTE* bp = nullptr; DWORD len = 0;
+                if (mb && SUCCEEDED(mb->Lock(&bp, nullptr, &len))) {
+                    bool idr = false;
+                    for (DWORD k = 0; k + 4 < len; ++k) if (bp[k] == 0 && bp[k + 1] == 0 && bp[k + 2] == 1 && (bp[k + 3] & 0x1F) == 5) { idr = true; break; }
+                    if (idr) { if (idrs < 40) idrAt[idrs] = outSamples + 1; ++idrs; }
+                    mb->Unlock();
+                }
+                if (mb) mb->Release();
+                if (sw && SUCCEEDED(hrSw)) { HRESULT w1 = sw->WriteSample(st, ob.pSample); if (FAILED(w1)) hrWr = w1; }
+                ++outSamples;
+            }
+            if (ob.pSample && ob.pSample != os) ob.pSample->Release();
+            if (os) os->Release();
+            if (obuf) obuf->Release();
+            if (ob.pEvents) ob.pEvents->Release();
+            if (ro != S_OK) break;
+        }
+    }
+    wchar_t list[300] = L""; size_t ln = 0;
+    for (int k = 0; k < idrs && k < 12; ++k) ln += _snwprintf(list + ln, 300 - ln - 1, L"%d ", idrAt[k]);
+    Rep(L"INFO", L"direct [%s] %dx%d %d fps: GOP asked %d (when %d, 0x%08lX), read back %u; types out 0x%08lX in 0x%08lX; %d frames in, %d out, %d IDR: %s", c.name, c.w, c.h, c.fps, c.gop, c.when, (unsigned long)hrGop, gopNow, (unsigned long)hrO, (unsigned long)hrI, frames, outSamples, idrs, list);
+    HRESULT hrFin = S_OK; if (sw) { hrFin = sw->Finalize(); if (SUCCEEDED(hrSw) && FAILED(hrFin)) {} sw->Release(); }
+    if (c.mp4) Rep(L"INFO", L"  sink writer on the encoded stream: setup 0x%08lX, WriteSample 0x%08lX, finalize 0x%08lX, file %s", (unsigned long)hrSw, (unsigned long)hrWr, (unsigned long)hrFin, c.file);
+    free(pic);
+    if (api) api->Release();
+    out->Release(); in->Release(); mft->Release();
+}
+} // namespace
+
+static int RunKeyLab7()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab7: MFStartup failed"); return 1; }
+    Rep(L"INFO", L"keylab7: GOP 200 through ICodecAPI, then the types negotiated again in four ways (the sink writer, still picture, 1080p)");
+    //             name                                            wmv    w     h    fps bitrate  jump gopA gopApi spac qvsA qvsApi rc stride topDown frames ex nex ranges declFps ptsFps renego
+    static const LabCfg cfgs[] = {
+        { L"no renegotiation (as in 1.0.300)",                     false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0, 0 },
+        { L"same input type again through the sink writer",        false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0, 1 },
+        { L"types set again on the encoder (IMFSinkWriterEx)",     false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0, 2 },
+        { L"changed input type through the sink writer",           false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0, 3 },
+        { L"flush and types set again on the encoder",             false, 1920, 1080, 10, 2400000, 0, 0, 200, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0, 4 },
+    };
+    int idx = 300;
+    for (const LabCfg& c : cfgs) LabOne(c, ++idx, false);
+    MFShutdown();
+    Rep(L"INFO", L"keylab7: done");
+    return 0;
+}
+
+static int RunKeyLab6()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab6: MFStartup failed"); return 1; }
+    Rep(L"INFO", L"keylab6: can the GOP be applied after the types, and an MP4 written from the encoder's own H.264");
+    static const DirectCfg cfgs[] = {
+        { L"GOP 200 set after the types, then the types again",    200, 4, 1920, 1080, 10, false, nullptr },
+        { L"GOP 200 set after the types, flush, types again",      200, 5, 1920, 1080, 10, false, nullptr },
+        { L"GOP 200 before the types, to MP4 (pass-through)",      200, 1, 1920, 1080, 10, true,  L"C:\\ProgramData\\Click2Screen\\logs\\lab6-pass-200.mp4" },
+        { L"GOP 200 before the types, 640x360, to MP4",            200, 1, 640,  360,  10, true,  L"C:\\ProgramData\\Click2Screen\\logs\\lab6-pass-360.mp4" },
+        { L"no GOP, to MP4 (for comparison)",                      0,   0, 1920, 1080, 10, true,  L"C:\\ProgramData\\Click2Screen\\logs\\lab6-pass-none.mp4" },
+    };
+    for (const DirectCfg& c : cfgs) DirectOne(c);
+    MFShutdown();
+    Rep(L"INFO", L"keylab6: done");
+    return 0;
+}
+
+static int RunKeyLab5()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab5: MFStartup failed"); return 1; }
+    Rep(L"INFO", L"keylab5: every H.264 encoder that Windows lists");
+    {
+        MFT_REGISTER_TYPE_INFO out = { MFMediaType_Video, MFVideoFormat_H264 };
+        const UINT32 flagSets[] = { MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_TRANSCODE_ONLY | MFT_ENUM_FLAG_FIELDOFUSE, 0x3F };
+        for (UINT32 fl : flagSets) {
+            IMFActivate** act = nullptr; UINT32 cnt = 0;
+            HRESULT hr = MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, fl, nullptr, &out, &act, &cnt);
+            Rep(L"INFO", L"  MFTEnumEx flags 0x%X: 0x%08lX, %u found", fl, (unsigned long)hr, cnt);
+            for (UINT32 i = 0; SUCCEEDED(hr) && act && i < cnt; ++i) {
+                wchar_t nm[160] = L""; UINT32 len = 0; act[i]->GetString(MFT_FRIENDLY_NAME_Attribute, nm, 160, &len);
+                GUID clsid = GUID_NULL; act[i]->GetGUID(MFT_TRANSFORM_CLSID_Attribute, &clsid);
+                Rep(L"INFO", L"    \"%s\" {%08lX-%04X-%04X-...}", nm, (unsigned long)clsid.Data1, clsid.Data2, clsid.Data3);
+                act[i]->Release();
+            }
+            if (act) CoTaskMemFree(act);
+        }
+    }
+    Rep(L"INFO", L"keylab5: the Microsoft H.264 encoder used directly, 30 s of a still picture, where are the IDR frames");
+    //                      name                                  gop when  w     h    fps
+    static const DirectCfg cfgs[] = {
+        { L"no GOP set",                                           0,   0, 1920, 1080, 10 },
+        { L"GOP 200 set before the types",                         200, 1, 1920, 1080, 10 },
+        { L"GOP 200 set after the types",                          200, 2, 1920, 1080, 10 },
+        { L"GOP 200 set after BEGIN_STREAMING",                    200, 3, 1920, 1080, 10 },
+        { L"GOP 30 set before the types",                          30,  1, 1920, 1080, 10 },
+        { L"GOP 200 before the types, 25 fps",                     500, 1, 1920, 1080, 25 },
+        { L"GOP 200 before the types, 640x360",                    200, 1, 640,  360,  10 },
+    };
+    for (const DirectCfg& c : cfgs) DirectOne(c);
+    MFShutdown();
+    Rep(L"INFO", L"keylab5: done");
+    return 0;
+}
 
 static int RunKeyLab4()
 {
@@ -3778,6 +3975,9 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab")) return RunKeyLab();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab3")) return RunKeyLab3();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab4")) return RunKeyLab4();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab5")) return RunKeyLab5();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab6")) return RunKeyLab6();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab7")) return RunKeyLab7();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
