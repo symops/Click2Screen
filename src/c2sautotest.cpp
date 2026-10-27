@@ -935,10 +935,10 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
             out->Release();
             if (FAILED(hr)) *decoderMissing = true;
             else {
-                IMFMediaType* cur = nullptr; INT32 stride = 0;
+                IMFMediaType* cur = nullptr; INT32 stride = 0; bool strideTold = false;
                 if (SUCCEEDED(rd->GetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, &cur))) {
                     UINT32 s = 0, ow = 0, oh = 0;
-                    if (SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &s))) stride = (INT32)s; else stride = -(INT32)(v.w * 4);   // RGB32 without a stride attribute is bottom-up (the Media Foundation default)
+                    if (SUCCEEDED(cur->GetUINT32(MF_MT_DEFAULT_STRIDE, &s))) { stride = (INT32)s; strideTold = true; } else stride = -(INT32)(v.w * 4);   // RGB32 without a stride attribute is bottom-up (the Media Foundation default)
                     MFGetAttributeSize(cur, MF_MT_FRAME_SIZE, &ow, &oh);
                     Rep(L"INFO", L"  decoder output %ux%u, stride %d (native %dx%d)", ow, oh, (int)stride, v.w, v.h);
                     cur->Release();
@@ -968,6 +968,8 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                                 auto rowAt = [&](int y) -> const BYTE* {
                                     // The Source Reader's RGB32 picture is bottom-up in memory (a positive pitch says nothing else: seen on Windows 10,
                                     // and the files themselves are upright - checked with ffmpeg); a negative pitch makes `sl` the top row.
+                                    // The Windows 10 decoder of WMV says what it gives: a positive stride is a top-down picture (the file is upright, ffmpeg agrees).
+                                    if (use2d && v.wmv && strideTold && stride > 0 && pitch > 0) return sl + (ptrdiff_t)y * pitch;
                                     if (use2d) return pitch > 0 ? sl + (size_t)(v.h - 1 - y) * pitch : sl + (ptrdiff_t)y * pitch;
                                     return stride < 0 ? data + (size_t)(v.h - 1 - y) * absStride : data + (size_t)y * absStride;
                                 };
@@ -2249,6 +2251,16 @@ static void T_AppPicks()
                 // pure black pixel is then not counted (on Windows the desktop is composed and every pixel counts).
                 if (g_wine && ((q[0] < (LossyFmt(s.imageFormat) ? 70 : 30) && q[1] < (LossyFmt(s.imageFormat) ? 70 : 30) && q[2] < (LossyFmt(s.imageFormat) ? 70 : 30)) || (q[0] > 235 && q[1] > 235 && q[2] > 235))) continue;   // black / white: not repainted yet
                 ++n; if (!Near(ex, q[2], q[1], q[0], LossyFmt(s.imageFormat) ? 90 : s.imageFormat == IMG_GIF ? 60 : 6)) { ++bad; if (bad < 4) Rep(L"INFO", L"  window picture (%d,%d) = %d,%d,%d expected %d,%d,%d (format %d, picture %dx%d)", x, y, q[2], q[1], q[0], GetRValue(ex), GetGValue(ex), GetBValue(ex), s.imageFormat, dw, dh); }
+            }
+            if (got && bad) {                                          // keep the picture that failed beside the logs, and a shot of the whole screen at that moment
+                wchar_t pd[MAX_PATH] = L"", keep[MAX_PATH + 60], scr[MAX_PATH + 60];
+                GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+                const wchar_t* ext = wcsrchr(file, L'.');
+                static int fails = 0; ++fails;
+                _snwprintf(keep, MAX_PATH + 60, L"%s\\Click2Screen\\logs\\picks-window-fail-%d%s", pd, fails, ext ? ext : L".img");
+                CopyFileW(file, keep, FALSE);
+                _snwprintf(scr, MAX_PATH + 60, L"%s\\Click2Screen\\logs\\picks-screen-fail-%d.png", pd, fails);
+                { HBITMAP sb = CaptureRect(VirtualScreen(), false, false); if (sb) { SaveBitmap(sb, scr, IMG_PNG); DeleteObject(sb); } }
             }
             Check(got && n >= 5 && bad == 0, L"program picks: the window screenshot shows that window's colours in the right places");
             delete[] px;
