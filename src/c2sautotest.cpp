@@ -260,8 +260,34 @@ static LRESULT CALLBACK FxProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 
 static RECT FxScreenRect();
 static COLORREF Expected(int lx, int ly, int fw, int fh);
+// The Start menu (or the search flyout) may be open on Windows 11 when the tests begin, and it lies over the fixture: every colour is then the
+// colour of the menu. A flyout of the shell in front is closed with Esc; it is told by the process that owns the foreground window.
+static bool ShellFlyoutInFront()
+{
+    HWND fg = GetForegroundWindow(); if (!fg) return false;
+    DWORD pid = 0; GetWindowThreadProcessId(fg, &pid);
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return false;
+    wchar_t path[MAX_PATH] = L""; DWORD n = MAX_PATH;
+    bool r = false;
+    if (QueryFullProcessImageNameW(h, 0, path, &n)) {
+        const wchar_t* nm = wcsrchr(path, L'\\'); nm = nm ? nm + 1 : path;
+        r = !_wcsicmp(nm, L"StartMenuExperienceHost.exe") || !_wcsicmp(nm, L"SearchHost.exe") || !_wcsicmp(nm, L"ShellExperienceHost.exe") || !_wcsicmp(nm, L"SearchApp.exe");
+    }
+    CloseHandle(h);
+    return r;
+}
+static void CloseStartMenu()
+{
+    for (int i = 0; i < 3 && ShellFlyoutInFront(); ++i) {
+        Rep(L"INFO", L"  a flyout of the shell (the Start menu?) is in front: closed with Esc");
+        keybd_event(VK_ESCAPE, 0, 0, 0); keybd_event(VK_ESCAPE, 0, KEYEVENTF_KEYUP, 0);
+        Sleep(500);
+    }
+}
 static void MakeFixture(int w, int h)
 {
+    CloseStartMenu();
     static bool reg = false;
     if (!reg) {
         WNDCLASSW wc; memset(&wc, 0, sizeof(wc));
