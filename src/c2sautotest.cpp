@@ -21,6 +21,9 @@
 #include <mfapi.h>
 #include <mfidl.h>
 #include <mfreadwrite.h>
+#include <mftransform.h>
+#include <strmif.h>
+#include <codecapi.h>
 #include <mferror.h>
 #include <shellapi.h>
 #include <shlobj.h>
@@ -3419,6 +3422,204 @@ static void T_SaveLocked()
 // ==== main =====================================================================================================
 struct TestDef { const wchar_t* name; void (*fn)(); int weight; };
 
+
+// ---- the key frame laboratory (c2sautotest.exe 25 --keylab) -------------------------------------------------------------------------
+// Why does the H.264 encoder of one Windows keep the key frame interval that was asked for and another one not? Synthetic frames (almost still
+// ones) go through a sink writer with one setting after another changed; for each the encoder that was chosen, what it says about the
+// properties and the numbers of the key frames of the file are written to the log.
+namespace {
+const GUID kLabGop        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
+const GUID kLabGopMax     = { 0xfe7de4c4, 0x1936, 0x4fe2, { 0xbd, 0xf7, 0x1f, 0x18, 0xca, 0x1d, 0x00, 0x1f } };
+const GUID kLabGopMin     = { 0x7155cf20, 0xd440, 0x4852, { 0xad, 0x0f, 0x9c, 0x4a, 0xbf, 0xe3, 0x7a, 0x6a } };
+const GUID kLabMaxKey     = { 0x2987123a, 0xba93, 0x4704, { 0xb4, 0x89, 0xec, 0x1e, 0x5f, 0x25, 0x29, 0x2c } };
+const GUID kLabLowLat     = { 0x9c27891a, 0xed7a, 0x40e1, { 0x88, 0xe8, 0xb2, 0x27, 0x27, 0xa0, 0x24, 0xee } };
+const GUID kLabRate       = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
+const GUID kLabQuality    = { 0xfcbf57a3, 0x7ea5, 0x4b0c, { 0x96, 0x44, 0x69, 0xb4, 0x0c, 0x39, 0xc3, 0x91 } };
+const GUID kLabQvS        = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
+const GUID kLabBFrames    = { 0x8d390aac, 0xdc5c, 0x4200, { 0xb5, 0x7f, 0x81, 0x4d, 0x04, 0xba, 0xba, 0xb2 } };
+const GUID kLabIidApi     = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
+const GUID kLabIidSwEx    = { 0x588d72ab, 0x5bc1, 0x496a, { 0x87, 0x14, 0xb7, 0x06, 0x17, 0x14, 0x1b, 0x25 } };
+
+struct LabCfg {
+    const wchar_t* name;
+    bool hw;            // MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS
+    int qvs;            // quality vs speed through the encoder config (0: not set)
+    int rc;             // rate control through the encoder config: 0 not set, 1 unconstrained VBR, 2 peak constrained VBR, 3 CBR, 4 quality
+    int gopAttr;        // key frame interval through the encoder config attributes (0: not set)
+    int gopApi;         // ... through ICodecAPI after the media types are set
+    int gopMaxApi;      // AVEncMPVGOPSizeMax through ICodecAPI
+    int maxKeyApi;      // AVEncVideoMaxKeyframeDistance through ICodecAPI
+    int lowLat;         // AVLowLatencyMode through ICodecAPI: -1 not set, 0 off, 1 on
+    int bFrames;        // AVEncMPVDefaultBPictureCount: -1 not set
+    int profile;        // 0 Main (as the recorder), 66 Baseline, 100 High
+    int fps;
+};
+
+static bool LabKeys(const wchar_t* path, int* keys, int cap, int* nKeys, int* total)
+{
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER sz; GetFileSizeEx(h, &sz);
+    if (sz.QuadPart <= 0 || sz.QuadPart > 400000000LL) { CloseHandle(h); return false; }
+    unsigned char* b = (unsigned char*)malloc((size_t)sz.QuadPart);
+    DWORD rd = 0; bool ok = b && ReadFile(h, b, (DWORD)sz.QuadPart, &rd, nullptr) && rd == (DWORD)sz.QuadPart;
+    CloseHandle(h);
+    *nKeys = -1; *total = -1;
+    auto be = [&](DWORD o) { return (int)((b[o] << 24) | (b[o + 1] << 16) | (b[o + 2] << 8) | b[o + 3]); };
+    for (DWORD i = 4; ok && i + 16 < rd; ++i) {
+        if (!memcmp(b + i, "stss", 4) && *nKeys < 0) {
+            *nKeys = be(i + 8);
+            for (int k = 0; k < *nKeys && k < cap && i + 12 + 4 * (k + 1) <= rd; ++k) keys[k] = be(i + 12 + 4 * k);
+        }
+        if (!memcmp(b + i, "stsz", 4) && *total < 0) *total = be(i + 12);
+    }
+    free(b);
+    return *nKeys >= 0;
+}
+
+static void LabOne(const LabCfg& c, const wchar_t* dir)
+{
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\keylab.mp4", dir);
+    DeleteFileW(path);
+    const int W = 1280, H = 720;
+    IMFAttributes* attrs = nullptr; IMFAttributes* enc = nullptr; IMFSinkWriter* w = nullptr;
+    MFCreateAttributes(&attrs, 4); MFCreateAttributes(&enc, 6);
+    attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, c.hw ? TRUE : FALSE);
+    attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    bool anyEnc = false;
+    if (c.qvs) { enc->SetUINT32(kLabQvS, c.qvs); anyEnc = true; }
+    if (c.rc) { enc->SetUINT32(kLabRate, c.rc == 1 ? eAVEncCommonRateControlMode_UnconstrainedVBR : c.rc == 2 ? eAVEncCommonRateControlMode_PeakConstrainedVBR : c.rc == 3 ? eAVEncCommonRateControlMode_CBR : eAVEncCommonRateControlMode_Quality); anyEnc = true; }
+    if (c.gopAttr) { enc->SetUINT32(kLabGop, (UINT32)c.gopAttr); anyEnc = true; }
+    if (anyEnc) attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
+    HRESULT hr = MFCreateSinkWriterFromURL(path, nullptr, attrs, &w);
+    wchar_t info[600] = L"";
+    auto cat = [&](const wchar_t* fmt, ...) { va_list ap; va_start(ap, fmt); size_t n = wcslen(info); _vsnwprintf(info + n, 600 - n - 1, fmt, ap); va_end(ap); };
+    if (FAILED(hr) || !w) { Rep(L"INFO", L"keylab [%s]: no sink writer 0x%08lX", c.name, (unsigned long)hr); if (enc) enc->Release(); if (attrs) attrs->Release(); return; }
+    IMFMediaType* vo = nullptr; IMFMediaType* vi = nullptr;
+    MFCreateMediaType(&vo); MFCreateMediaType(&vi);
+    vo->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vo->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    vo->SetUINT32(MF_MT_AVG_BITRATE, 2000000); vo->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    vo->SetUINT32(MF_MT_MPEG2_PROFILE, c.profile == 100 ? eAVEncH264VProfile_High : c.profile == 66 ? eAVEncH264VProfile_Base : eAVEncH264VProfile_Main);
+    vi->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vi->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    vi->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    DWORD st = 0;
+    hr = w->AddStream(vo, &st);
+    if (SUCCEEDED(hr)) hr = w->SetInputMediaType(st, vi, nullptr);
+    if (FAILED(hr)) { Rep(L"INFO", L"keylab [%s]: media types 0x%08lX", c.name, (unsigned long)hr); w->Release(); vo->Release(); vi->Release(); enc->Release(); attrs->Release(); return; }
+    // who is the encoder
+    IMFSinkWriterEx* wx = nullptr;
+    if (SUCCEEDED(w->QueryInterface(kLabIidSwEx, (void**)&wx)) && wx) {
+        GUID category = GUID_NULL; IMFTransform* mft = nullptr;
+        if (SUCCEEDED(wx->GetTransformForStream(st, 0, &category, &mft)) && mft) {
+            IMFAttributes* ma = nullptr;
+            if (SUCCEEDED(mft->GetAttributes(&ma)) && ma) {
+                wchar_t name[120] = L""; UINT32 len = 0;
+                if (SUCCEEDED(ma->GetString(MFT_FRIENDLY_NAME_Attribute, name, 120, &len))) cat(L"encoder \"%s\"", name);
+                UINT32 async = 0, hwurl = 0; ma->GetUINT32(MF_TRANSFORM_ASYNC, &async);
+                wchar_t url[60] = L""; if (SUCCEEDED(ma->GetString(MFT_ENUM_HARDWARE_URL_Attribute, url, 60, &len))) hwurl = 1;
+                cat(L" async=%u hardware=%u;", async, hwurl);
+                ma->Release();
+            } else cat(L"encoder (no attributes);");
+            mft->Release();
+        } else cat(L"encoder unknown;");
+        wx->Release();
+    }
+    ICodecAPI* api = nullptr;
+    if (SUCCEEDED(w->GetServiceForStream(st, GUID_NULL, kLabIidApi, (void**)&api)) && api) {
+        VARIANT v; VariantInit(&v);
+        auto setU = [&](const GUID& g, unsigned val, const wchar_t* nm) { v.vt = VT_UI4; v.ulVal = val; HRESULT r = api->SetValue(&g, &v); if (FAILED(r)) cat(L" %s set 0x%08lX;", nm, (unsigned long)r); };
+        if (c.gopApi) setU(kLabGop, (unsigned)c.gopApi, L"GOP");
+        if (c.gopMaxApi) setU(kLabGopMax, (unsigned)c.gopMaxApi, L"GOPmax");
+        if (c.maxKeyApi) setU(kLabMaxKey, (unsigned)c.maxKeyApi, L"maxKey");
+        if (c.lowLat >= 0) { v.vt = VT_BOOL; v.boolVal = c.lowLat ? VARIANT_TRUE : VARIANT_FALSE; HRESULT r = api->SetValue(&kLabLowLat, &v); if (FAILED(r)) cat(L" lowLat set 0x%08lX;", (unsigned long)r); }
+        if (c.bFrames >= 0) setU(kLabBFrames, (unsigned)c.bFrames, L"B");
+        // what it reports back
+        struct { const GUID* g; const wchar_t* n; } props[] = { { &kLabGop, L"GOP" }, { &kLabGopMax, L"GOPmax" }, { &kLabGopMin, L"GOPmin" }, { &kLabMaxKey, L"maxKey" }, { &kLabLowLat, L"lowLat" }, { &kLabBFrames, L"B" } };
+        for (auto& pr : props) {
+            HRESULT sup = api->IsSupported(pr.g);
+            VARIANT g; VariantInit(&g); HRESULT gr = sup == S_OK ? api->GetValue(pr.g, &g) : E_NOTIMPL;
+            if (sup == S_OK && SUCCEEDED(gr)) cat(L" %s=%lu", pr.n, (unsigned long)(g.vt == VT_BOOL ? (g.boolVal ? 1 : 0) : g.ulVal)); else cat(L" %s:n/a(0x%lX)", pr.n, (unsigned long)sup);
+        }
+        api->Release();
+    } else cat(L" no ICodecAPI;");
+    hr = w->BeginWriting();
+    const int frames = 600;
+    BYTE* pix = (BYTE*)malloc((size_t)W * H * 4);
+    int done = 0;
+    if (SUCCEEDED(hr) && pix) {
+        for (int i = 0; i < frames; ++i) {
+            for (size_t k = 0; k < (size_t)W * H; ++k) ((DWORD*)pix)[k] = 0x00404040;
+            int bx = ((i / 10) * 37) % (W - 120), by = 300;                          // a square that jumps every tenth frame: an almost still screen
+            for (int y = by; y < by + 100; ++y) for (int x = bx; x < bx + 100; ++x) ((DWORD*)pix)[(size_t)y * W + x] = 0x00FFFFFF;
+            IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+            if (FAILED(MFCreateMemoryBuffer((DWORD)W * H * 4, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) { hr = E_FAIL; if (b) b->Release(); break; }
+            memcpy(d, pix, (size_t)W * H * 4); b->Unlock(); b->SetCurrentLength((DWORD)W * H * 4);
+            MFCreateSample(&sm); sm->AddBuffer(b);
+            sm->SetSampleTime((LONGLONG)i * 10000000LL / c.fps); sm->SetSampleDuration(10000000LL / c.fps);
+            hr = w->WriteSample(st, sm); sm->Release(); b->Release();
+            if (FAILED(hr)) break;
+            ++done;
+        }
+    }
+    free(pix);
+    HRESULT hf = w->Finalize();
+    w->Release(); vo->Release(); vi->Release(); enc->Release(); attrs->Release();
+    int keys[64] = {}, nKeys = 0, total = 0;
+    bool ok = LabKeys(path, keys, 64, &nKeys, &total);
+    wchar_t list[400] = L""; size_t ln = 0;
+    for (int k = 0; ok && k < nKeys && k < 14; ++k) ln += _snwprintf(list + ln, 400 - ln - 1, L"%d ", keys[k]);
+    Rep(L"INFO", L"keylab [%s] %d fps: %s | %d frames written (0x%08lX, finalize 0x%08lX), %d key frames of %d samples: %s", c.name, c.fps, info, done, (unsigned long)hr, (unsigned long)hf, nKeys, total, list);
+    DeleteFileW(path);
+}
+} // namespace
+
+static int RunKeyLab()
+{
+    HRESULT hrc = CoInitializeEx(nullptr, COINIT_MULTITHREADED); (void)hrc;
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab: MFStartup failed"); return 1; }
+    wchar_t dir[MAX_PATH]; GetTempPathW(MAX_PATH, dir); size_t n = wcslen(dir); if (n && dir[n - 1] == L'\\') dir[n - 1] = 0;
+    Rep(L"INFO", L"keylab: the H.264 encoders of this Windows:");
+    {   // every encoder that is listed for H.264 output
+        MFT_REGISTER_TYPE_INFO out = { MFMediaType_Video, MFVideoFormat_H264 };
+        IMFActivate** act = nullptr; UINT32 cnt = 0;
+        if (SUCCEEDED(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER, MFT_ENUM_FLAG_SYNCMFT | MFT_ENUM_FLAG_ASYNCMFT | MFT_ENUM_FLAG_HARDWARE | MFT_ENUM_FLAG_SORTANDFILTER, nullptr, &out, &act, &cnt)) && act) {
+            for (UINT32 i = 0; i < cnt; ++i) {
+                wchar_t nm[160] = L""; UINT32 len = 0; act[i]->GetString(MFT_FRIENDLY_NAME_Attribute, nm, 160, &len);
+                UINT32 flags = 0; act[i]->GetUINT32(MF_TRANSFORM_FLAGS_Attribute, &flags);
+                Rep(L"INFO", L"  encoder %u: \"%s\" flags 0x%X", i, nm, flags);
+                act[i]->Release();
+            }
+            CoTaskMemFree(act);
+        }
+    }
+    //                name                              hw    qvs rc  gopA gopApi gopMax maxKey low  B   prof fps
+    static const LabCfg cfgs[] = {
+        { L"as the recorder: hw, QvS85, VBR, GOP 200", true,  85, 1, 200, 200, 0,  0,   -1, -1, 0,  10 },
+        { L"nothing asked for (the defaults)",         true,  0,  0, 0,   0,   0,  0,   -1, -1, 0,  10 },
+        { L"software encoder only",                    false, 85, 1, 200, 200, 0,  0,   -1, -1, 0,  10 },
+        { L"GOP through the config attribute only",    true,  85, 1, 200, 0,   0,  0,   -1, -1, 0,  10 },
+        { L"GOP through ICodecAPI only",               true,  85, 1, 0,   200, 0,  0,   -1, -1, 0,  10 },
+        { L"GOP + GOPmax",                             true,  85, 1, 200, 200, 200, 0,  -1, -1, 0,  10 },
+        { L"GOP + GOPmax, no QvS",                     true,  0,  1, 200, 200, 200, 0,  -1, -1, 0,  10 },
+        { L"low latency off",                          true,  85, 1, 200, 200, 0,  0,   0,  -1, 0,  10 },
+        { L"low latency on",                           true,  85, 1, 200, 200, 0,  0,   1,  -1, 0,  10 },
+        { L"no B frames",                              true,  85, 1, 200, 200, 0,  0,   -1, 0,  0,  10 },
+        { L"CBR",                                      true,  85, 3, 200, 200, 0,  0,   -1, -1, 0,  10 },
+        { L"peak constrained VBR",                     true,  85, 2, 200, 200, 0,  0,   -1, -1, 0,  10 },
+        { L"High profile",                             true,  85, 1, 200, 200, 0,  0,   -1, -1, 100, 10 },
+        { L"Baseline profile",                         true,  85, 1, 200, 200, 0,  0,   -1, -1, 66, 10 },
+        { L"GOP 1000 (a very long one)",               true,  85, 1, 1000, 1000, 0, 0,  -1, -1, 0,  10 },
+        { L"GOP 30",                                   true,  85, 1, 30,  30,  0,  0,   -1, -1, 0,  10 },
+        { L"as the recorder at 25 fps (GOP 500)",      true,  85, 1, 500, 500, 0,  0,   -1, -1, 0,  25 },
+    };
+    for (const LabCfg& c : cfgs) LabOne(c, dir);
+    MFShutdown();
+    Rep(L"INFO", L"keylab: done");
+    return 0;
+}
+
 int wmain(int argc, wchar_t** argv)
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -3429,6 +3630,7 @@ int wmain(int argc, wchar_t** argv)
     uint64_t seed = 0;
     bool keep = false;
     const wchar_t* only = nullptr;
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab")) return RunKeyLab();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
