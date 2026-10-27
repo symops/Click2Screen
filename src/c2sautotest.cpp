@@ -3575,6 +3575,122 @@ static void LabOne(const LabCfg& c, const wchar_t* dir)
 }
 } // namespace
 
+
+// ---- WMV: an upside-down picture and a lot of processor (c2sautotest.exe 25 --keylab runs it after the H.264 matrix) ------------------
+// A picture with a red upper half and a blue lower half goes through the sink writer into a .wmv with one setting after another changed. The
+// file is kept beside the logs: the host decodes it with another decoder and tells the real orientation; the processor time of the encoding is logged.
+namespace {
+struct WmvCfg {
+    const wchar_t* name;
+    int stride;         // MF_MT_DEFAULT_STRIDE of the input: 0 not set, -1 bottom-up (negative), +1 top-down (positive)
+    bool topDownData;   // the pixels are given top-down (else bottom-up, as the recorder's DIB)
+    int qvs;            // AVEncCommonQualityVsSpeed through the encoder config (-1: not set)
+    int rc;             // 0 not set, 1 unconstrained VBR, 3 CBR, 4 quality
+    bool hw;
+};
+
+static void WmvOne(const WmvCfg& c, int idx)
+{
+    wchar_t pd[MAX_PATH] = L"", path[MAX_PATH + 40];
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\wmv-%d.wmv", pd, idx);
+    DeleteFileW(path);
+    const int W = 1280, H = 720, FPS = 10, FRAMES = 300;
+    IMFAttributes* attrs = nullptr; IMFAttributes* enc = nullptr; IMFSinkWriter* w = nullptr;
+    MFCreateAttributes(&attrs, 4); MFCreateAttributes(&enc, 4);
+    attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, c.hw ? TRUE : FALSE);
+    attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    bool anyEnc = false;
+    if (c.qvs >= 0) { enc->SetUINT32(kLabQvS, c.qvs); anyEnc = true; }
+    if (c.rc) { enc->SetUINT32(kLabRate, c.rc == 1 ? eAVEncCommonRateControlMode_UnconstrainedVBR : c.rc == 3 ? eAVEncCommonRateControlMode_CBR : eAVEncCommonRateControlMode_Quality); anyEnc = true; }
+    if (anyEnc) attrs->SetUnknown(MF_SINK_WRITER_ENCODER_CONFIG, enc);
+    HRESULT hr = MFCreateSinkWriterFromURL(path, nullptr, attrs, &w);
+    if (FAILED(hr) || !w) { Rep(L"INFO", L"wmvlab [%s]: no sink writer 0x%08lX", c.name, (unsigned long)hr); enc->Release(); attrs->Release(); return; }
+    IMFMediaType* vo = nullptr; IMFMediaType* vi = nullptr;
+    MFCreateMediaType(&vo); MFCreateMediaType(&vi);
+    vo->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vo->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_WMV3);
+    vo->SetUINT32(MF_MT_AVG_BITRATE, 2000000); vo->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, FPS, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    vi->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vi->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    vi->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, FPS, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    if (c.stride) vi->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(LONG)(c.stride * W * 4));
+    DWORD st = 0;
+    hr = w->AddStream(vo, &st);
+    if (SUCCEEDED(hr)) hr = w->SetInputMediaType(st, vi, nullptr);
+    wchar_t who[200] = L"";
+    IMFSinkWriterEx* wx = nullptr;
+    if (SUCCEEDED(hr) && SUCCEEDED(w->QueryInterface(kLabIidSwEx, (void**)&wx)) && wx) {
+        GUID category = GUID_NULL; IMFTransform* mft = nullptr;
+        if (SUCCEEDED(wx->GetTransformForStream(st, 0, &category, &mft)) && mft) {
+            IMFAttributes* ma = nullptr;
+            if (SUCCEEDED(mft->GetAttributes(&ma)) && ma) { UINT32 len = 0; ma->GetString(MFT_FRIENDLY_NAME_Attribute, who, 200, &len); ma->Release(); }
+            mft->Release();
+        }
+        wx->Release();
+    }
+    if (SUCCEEDED(hr)) hr = w->BeginWriting();
+    BYTE* pix = (BYTE*)malloc((size_t)W * H * 4);
+    FILETIME c0, e0, k0, u0, c1, e1, k1, u1;
+    GetProcessTimes(GetCurrentProcess(), &c0, &e0, &k0, &u0); DWORD t0 = GetTickCount();
+    int done = 0;
+    if (SUCCEEDED(hr) && pix) {
+        for (int i = 0; i < FRAMES; ++i) {
+            // the picture as it is meant to look (top-down): red above, blue below, a white square that jumps every tenth frame
+            for (int y = 0; y < H; ++y) {
+                int row = c.topDownData ? y : H - 1 - y;                                // a bottom-up buffer holds the lowest row first
+                DWORD col = y < H / 2 ? 0x00FF0000 : 0x000000FF;
+                DWORD* line = (DWORD*)(pix + (size_t)row * W * 4);
+                for (int x = 0; x < W; ++x) line[x] = col;
+            }
+            int bx = ((i / 10) * 97) % (W - 120), by = 300;
+            for (int y = by; y < by + 100; ++y) { int row = c.topDownData ? y : H - 1 - y; DWORD* line = (DWORD*)(pix + (size_t)row * W * 4); for (int x = bx; x < bx + 100; ++x) line[x] = 0x00FFFFFF; }
+            IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+            if (FAILED(MFCreateMemoryBuffer((DWORD)W * H * 4, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) { hr = E_FAIL; if (b) b->Release(); break; }
+            memcpy(d, pix, (size_t)W * H * 4); b->Unlock(); b->SetCurrentLength((DWORD)W * H * 4);
+            MFCreateSample(&sm); sm->AddBuffer(b);
+            sm->SetSampleTime((LONGLONG)i * 10000000LL / FPS); sm->SetSampleDuration(10000000LL / FPS);
+            hr = w->WriteSample(st, sm); sm->Release(); b->Release();
+            if (FAILED(hr)) break;
+            ++done;
+        }
+    }
+    free(pix);
+    HRESULT hf = w->Finalize();
+    DWORD wall = GetTickCount() - t0;
+    GetProcessTimes(GetCurrentProcess(), &c1, &e1, &k1, &u1);
+    auto u100 = [](const FILETIME& f) { return ((ULONGLONG)f.dwHighDateTime << 32) | f.dwLowDateTime; };
+    double cpu = (double)((u100(k1) + u100(u1)) - (u100(k0) + u100(u0))) / 1e7;
+    w->Release(); vo->Release(); vi->Release(); enc->Release(); attrs->Release();
+    LARGE_INTEGER fsz; fsz.QuadPart = 0;
+    HANDLE hf2 = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (hf2 != INVALID_HANDLE_VALUE) { GetFileSizeEx(hf2, &fsz); CloseHandle(hf2); }
+    Rep(L"INFO", L"wmvlab %d [%s]: encoder \"%s\"; %d frames (0x%08lX, finalize 0x%08lX) in %lu ms wall, %.2f s of CPU (%.0f %% of a core); file %lld bytes (wmv-%d.wmv)",
+        idx, c.name, who, done, (unsigned long)hr, (unsigned long)hf, (unsigned long)wall, cpu, wall ? 100.0 * cpu / (wall / 1000.0) : 0.0, (long long)fsz.QuadPart, idx);
+}
+} // namespace
+
+static void RunWmvLab()
+{
+    Rep(L"INFO", L"wmvlab: the WMV encoder, 1280x720, 10 fps, 300 frames, red above and blue below");
+    //                       name                                             stride top-down qvs  rc  hw
+    static const WmvCfg cfgs[] = {
+        { L"as the recorder: no stride, bottom-up data, QvS 85, VBR",          0,  false, 85, 1, true },
+        { L"stride -W*4 (bottom-up) set, bottom-up data, QvS 85, VBR",         -1, false, 85, 1, true },
+        { L"stride +W*4 (top-down) set, top-down data, QvS 85, VBR",           1,  true,  85, 1, true },
+        { L"no stride, top-down data, QvS 85, VBR",                            0,  true,  85, 1, true },
+        { L"no stride, bottom-up data, nothing in the encoder config",         0,  false, -1, 0, true },
+        { L"no stride, bottom-up data, QvS 40, VBR",                           0,  false, 40, 1, true },
+        { L"no stride, bottom-up data, QvS 0, VBR",                            0,  false, 0,  1, true },
+        { L"no stride, bottom-up data, QvS 85, CBR",                           0,  false, 85, 3, true },
+        { L"no stride, bottom-up data, QvS 40, CBR",                           0,  false, 40, 3, true },
+        { L"no stride, bottom-up data, software only, QvS 85, VBR",            0,  false, 85, 1, false },
+    };
+    int i = 0;
+    for (const WmvCfg& c : cfgs) WmvOne(c, ++i);
+    Rep(L"INFO", L"wmvlab: done");
+}
+
 static int RunKeyLab()
 {
     HRESULT hrc = CoInitializeEx(nullptr, COINIT_MULTITHREADED); (void)hrc;
@@ -3615,6 +3731,7 @@ static int RunKeyLab()
         { L"as the recorder at 25 fps (GOP 500)",      true,  85, 1, 500, 500, 0,  0,   -1, -1, 0,  25 },
     };
     for (const LabCfg& c : cfgs) LabOne(c, dir);
+    RunWmvLab();
     MFShutdown();
     Rep(L"INFO", L"keylab: done");
     return 0;
