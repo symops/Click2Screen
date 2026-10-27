@@ -3423,6 +3423,8 @@ int wmain(int argc, wchar_t** argv)
 {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     AppLogOpen(L"autotest");
+    // The console of whoever started the tests (a black window with the job's output) may lie where the fixture is and get into the pictures.
+    { HWND con = GetConsoleWindow(); if (con && IsWindowVisible(con)) ShowWindow(con, SW_MINIMIZE); }
     int minutes = 3;
     uint64_t seed = 0;
     bool keep = false;
