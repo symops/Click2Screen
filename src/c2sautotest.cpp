@@ -3518,6 +3518,8 @@ struct LabCfg {
     const struct LabEx* ex;   // more properties through ICodecAPI (round 3)
     int nex;
     bool ranges;        // write the range the encoder gives for the key frame interval and the quality
+    int declFps;        // the frame rate told to the encoder in the media types (0: fps)
+    int ptsFps;         // the rate of the time stamps of the samples (0: fps)
 };
 
 static void LabOne(const LabCfg& c, int idx, bool keep)
@@ -3541,12 +3543,12 @@ static void LabOne(const LabCfg& c, int idx, bool keep)
     MFCreateMediaType(&vo); MFCreateMediaType(&vi);
     vo->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vo->SetGUID(MF_MT_SUBTYPE, c.wmv ? MFVideoFormat_WMV3 : MFVideoFormat_H264);
     vo->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)c.bitrate); vo->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, c.declFps ? c.declFps : c.fps, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     if (!c.wmv) vo->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main);
     if (c.spacing) vo->SetUINT32(kLabMaxSpacing, (UINT32)c.spacing);
     vi->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vi->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
     vi->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, c.fps, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, c.declFps ? c.declFps : c.fps, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
     if (c.stride) vi->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(LONG)(c.stride * W * 4));
     DWORD st = 0;
     hr = w->AddStream(vo, &st);
@@ -3602,7 +3604,8 @@ static void LabOne(const LabCfg& c, int idx, bool keep)
             if (FAILED(MFCreateMemoryBuffer((DWORD)bytes, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) { hr = E_FAIL; if (b) b->Release(); break; }
             memcpy(d, src, bytes); b->Unlock(); b->SetCurrentLength((DWORD)bytes);
             MFCreateSample(&sm); sm->AddBuffer(b);
-            sm->SetSampleTime((LONGLONG)i * 10000000LL / c.fps); sm->SetSampleDuration(10000000LL / c.fps);
+            const int pf = c.ptsFps ? c.ptsFps : c.fps;
+            sm->SetSampleTime((LONGLONG)i * 10000000LL / pf); sm->SetSampleDuration(10000000LL / pf);
             hr = w->WriteSample(st, sm); sm->Release(); b->Release();
             if (FAILED(hr)) break;
             ++done;
@@ -3649,6 +3652,32 @@ static void LabRecorderWmv()
     if (g_fx.hw) { DestroyWindow(g_fx.hw); g_fx.hw = nullptr; }
 }
 } // namespace
+
+static int RunKeyLab4()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab4: MFStartup failed"); return 1; }
+    //  Is the period of the encoder's own key frames counted in frames of the frame rate it was told, or in time? And what does a told rate do to the size?
+    //             name                                            wmv    w     h    fps bitrate  jump gopA gopApi spac qvsA qvsApi rc stride topDown frames ex nex ranges declFps ptsFps
+    static const LabCfg cfgs[] = {
+        { L"1080p told 10 fps, stamps 10 fps (as now), still",     false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0,   0 },
+        { L"1080p told 30 fps, stamps 10 fps, still",              false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 30,  10 },
+        { L"1080p told 60 fps, stamps 10 fps, still",              false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 60,  10 },
+        { L"1080p told 120 fps, stamps 10 fps, still",             false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 120, 10 },
+        { L"1080p told 10 fps, stamps 25 fps, still",              false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 10,  25 },
+        { L"1080p told 25 fps, stamps 10 fps, still",              false, 1920, 1080, 10, 2400000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 25,  10 },
+        { L"720p told 60 fps, stamps 10 fps, still",               false, 1280, 720,  10, 2000000, 0, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 60,  10 },
+        { L"1080p told 10 fps, stamps 10 fps, the picture changes every frame (size to compare)", false, 1920, 1080, 10, 2400000, 1, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 0, 0 },
+        { L"1080p told 60 fps, stamps 10 fps, the picture changes every frame", false, 1920, 1080, 10, 2400000, 1, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 60, 10 },
+        { L"1080p told 30 fps, stamps 10 fps, the picture changes every frame", false, 1920, 1080, 10, 2400000, 1, 0, 0, 0, -1, -1, 0, 0, false, 300, nullptr, 0, false, 30, 10 },
+    };
+    int idx = 200;
+    Rep(L"INFO", L"keylab4: H.264, the frame rate told to the encoder against the time stamps");
+    for (const LabCfg& c : cfgs) LabOne(c, ++idx, false);
+    MFShutdown();
+    Rep(L"INFO", L"keylab4: done");
+    return 0;
+}
 
 static int RunKeyLab3()
 {
@@ -3748,6 +3777,7 @@ int wmain(int argc, wchar_t** argv)
     const wchar_t* only = nullptr;
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab")) return RunKeyLab();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab3")) return RunKeyLab3();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab4")) return RunKeyLab4();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
