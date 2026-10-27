@@ -465,6 +465,9 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     IMFMediaType* vo = VideoType(vsub, d.w, d.h, d.fps, bitrate);
     IMFMediaType* vi = VideoType(MFVideoFormat_RGB32, d.w, d.h, d.fps, 0);
     if (!vo || !vi) { if (vo) vo->Release(); if (vi) vi->Release(); return fail(L"media type"); }
+    // Our pictures are bottom-up DIBs. The H.264 / H.265 path takes that for the default of an RGB32 input, the WMV encoder takes a top-down
+    // picture when the stride is not told (measured: the file is upside down for another decoder): a negative stride says "bottom-up".
+    if (fmt == VC_WMV) vi->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(LONG)(-(LONG)d.w * 4));
     hr = d.sw->AddStream(vo, &d.vStream);
     if (SUCCEEDED(hr)) hr = d.sw->SetInputMediaType(d.vStream, vi, nullptr);
     vo->Release(); vi->Release();
