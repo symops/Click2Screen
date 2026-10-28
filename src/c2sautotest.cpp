@@ -1970,7 +1970,11 @@ static void T_App()
                 if (tr && IsWindowVisible(tr)) { GetWindowRect(tr, &trc); placed = trc.left <= vs.left + x0 + 2 && trc.right >= vs.left + x0 + 100; if (placed) break; }
                 Sleep(50);
             }
-            Check(placed, L"program: a stroke of the left button on the drawing window shows as a red line on the screen");
+            {   // what the program made of the stroke, for the log
+                wchar_t td[300]; HWND tr2 = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0); RECT t2 = {}; if (tr2) GetWindowRect(tr2, &t2);
+                _snwprintf(td, 300, L"trail window %s, visible %d, %ld,%ld %ldx%ld, wanted a window across x %d..%d", tr2 ? L"found" : L"not found", tr2 ? (int)IsWindowVisible(tr2) : 0, (long)t2.left, (long)t2.top, (long)(t2.right - t2.left), (long)(t2.bottom - t2.top), (int)(vs.left + x0 + 2), (int)(vs.left + x0 + 100));
+                Check(placed, L"program: a stroke of the left button on the drawing window shows as a red line on the screen", td);
+            }
             if (AffinityReported()) Check(tr && AffinityOf(tr) == 0, L"program: without a recording the line is part of the screen (not excluded from capture), so a screen sharing sees it");
             else SKIP(L"program: this Windows does not report the exclusion from capture");
             PostMessageW(ink, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(200, 200));
@@ -3388,6 +3392,35 @@ static void T_AudioCodecs()
     }
 }
 
+struct Shot { int w, h; uint8_t* px; };                          // BGRA, top-down
+static Shot GrabShot(const RECT& r)
+{
+    Shot sh = { 0, 0, nullptr };
+    HBITMAP b = CaptureRect(r, false, false);
+    if (!b) return sh;
+    BITMAP bm; GetObject(b, sizeof(bm), &bm);
+    sh.w = bm.bmWidth; sh.h = bm.bmHeight;
+    sh.px = (uint8_t*)malloc((size_t)sh.w * sh.h * 4);
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi)); bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = sh.w; bi.bmiHeader.biHeight = -sh.h; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+    HDC dc = GetDC(nullptr);
+    if (!sh.px || !GetDIBits(dc, b, 0, sh.h, sh.px, &bi, DIB_RGB_COLORS)) { free(sh.px); sh.px = nullptr; }
+    ReleaseDC(nullptr, dc); DeleteObject(b);
+    return sh;
+}
+// the four quarters of the fixture at fr, looked for in the picture of `area`; returns how many of the four have the right colour
+static int QuartersRight(const Shot& sh, const RECT& area, const RECT& fr)
+{
+    if (!sh.px) return 0;
+    int ok = 0, w = fr.right - fr.left, h = fr.bottom - fr.top;
+    const int cx[4] = { w / 4, 3 * w / 4, w / 4, 3 * w / 4 }, cy[4] = { h / 4, h / 4, (h - 10) * 3 / 4, (h - 10) * 3 / 4 };
+    for (int i = 0; i < 4; ++i) {
+        int x = fr.left + cx[i] - area.left, y = fr.top + cy[i] - area.top;
+        if (x < 0 || y < 0 || x >= sh.w || y >= sh.h) continue;
+        const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4;
+        if (Near(kQuad[i], q[2], q[1], q[0], 10)) ++ok;
+    }
+    return ok;
+}
 // ---- a random video codec and a random audio codec at every quality: they work, the picture is upright, a worse quality is a smaller file ----------
 static void QsTone(bool on)
 {
@@ -3423,6 +3456,14 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\qs-%d-%d-%d-%d.%s", g_dir, vc, vq, ac, aq, VideoFormatExt(vc));
     DeleteFileW(path); wcscpy(p.path, path);
     wchar_t desc[260]; _snwprintf(desc, 260, L"%s: video codec %d quality %d, audio codec %d quality %d, audio %d, %d fps", tag, vc, vq, ac, aq, (int)audio, fps);
+    {   // a slow machine shows the fixture a moment after it was repainted: the first picture of the recording must not be the desktop behind it
+        RECT fr0 = FxScreenRect();
+        for (int i = 0; i < 40; ++i) {
+            Shot sh0 = GrabShot(fr0); int q0 = QuartersRight(sh0, fr0, fr0); free(sh0.px);
+            if (q0 == 4) break;
+            Pump(300);
+        }
+    }
     Recorder rec; wchar_t err[300] = L"";
     if (!rec.Start(p, err, 300)) { FAIL(L"quality sizes: Start failed (%s): %s", desc, err); return 0; }
     int ew, eh; FitSizeForVideo(vc, regW, regH, ew, eh);
@@ -3553,35 +3594,6 @@ static int ListMonitors(MonInfo* out)
 }
 
 // ---- N monitors: what the screenshot and the recording take when the screen is several monitors (the machine needs them: see --vdd) ----------------
-struct Shot { int w, h; uint8_t* px; };                          // BGRA, top-down
-static Shot GrabShot(const RECT& r)
-{
-    Shot sh = { 0, 0, nullptr };
-    HBITMAP b = CaptureRect(r, false, false);
-    if (!b) return sh;
-    BITMAP bm; GetObject(b, sizeof(bm), &bm);
-    sh.w = bm.bmWidth; sh.h = bm.bmHeight;
-    sh.px = (uint8_t*)malloc((size_t)sh.w * sh.h * 4);
-    BITMAPINFO bi; memset(&bi, 0, sizeof(bi)); bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = sh.w; bi.bmiHeader.biHeight = -sh.h; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
-    HDC dc = GetDC(nullptr);
-    if (!sh.px || !GetDIBits(dc, b, 0, sh.h, sh.px, &bi, DIB_RGB_COLORS)) { free(sh.px); sh.px = nullptr; }
-    ReleaseDC(nullptr, dc); DeleteObject(b);
-    return sh;
-}
-// the four quarters of the fixture at fr, looked for in the picture of `area`; returns how many of the four have the right colour
-static int QuartersRight(const Shot& sh, const RECT& area, const RECT& fr)
-{
-    if (!sh.px) return 0;
-    int ok = 0, w = fr.right - fr.left, h = fr.bottom - fr.top;
-    const int cx[4] = { w / 4, 3 * w / 4, w / 4, 3 * w / 4 }, cy[4] = { h / 4, h / 4, (h - 10) * 3 / 4, (h - 10) * 3 / 4 };
-    for (int i = 0; i < 4; ++i) {
-        int x = fr.left + cx[i] - area.left, y = fr.top + cy[i] - area.top;
-        if (x < 0 || y < 0 || x >= sh.w || y >= sh.h) continue;
-        const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4;
-        if (Near(kQuad[i], q[2], q[1], q[0], 10)) ++ok;
-    }
-    return ok;
-}
 static void PlaceFixture(int x, int y)
 {
     SetWindowPos(g_fx.hw, HWND_TOPMOST, x, y, g_fx.w, g_fx.h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
@@ -4571,6 +4583,25 @@ static int RunAudioLab()
             u->Release();
         }
         if (wc) wc->Release();
+    }
+    Rep(L"INFO", L"audiolab: MFTranscodeGetAudioOutputAvailableTypes(AAC) at 44.1 kHz mono");
+    {
+        IMFCollection* ac2 = nullptr;
+        HRESULT ha = MFTranscodeGetAudioOutputAvailableTypes(MFAudioFormat_AAC, MFT_ENUM_FLAG_ALL, nullptr, &ac2);
+        DWORD an = 0; if (SUCCEEDED(ha) && ac2) ac2->GetElementCount(&an);
+        Rep(L"INFO", L"  0x%08lX, %lu types", (unsigned long)ha, (unsigned long)an);
+        for (DWORD i = 0; SUCCEEDED(ha) && ac2 && i < an; ++i) {
+            IUnknown* u = nullptr; IMFMediaType* t = nullptr;
+            if (FAILED(ac2->GetElement(i, &u)) || !u) continue;
+            if (SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+                UINT32 rate = 0, ch = 0, bps = 0, lvl = 0; t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
+                t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps); t->GetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, &lvl);
+                if (ch == 1 && rate == 44100) Rep(L"INFO", L"  AAC 44100 Hz mono: %lu bytes a second (%lu kbit/s), level 0x%02lX", (unsigned long)bps, (unsigned long)(bps * 8 / 1000), (unsigned long)lvl);
+                t->Release();
+            }
+            u->Release();
+        }
+        if (ac2) ac2->Release();
     }
     Rep(L"INFO", L"audiolab: done");
     return 0;
