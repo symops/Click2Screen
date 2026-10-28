@@ -265,6 +265,15 @@ static LRESULT CALLBACK FxProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
 
 static RECT FxScreenRect();
 static COLORREF Expected(int lx, int ly, int fw, int fh);
+struct SizeCtx { int w, h; bool hit; };
+static BOOL CALLBACK SizeOfMonitorCb(HMONITOR, HDC, LPRECT r, LPARAM lp)
+{
+    auto* c = (SizeCtx*)lp;
+    if (r->right - r->left == c->w && r->bottom - r->top == c->h) c->hit = true;
+    return TRUE;
+}
+// With several monitors the program saves one picture per monitor: the size of the picture is the size of one of them.
+static bool IsMonitorSize(int w, int h) { SizeCtx c = { w, h, false }; EnumDisplayMonitors(nullptr, nullptr, SizeOfMonitorCb, (LPARAM)&c); return c.hit; }
 // The Start menu (or the search flyout) may be open on Windows 11 when the tests begin, and it lies over the fixture: every colour is then the
 // colour of the menu. A flyout of the shell in front is closed with Esc; it is told by the process that owns the foreground window.
 static bool ShellFlyoutInFront()
@@ -306,6 +315,11 @@ static void MakeFixture(int w, int h)
     if (w > ww - 20) w = ww - 20;
     if (h > wh - 20) h = wh - 20;
     int x = wa.left + R(0, ww - w), y = wa.top + R(0, wh - h);
+    for (int tries = 0; tries < 40; ++tries) {                         // the toasts of the system ("the key is used by another program") come at the bottom right: the fixture is put elsewhere
+        RECT avoid = { wa.right - 440, wa.bottom - 280, wa.right, wa.bottom }, fx = { x, y, x + w, y + h }, hit;
+        if (!IntersectRect(&hit, &avoid, &fx)) break;
+        x = wa.left + R(0, ww - w); y = wa.top + R(0, wh - h);
+    }
     g_fx.w = w; g_fx.h = h;
     g_fx.hw = CreateWindowExW(WS_EX_TOPMOST, L"C2SAutotestFixture", L"c2s fixture", WS_POPUP | WS_VISIBLE, x, y, w, h,
                               nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
@@ -1873,7 +1887,7 @@ static void T_App()
         bool d = file[0] && DecodePixels(file, &dw, &dh, &px);
         RECT vs = VirtualScreen();
         wchar_t dd[200]; _snwprintf(dd, 200, L"%s %dx%d, screen %dx%d", file, dw, dh, (int)(vs.right - vs.left), (int)(vs.bottom - vs.top));
-        Check(d && dw == vs.right - vs.left && dh == vs.bottom - vs.top && AppAlive(a), L"program: the desktop hotkey saves a picture of the whole screen", dd);
+        Check(d && ((dw == vs.right - vs.left && dh == vs.bottom - vs.top) || (GetSystemMetrics(SM_CMONITORS) > 1 && IsMonitorSize(dw, dh))) && AppAlive(a), L"program: the desktop hotkey saves a picture of the whole screen (one picture per monitor when there are several)", dd);
         delete[] px;
         // the sequence number / template of the name is the program's own: the extension follows the format
         wchar_t want[16]; _snwprintf(want, 16, L".%s", ImageFormatExt(s.imageFormat));
@@ -3573,6 +3587,14 @@ static void PlaceFixture(int x, int y)
     SetWindowPos(g_fx.hw, HWND_TOPMOST, x, y, g_fx.w, g_fx.h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     InvalidateRect(g_fx.hw, nullptr, TRUE); UpdateWindow(g_fx.hw);
     Pump(600);
+    // a window on a virtual monitor reaches it a moment later (more when the machine is busy): wait until the picture of the screen shows all four colours
+    RECT fr = FxScreenRect();
+    // (the toast of the system "this key is used by another program" lies over the bottom right of the first monitor for ten seconds or so)
+    for (int i = 0; i < 60; ++i) {
+        Shot sh = GrabShot(fr); int q = QuartersRight(sh, fr, fr); free(sh.px);
+        if (q == 4) break;
+        Pump(300);
+    }
 }
 // the arrangement of the monitors: 0 in a row to the right, 1 to the left (negative x), 2 above (negative y), 3 a grid with offsets
 static void ArrangeMonitors(int layout)
@@ -3602,6 +3624,47 @@ static void ArrangeMonitors(int layout)
     }
     ChangeDisplaySettingsExW(nullptr, nullptr, nullptr, 0, nullptr);
     Pump(2500);
+}
+
+// The real program: the desktop hotkey saves one picture per monitor (a design of the original recorder, kept). The program shows a toast of the
+// system when it starts (its keys are used by another instance): it comes last, after every other measure of the layout.
+static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm)
+{
+    const int fmon = nm > 1 ? 1 : 0;                                   // the fixture inside the second monitor
+    PlaceFixture((int)((mon[fmon].rc.left + mon[fmon].rc.right) / 2 - g_fx.w / 2), (int)((mon[fmon].rc.top + mon[fmon].rc.bottom) / 2 - g_fx.h / 2));
+    Settings st; PrepareApp(st); st.notify = false; st.imageFormat = IMG_PNG; st.capMouse = false; st.highlight = false;
+    App a;
+    if (!StartApp(a, st)) { FAIL(L"monitors: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
+    {   // the pictures of the layout before are not what is counted
+        wchar_t pat0[MAX_PATH]; _snwprintf(pat0, MAX_PATH, L"%s\\*.*", st.folder);
+        WIN32_FIND_DATAW f0; HANDLE h0 = FindFirstFileW(pat0, &f0);
+        if (h0 != INVALID_HANDLE_VALUE) { do { if (!(f0.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) { wchar_t d0[MAX_PATH]; _snwprintf(d0, MAX_PATH, L"%s\\%s", st.folder, f0.cFileName); DeleteFileW(d0); } } while (FindNextFileW(h0, &f0)); FindClose(h0); }
+    }
+    int before = CountFiles(st.folder);
+    PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
+    DWORD until = GetTickCount() + 25000;
+    while ((int)(until - GetTickCount()) > 0 && CountFiles(st.folder) < before + nm) Pump(300);
+    Pump(800);
+    wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.png", st.folder);
+    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
+    int sizesMatched = 0, files = 0, fixtureOk = 0; bool used[16] = {};
+    RECT fr = FxScreenRect();
+    if (h != INVALID_HANDLE_VALUE) do {
+        wchar_t f[MAX_PATH]; _snwprintf(f, MAX_PATH, L"%s\\%s", st.folder, fd.cFileName);
+        int dw = 0, dh = 0; uint8_t* px = nullptr;
+        if (!DecodePixels(f, &dw, &dh, &px)) continue;
+        ++files;
+        {   // the file of the monitor the fixture is on: monitors of one size cannot be told apart by the size, the colours tell
+            const RECT& fmr = mon[fmon].rc;
+            if (fmr.right - fmr.left == dw && fmr.bottom - fmr.top == dh) { Shot sh = { dw, dh, px }; if (QuartersRight(sh, fmr, fr) == 4) fixtureOk = 1; }
+        }
+        for (int k = 0; k < nm; ++k) if (!used[k] && mon[k].rc.right - mon[k].rc.left == dw && mon[k].rc.bottom - mon[k].rc.top == dh) { used[k] = true; ++sizesMatched; break; }
+        delete[] px;
+    } while (FindNextFileW(h, &fd));
+    if (h != INVALID_HANDLE_VALUE) FindClose(h);
+    wchar_t d[700]; _snwprintf(d, 700, L"%s: %d pictures for %d monitors, %d of them the size of a monitor, the monitor with the fixture (%d) shows it: %d", head, files, nm, sizesMatched, fmon, fixtureOk);
+    Check(files == nm && sizesMatched == nm && fixtureOk, L"monitors: the program's desktop screenshot is one picture per monitor, each of the size of its monitor, the colours where they are", d);
+    StopApp(a, false);
 }
 
 static void T_Monitors()
@@ -3650,6 +3713,11 @@ static void T_Monitors()
             Shot sh = GrabShot(fr);
             int q = QuartersRight(sh, fr, fr); free(sh.px);
             wchar_t d[700]; _snwprintf(d, 700, L"%s: the fixture %ldx%ld at %ld,%ld (monitor %d, %s), quarters right %d of 4", head, (long)(fr.right - fr.left), (long)(fr.bottom - fr.top), (long)fr.left, (long)fr.top, pl[i].mon, pl[i].kind, q);
+            if (q != 4) {                                              // what is on the screen at that moment, beside the logs
+                static int shots = 0; wchar_t pd[MAX_PATH] = L"", sp[MAX_PATH + 60]; GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+                _snwprintf(sp, MAX_PATH + 60, L"%s\\Click2Screen\\logs\\monitors-fail-%d.png", pd, ++shots);
+                HBITMAP sb = CaptureRect(VirtualScreen(), false, false); if (sb) { SaveBitmap(sb, sp, IMG_PNG); DeleteObject(sb); }
+            }
             Check(q == 4, L"monitors: a region screenshot taken where the fixture is has every colour in the right place", d);
             Shot all = GrabShot(vs); int qa = QuartersRight(all, vs, fr); free(all.px);
             Check(qa == 4, L"monitors: the picture of all monitors shows the fixture where it is", d);
@@ -3657,47 +3725,6 @@ static void T_Monitors()
                 const int vc = avail[R(0, na - 1)];
                 QsRecord(vc, 1, 0, 1, false, false, 15, 3.0, L"monitors: region", nullptr);
                 QsRecord(vc, 1, 0, 1, false, false, 15, 3.0, L"monitors: window", nullptr, false, true);
-            }
-        }
-        // the real program: the desktop hotkey saves one picture per monitor (a design of the original recorder, kept)
-        if (!g_wine) {
-            const int fm = np > 1 ? 1 : 0;                              // the fixture inside the second monitor
-            PlaceFixture(pl[fm].x, pl[fm].y);
-            Settings st; PrepareApp(st); st.notify = false; st.imageFormat = IMG_PNG; st.capMouse = false; st.highlight = false;
-            App a;
-            if (!StartApp(a, st)) { FAIL(L"monitors: Click2Screen.exe did not show its window"); StopApp(a, false); }
-            else {
-                {   // the pictures of the layout before are not what is counted
-                    wchar_t pat0[MAX_PATH]; _snwprintf(pat0, MAX_PATH, L"%s\\*.*", st.folder);
-                    WIN32_FIND_DATAW f0; HANDLE h0 = FindFirstFileW(pat0, &f0);
-                    if (h0 != INVALID_HANDLE_VALUE) { do { if (!(f0.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) { wchar_t d0[MAX_PATH]; _snwprintf(d0, MAX_PATH, L"%s\\%s", st.folder, f0.cFileName); DeleteFileW(d0); } } while (FindNextFileW(h0, &f0)); FindClose(h0); }
-                }
-                int before = CountFiles(st.folder);
-                PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
-                DWORD until = GetTickCount() + 25000;
-                while ((int)(until - GetTickCount()) > 0 && CountFiles(st.folder) < before + nm) Pump(300);
-                Pump(800);
-                // the new files: the folder holds only what this program saved in this run
-                wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.png", st.folder);
-                WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
-                int sizesMatched = 0, files = 0, fixtureOk = 0; bool used[16] = {};
-                RECT fr = FxScreenRect();
-                if (h != INVALID_HANDLE_VALUE) do {
-                    wchar_t f[MAX_PATH]; _snwprintf(f, MAX_PATH, L"%s\\%s", st.folder, fd.cFileName);
-                    int dw = 0, dh = 0; uint8_t* px = nullptr;
-                    if (!DecodePixels(f, &dw, &dh, &px)) continue;
-                    ++files;
-                    {   // the file of the monitor the fixture is on: monitors of one size cannot be told apart by the size, the colours tell
-                        const RECT& fmr = mon[pl[fm].mon].rc;
-                        if (fmr.right - fmr.left == dw && fmr.bottom - fmr.top == dh) { Shot sh = { dw, dh, px }; if (QuartersRight(sh, fmr, fr) == 4) fixtureOk = 1; }
-                    }
-                    for (int k = 0; k < nm; ++k) if (!used[k] && mon[k].rc.right - mon[k].rc.left == dw && mon[k].rc.bottom - mon[k].rc.top == dh) { used[k] = true; ++sizesMatched; break; }
-                    delete[] px;
-                } while (FindNextFileW(h, &fd));
-                if (h != INVALID_HANDLE_VALUE) FindClose(h);
-                wchar_t d[700]; _snwprintf(d, 700, L"%s: %d pictures for %d monitors, %d of them the size of a monitor, the monitor with the fixture (%d) shows it: %d", head, files, nm, sizesMatched, pl[fm].mon, fixtureOk);
-                Check(files == nm && sizesMatched == nm && fixtureOk, L"monitors: the program's desktop screenshot is one picture per monitor, each of the size of its monitor, the colours where they are", d);
-                StopApp(a, false);
             }
         }
         // the whole screen recorded
@@ -3716,6 +3743,16 @@ static void T_Monitors()
                 wchar_t d[700]; _snwprintf(d, 700, L"%s: the recording is %dx%d (asked %dx%d), file %dx%d, %.2f s, %d frames", head, rw, rh, ew, eh, v.w, v.h, el, v.frames);
                 Check(st && rw == ew && rh == eh && v.ok && v.w == ew && v.h == eh && v.frames > el * 10 * 0.2, L"monitors: a recording of all monitors is made at the size of the virtual screen", d);
             }
+        }
+    }
+    if (!g_wine) {
+        for (int layout = 1; layout < 4; ++layout) {
+            ArrangeMonitors(layout);
+            nm = ListMonitors(mon);
+            RECT vs2 = VirtualScreen();
+            wchar_t head2[300]; _snwprintf(head2, 300, L"layout %d, %d monitors, virtual screen %ld,%ld %ldx%ld", layout, nm, (long)vs2.left, (long)vs2.top, (long)(vs2.right - vs2.left), (long)(vs2.bottom - vs2.top));
+            MonAppDesktopTest(head2, mon, nm);
+            Pump(12000);                                                // the toast of the program's start goes before the next layout
         }
     }
     ArrangeMonitors(0);
