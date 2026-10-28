@@ -18,6 +18,8 @@ namespace {
 const GUID kQualityVsSpeed  = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
 const GUID kIidCodecApi    = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
 const GUID kMaxKeyDist    = { 0x2987123a, 0xba93, 0x4704, { 0xb4, 0x89, 0xec, 0x1e, 0x5f, 0x25, 0x29, 0x2c } };   // CODECAPI_AVEncVideoMaxKeyframeDistance
+const GUID kRateControl    = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };    // AVEncCommonRateControlMode
+const GUID kCommonQuality  = { 0xfcbf57a3, 0x7ea5, 0x4b0c, { 0x96, 0x44, 0x69, 0xb4, 0x0c, 0x39, 0xc3, 0x91 } };    // AVEncCommonQuality
 const GUID kGopSize        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
 const GUID kRateControlMode = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 
@@ -339,7 +341,7 @@ static IMFMediaType* Mp3Type(int wantBytesPerSec)
 }
 
 // A Windows Media Audio output type for 44.1 kHz mono, the available bit rate closest to the wanted one.
-static IMFMediaType* WmaType(int wantBytesPerSec)
+static IMFMediaType* WmaType(int wantBytesPerSec, int wantRate = kAudioRate)
 {
     IMFCollection* col = nullptr;
     if (FAILED(MFTranscodeGetAudioOutputAvailableTypes(kAudioWma8, MFT_ENUM_FLAG_ALL, nullptr, &col)) || !col) return nullptr;
@@ -354,7 +356,7 @@ static IMFMediaType* WmaType(int wantBytesPerSec)
             t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
             t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps); t->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bits);
             int diff = (int)bps - wantBytesPerSec; if (diff < 0) diff = -diff;
-            if (rate == (UINT32)kAudioRate && ch == 1 && bits == 16 && diff < bestDiff) {
+            if (rate == (UINT32)wantRate && ch == 1 && bits == 16 && diff < bestDiff) {
                 if (best) best->Release();
                 best = t; t->AddRef(); bestDiff = diff;
             }
@@ -510,6 +512,18 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
             HRESULT hrM = api->SetValue(&kMaxKeyDist, &v);
             hrc = api->SetValue(&kGopSize, &v);
             Log(L"video encoder: max key frame distance set: 0x%08lX", (unsigned long)hrM);
+            // The quality choice as a quality, not a bit rate: the software H.264 encoder of Windows 11 spends about the same on the three bit rates
+            // (a screen is cheap, its floor is above the wish: 719 / 655 / 611 KB measured), while its quality mode follows the choice at every
+            // content (1.2-1.5 times a step, measured; its bit rate cap is ignored). An encoder that refuses it keeps the bit rate of the type.
+            {
+                static const int quality[3] = { 75, 50, 20 };
+                const int qi = p.cfg.videoQuality < 0 ? 0 : p.cfg.videoQuality > 2 ? 2 : p.cfg.videoQuality;
+                VARIANT rv; VariantInit(&rv); rv.vt = VT_UI4; rv.ulVal = 3;                       // eAVEncCommonRateControlMode_Quality
+                HRESULT hrRc = api->SetValue(&kRateControl, &rv);
+                VARIANT qv; VariantInit(&qv); qv.vt = VT_UI4; qv.ulVal = (ULONG)quality[qi];
+                HRESULT hrQ = SUCCEEDED(hrRc) ? api->SetValue(&kCommonQuality, &qv) : hrRc;
+                Log(L"video encoder: quality mode, quality %d: 0x%08lX / 0x%08lX%s", quality[qi], (unsigned long)hrRc, (unsigned long)hrQ, SUCCEEDED(hrQ) ? L"" : L" (the bit rate of the type stays)");
+            }
             api->Release();
             // The software encoder of Windows 11 reads the interval back but applies it only when its types are set again (measured on the
             // encoder alone and through the sink writer: set after the types - a key frame every second, the types set again on the encoder -
@@ -562,7 +576,10 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         static const int mp3Bps[3] = { 16000, 12000, 8000 };
         int q = p.cfg.audioQuality < 0 ? 0 : p.cfg.audioQuality > 2 ? 2 : p.cfg.audioQuality;
         if (fmt == VC_WMV) {                                         // Windows Media container: Windows Media Audio
-            IMFMediaType* ao = WmaType(aacBps[q]);
+            // The WMA 8 types for 44.1 kHz mono are 48, 32 and 20 kbit/s; the 20 is not 20 % below the 32 once the container is counted (measured),
+            // so the worst quality is the 22.05 kHz type of 16 kbit/s (the sink writer converts the rate). The AAC wishes would all land on the first.
+            static const int wmaBps[3] = { 6000, 4000, 2000 }, wmaRate[3] = { 44100, 44100, 22050 };
+            IMFMediaType* ao = WmaType(wmaBps[q], wmaRate[q]);
             IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
             if (ao && ai && SUCCEEDED(d.sw->AddStream(ao, &d.aStream)) && SUCCEEDED(d.sw->SetInputMediaType(d.aStream, ai, nullptr))) ok = true;
             if (ao) ao->Release();

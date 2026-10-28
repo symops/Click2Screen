@@ -368,7 +368,7 @@ private:
 
 FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality, bool audio, wchar_t* why, int whyLen)
 {
-    static const double q[3] = { 0.8, 0.65, 0.45 };      // high / medium / low (a screen with text stays readable far below the 0.9 of a photograph)
+    static const double q[3] = { 0.85, 0.60, 0.30 };      // high / medium / low: steps of more than a fifth in the size even on a calm picture (measured), text stays readable at the middle
     AviSink* s = new AviSink(w, h, fps, q[quality < 0 ? 0 : quality > 2 ? 2 : quality], audio);
     if (!s->Open(path, why, whyLen)) { delete s; DeleteFileW(path); return nullptr; }
     return s;

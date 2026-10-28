@@ -951,6 +951,7 @@ static VideoInfo Inspect(const wchar_t* path, bool checkPicture, bool* pictureOk
                     if (sm) {
                         ++v.frames;
                         if (checkPicture && v.frames == target) {
+                            Rep(L"INFO", L"  checked frame #%d is at %.2f s of the file", v.frames, (double)ts / 1e7);
                             IMFMediaBuffer* mb = nullptr; BYTE* data = nullptr; DWORD len = 0;
                             IMF2DBuffer* b2 = nullptr; BYTE* sl = nullptr; LONG pitch = 0;
                             bool use2d = false, locked = false;
@@ -3370,6 +3371,150 @@ static void T_AudioCodecs()
     }
 }
 
+// ---- a random video codec and a random audio codec at every quality: they work, the picture is upright, a worse quality is a smaller file ----------
+static void QsTone(bool on)
+{
+    static unsigned char wav[44 + 44100 * 4];
+    static bool made = false;
+    if (on) {
+        if (!made) {
+            const int n = 44100;
+            memcpy(wav, "RIFF", 4); unsigned v = 36 + n * 4; memcpy(wav + 4, &v, 4); memcpy(wav + 8, "WAVEfmt ", 8); v = 16; memcpy(wav + 16, &v, 4);
+            unsigned short us = 1; memcpy(wav + 20, &us, 2); us = 2; memcpy(wav + 22, &us, 2); v = 44100; memcpy(wav + 24, &v, 4); v = 44100 * 4; memcpy(wav + 28, &v, 4);
+            us = 4; memcpy(wav + 32, &us, 2); us = 16; memcpy(wav + 34, &us, 2); memcpy(wav + 36, "data", 4); v = n * 4; memcpy(wav + 40, &v, 4);
+            short* sp = (short*)(wav + 44);
+            unsigned seed = 12345;                                       // a tone with a noisy bed: the encoder has something to spend its bits on
+            for (int i = 0; i < n; ++i) { seed = seed * 1664525u + 1013904223u; short x = (short)(9000 * sin(6.283185307179586 * 1000.0 * i / 44100.0) + (int)((seed >> 16) % 6000) - 3000); sp[2 * i] = sp[2 * i + 1] = x; }
+            made = true;
+        }
+        PlaySoundW((LPCWSTR)wav, nullptr, SND_MEMORY | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
+    } else PlaySoundW(nullptr, nullptr, 0);
+}
+
+// One recording of the fixture: `noise` scrolls a noisy picture over it after the first 1.5 s (the first seconds are the known colours, for the orientation).
+// Returns the size of the file, 0 when it was not made; the checks of this one recording are made here.
+static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, bool noise, int fps, double secs, const wchar_t* tag, int* audioType, bool small = false)
+{
+    RecParams p; memset(&p, 0, sizeof(p));
+    SettingsDefaults(p.cfg);
+    p.cfg.videoCodec = vc; p.cfg.videoQuality = vq; p.cfg.audioCodec = ac; p.cfg.audioQuality = aq; p.cfg.fps = fps;
+    p.cfg.mic = false; p.cfg.loopback = audio; p.cfg.capMouse = false; p.cfg.highlight = false;
+    p.rc = FxScreenRect();
+    int regW = g_fx.w, regH = g_fx.h;
+    if (small) { regW = 128; regH = 96; p.rc.right = p.rc.left + regW; p.rc.bottom = p.rc.top + regH; }          // the sound part: a tiny picture, the sound is almost all of the file
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\qs-%d-%d-%d-%d.%s", g_dir, vc, vq, ac, aq, VideoFormatExt(vc));
+    DeleteFileW(path); wcscpy(p.path, path);
+    wchar_t desc[260]; _snwprintf(desc, 260, L"%s: video codec %d quality %d, audio codec %d quality %d, audio %d, %d fps", tag, vc, vq, ac, aq, (int)audio, fps);
+    Recorder rec; wchar_t err[300] = L"";
+    if (!rec.Start(p, err, 300)) { FAIL(L"quality sizes: Start failed (%s): %s", desc, err); return 0; }
+    int ew, eh; FitSizeForVideo(vc, regW, regH, ew, eh);
+    // the noise: a bitmap twice as wide as the fixture, scrolled
+    HDC wdc = GetDC(g_fx.hw), mdc = CreateCompatibleDC(wdc);
+    HBITMAP nb = CreateCompatibleBitmap(wdc, g_fx.w * 2, g_fx.h);
+    HGDIOBJ old = SelectObject(mdc, nb);
+    { const size_t cnt = (size_t)g_fx.w * 2 * g_fx.h; DWORD* px = (DWORD*)malloc(cnt * 4); unsigned sd = 777;
+      int amp = 32; { wchar_t e[16]; if (GetEnvironmentVariableW(L"C2S_QS_AMP", e, 16)) amp = _wtoi(e); if (amp < 0) amp = 0; if (amp > 127) amp = 127; }      // the noise on a smooth picture: how hard the content is
+      const int W2 = g_fx.w * 2;
+      for (size_t i = 0; px && i < cnt; ++i) {
+          int x = (int)(i % W2), y = (int)(i / W2);
+          int ch[3] = { x * 255 / W2, y * 255 / g_fx.h, 128 };
+          DWORD c = 0;
+          for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = ch[k] + (int)((sd >> 16) % (2 * amp + 1)) - amp; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+          px[i] = c;
+      }
+      BITMAPINFO bi; memset(&bi, 0, sizeof(bi)); bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = g_fx.w * 2; bi.bmiHeader.biHeight = -g_fx.h; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+      SetDIBitsToDevice(mdc, 0, 0, g_fx.w * 2, g_fx.h, 0, 0, 0, g_fx.h, px, &bi, DIB_RGB_COLORS); free(px); }
+    DWORD t0 = GetTickCount(); int step = 0;
+    while ((int)(GetTickCount() - t0) < (int)(secs * 1000) && !rec.Failed()) {
+        Pump(40);
+        if (noise && (int)(GetTickCount() - t0) > 1500) { int off = (step++ * 13) % g_fx.w; BitBlt(wdc, 0, 0, g_fx.w, g_fx.h, mdc, off, 0, SRCCOPY); }
+    }
+    SelectObject(mdc, old); DeleteObject(nb); DeleteDC(mdc); ReleaseDC(g_fx.hw, wdc);
+    double el = rec.ElapsedSec();
+    bool stopped = rec.Stop();
+    InvalidateRect(g_fx.hw, nullptr, TRUE); Pump(100);                       // the known colours again
+    Check(stopped && !rec.Failed(), L"quality sizes: Stop finalizes the file", desc);
+    unsigned long long sz = FileSz(path);
+    Check(sz > 1500, L"quality sizes: the file is not empty", desc);
+    if (vc == VC_AVI) {
+        VerifyAvi(path, ew, eh, el, fps, audio, !small, desc);
+        return sz;
+    }
+    bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
+    VideoInfo v = Inspect(path, !small, &pictureOk, &pictureChecked, &decoderMissing);
+    wchar_t d3[320]; _snwprintf(d3, 320, L"%s: file %dx%d, %.2f s, %d frames, %llu bytes", desc, v.w, v.h, v.dur, v.frames, sz);
+    bool codecOk = vc == VC_H265 ? v.hevc : vc == VC_WMV ? v.wmv : v.h264;
+    Check(v.ok && codecOk && v.w == ew && v.h == eh, L"quality sizes: the video has the chosen codec at the expected size", d3);
+    Check(fabs(v.dur - el) < (vc == VC_WMV ? 1.6 : 0.9), L"quality sizes: the duration matches the recorded time", d3);
+    if (decoderMissing) WARN(L"quality sizes: no decoder here - frames and picture not checked");
+    else {
+        Check(v.frames > el * fps * 0.25 && v.frames < el * fps * 1.3 + 4, L"quality sizes: the number of frames is plausible", d3);
+        if (!small) Check(pictureOk, L"quality sizes: the picture is upright and has the colours of the screen", d3);
+    }
+    if (audio) {
+        Check(v.audio, L"quality sizes: the file has the sound track", d3);
+        if (vc != VC_WMV && audioType) {
+            int t = Mp4AudioObjectType(path); *audioType = t;
+            bool right = ac ? (t == 0x6B || t == 0x69) : t == 0x40;
+            wchar_t d4[320]; _snwprintf(d4, 320, L"%s: audio object type 0x%02X", desc, t);
+            Check(right, L"quality sizes: the audio codec in the file is the audio codec chosen", d4);
+        }
+    }
+    return sz;
+}
+
+static void T_QualitySizes()
+{
+    if (g_wine && !VideoFormatAvailable(VC_AVI)) { SKIP(L"quality sizes: nothing to record with here"); return; }
+    int avail[VC_COUNT], na = 0;
+    for (int i = 0; i < VC_COUNT; ++i) if (i != VC_GIF && VideoFormatAvailable(i) && (!g_wine || i == VC_AVI)) avail[na++] = i;
+    if (!na) { SKIP(L"quality sizes: no video format here"); return; }
+    int vc = avail[R(0, na - 1)], ac = R(0, 1);
+    const int fps = R(0, 1) ? 15 : 25;
+    { wchar_t e[16];                                                   // C2S_QS_VC / C2S_QS_AC: one codec of the matrix instead of a random one
+      if (GetEnvironmentVariableW(L"C2S_QS_VC", e, 16)) { int w = _wtoi(e); for (int i = 0; i < na; ++i) if (avail[i] == w) vc = w; }
+      if (GetEnvironmentVariableW(L"C2S_QS_AC", e, 16)) ac = _wtoi(e) ? 1 : 0; }
+    MakeFixture(R(420, 640), R(260, 380));
+    wchar_t head[200]; _snwprintf(head, 200, L"video codec %d, audio codec %d (%s), %d fps", vc, ac, ac ? L"MP3" : L"AAC", fps);
+    INFO(L"quality sizes: %s", head);
+    bool dev = false;
+    if (!g_wine) { SpeakerCapture sc; dev = sc.Open(); }
+    const bool snd = !g_wine;                                           // the speakers are asked for always; with no playback device the track is silence (the encoder still has its bit rate)
+    if (!dev) INFO(L"quality sizes: no playback device here - the sound track is silence");
+    // The sound first, on a still picture: what the sound adds to the file is the file with it less the same file without it. The three audio
+    // qualities must be 20 % apart in that; the sound of the medium quality is then taken off the files of the video part, so that a constant
+    // sound track (about 100 KB for 7 s) does not hide the steps of the video quality.
+    unsigned long long audioAdd[3] = {};
+    if (snd) {
+        const unsigned long long noSnd = QsRecord(vc, 1, ac, 1, false, false, fps, 7.0, L"no sound", nullptr, true);
+        if (dev) QsTone(true);
+        for (int q = 0; q < 3; ++q) {
+            if (vc == VC_AVI && q != 1) continue;                          // the AVI holds the sound uncompressed: no audio quality there
+            unsigned long long t = QsRecord(vc, 1, ac, q, snd, false, fps, 7.0, L"audio quality", nullptr, true);
+            audioAdd[q] = t > noSnd ? t - noSnd : 0;
+        }
+        if (dev) QsTone(false);
+        wchar_t da[300]; _snwprintf(da, 300, L"%s: the sound adds %llu (best), %llu (medium), %llu (worst) bytes to %llu", head, audioAdd[0], audioAdd[1], audioAdd[2], noSnd);
+        if (vc == VC_AVI) SKIP(L"quality sizes: the AVI holds the sound uncompressed - no audio quality there");
+        else if (audioAdd[0] && audioAdd[1] && audioAdd[2]) {
+            Check(audioAdd[0] > audioAdd[1] * 1.20, L"quality sizes: the best audio quality adds at least 20 % more than the medium one", da);
+            Check(audioAdd[1] > audioAdd[2] * 1.20, L"quality sizes: the medium audio quality adds at least 20 % more than the worst one", da);
+        } else FAIL(L"quality sizes: the sound added nothing to the file: %s", da);
+    }
+    // the video quality: a moving noisy picture, the audio quality fixed; the sound of the medium quality is not counted
+    unsigned long long vs[3] = {};
+    if (dev) QsTone(true);
+    for (int q = 0; q < 3; ++q) { unsigned long long t = QsRecord(vc, q, ac, 1, snd, true, fps, 7.0, L"video quality", nullptr); vs[q] = t > audioAdd[1] ? t - audioAdd[1] : t; }
+    if (dev) QsTone(false);
+    wchar_t d[300]; _snwprintf(d, 300, L"%s: best %llu, medium %llu, worst %llu bytes (the sound taken off)", head, vs[0], vs[1], vs[2]);
+    if (vs[0] && vs[1] && vs[2] && g_wine) {
+        if (!(vs[0] > vs[1] * 1.20 && vs[1] > vs[2] * 1.20)) WARN(L"quality sizes: Wine's JPEG encoder does not follow the quality (the check is made on Windows): %s", d);
+    } else if (vs[0] && vs[1] && vs[2]) {
+        Check(vs[0] > vs[1] * 1.20, L"quality sizes: the best video quality is a file at least 20 % bigger than the medium one", d);
+        Check(vs[1] > vs[2] * 1.20, L"quality sizes: the medium video quality is a file at least 20 % bigger than the worst one", d);
+    }
+}
+
 static void T_KeyInterval()
 {
     if (g_wine || !VideoFormatAvailable(VC_H264_BEST)) { SKIP(L"key frames: there is no real H.264 encoder here"); return; }
@@ -3854,6 +3999,205 @@ static bool AudioLabTry(const wchar_t* what, IMFMediaType* out, IMFMediaType* in
     return SUCCEEDED(h3);
 }
 
+// ---- round 9: what makes the size of the H.264 file follow the quality? Realistic content (a smooth picture with noise), sizes at three quality choices ------
+namespace {
+static const GUID kLabMean   = { 0xf7222374, 0x2144, 0x4815, { 0xb5, 0x50, 0xa3, 0x7f, 0x8e, 0x12, 0xee, 0x52 } };    // AVEncCommonMeanBitRate
+static const GUID kLabMaxBr  = { 0x9651eae4, 0x39b9, 0x4ebf, { 0x85, 0xef, 0xd7, 0xf4, 0x44, 0xec, 0x74, 0x65 } };    // AVEncCommonMaxBitRate
+static const GUID kLabMaxQp  = { 0x3daf6f66, 0xa6a7, 0x45e0, { 0xa8, 0xe5, 0xf2, 0x74, 0x3f, 0x46, 0xa3, 0xa2 } };    // AVEncVideoMaxQP
+static const GUID kLabQual   = { 0xfcbf57a3, 0x7ea5, 0x4b0c, { 0x96, 0x44, 0x69, 0xb4, 0x0c, 0x39, 0xc3, 0x91 } };    // AVEncCommonQuality
+static const GUID kLabRc     = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };    // AVEncCommonRateControlMode
+static const GUID kLabGopSz  = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };    // AVEncMPVGOPSize
+
+struct SizeVariant { const wchar_t* name; int rc; /* -1 not set */ bool mean; double maxMul; /* 0 not set */ int quality; /* 0 not set, else per choice below */ int maxQp; /* 0 not set */ };
+
+static int g_qual3[3] = { 85, 65, 40 };
+static double g_capMul3[3] = { 2.0, 1.2, 0.7 };
+static int g_capBase = 0;           // bit/s the cap multipliers apply to (maxMul < 0 asks for it)
+
+static unsigned long long SizeOne(const SizeVariant& v, int choice, const DWORD* noise, int W, int H, int fps, int secs, int idx, int* keysOut)
+{
+    wchar_t pd[MAX_PATH] = L"", path[MAX_PATH + 40];
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\size-%d.mp4", pd, idx);
+    DeleteFileW(path);
+    static const int bitrates[3] = { 900000, 600000, 360000 };
+    const int* qualities = g_qual3;
+    static const int maxQps[3] = { 34, 40, 46 };
+    const int bitrate = bitrates[choice];
+    IMFAttributes* attrs = nullptr; IMFSinkWriter* w = nullptr;
+    MFCreateAttributes(&attrs, 2); attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE); attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    if (FAILED(MFCreateSinkWriterFromURL(path, nullptr, attrs, &w)) || !w) { attrs->Release(); return 0; }
+    IMFMediaType* vo = nullptr; IMFMediaType* vi = nullptr; MFCreateMediaType(&vo); MFCreateMediaType(&vi);
+    vo->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vo->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+    vo->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate); vo->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive); vo->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Main);
+    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, fps, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    vi->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vi->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32); vi->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, fps, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    DWORD st = 0;
+    HRESULT hr = w->AddStream(vo, &st);
+    if (SUCCEEDED(hr)) hr = w->SetInputMediaType(st, vi, nullptr);
+    wchar_t note[200] = L"";
+    if (SUCCEEDED(hr)) {
+        ICodecAPI* api = nullptr;
+        if (SUCCEEDED(w->GetServiceForStream(st, GUID_NULL, kLabIidApi, (void**)&api)) && api) {
+            VARIANT x; VariantInit(&x);
+            auto setU = [&](const GUID& g, unsigned val, const wchar_t* nm) { x.vt = VT_UI4; x.ulVal = val; HRESULT r = api->SetValue(&g, &x); if (r != S_OK) _snwprintf(note + wcslen(note), 190 - wcslen(note), L" %s:0x%08lX", nm, (unsigned long)r); };
+            setU(kLabGopSz, (unsigned)(fps * 20), L"gop");
+            if (v.rc >= 0) setU(kLabRc, (unsigned)v.rc, L"rc");
+            if (v.mean) setU(kLabMean, (unsigned)bitrate, L"mean");
+            if (v.maxMul > 0) setU(kLabMaxBr, (unsigned)(bitrate * v.maxMul), L"max");
+            if (v.maxMul < 0) setU(kLabMaxBr, (unsigned)(g_capBase * g_capMul3[choice]), L"cap");
+            if (v.quality) setU(kLabQual, (unsigned)qualities[choice], L"quality");
+            if (v.maxQp) setU(kLabMaxQp, (unsigned)maxQps[choice], L"maxqp");
+            api->Release();
+        }
+        IMFSinkWriterEx* wx = nullptr;
+        if (SUCCEEDED(w->QueryInterface(__uuidof(IMFSinkWriterEx), (void**)&wx)) && wx) {
+            for (DWORD ti = 0; ti < 6; ++ti) {
+                IMFTransform* t = nullptr; GUID cg = GUID_NULL;
+                if (FAILED(wx->GetTransformForStream(st, ti, &cg, &t)) || !t) break;
+                if (IsEqualGUID(cg, MFT_CATEGORY_VIDEO_ENCODER)) {
+                    IMFMediaType* to = nullptr; IMFMediaType* ti2 = nullptr; t->GetOutputCurrentType(0, &to); t->GetInputCurrentType(0, &ti2);
+                    if (to) t->SetOutputType(0, to, 0);
+                    if (ti2) t->SetInputType(0, ti2, 0);
+                    if (to) to->Release();
+                    if (ti2) ti2->Release();
+                }
+                t->Release();
+            }
+            wx->Release();
+        }
+        hr = w->BeginWriting();
+    }
+    const size_t bytes = (size_t)W * H * 4;
+    BYTE* pic = (BYTE*)malloc(bytes);
+    const int W2 = W * 2;
+    int done = 0;
+    for (int i = 0; i < fps * secs && SUCCEEDED(hr); ++i) {
+        int off = (i * 13) % W;
+        for (int y = 0; y < H; ++y) memcpy(pic + (size_t)(H - 1 - y) * W * 4, noise + (size_t)y * W2 + off, (size_t)W * 4);      // bottom-up
+        IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+        if (FAILED(MFCreateMemoryBuffer((DWORD)bytes, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) break;
+        memcpy(d, pic, bytes); b->Unlock(); b->SetCurrentLength((DWORD)bytes);
+        MFCreateSample(&sm); sm->AddBuffer(b);
+        sm->SetSampleTime((LONGLONG)i * 10000000LL / fps); sm->SetSampleDuration(10000000LL / fps);
+        hr = w->WriteSample(st, sm); sm->Release(); b->Release();
+        if (SUCCEEDED(hr)) ++done;
+    }
+    HRESULT hf = w->Finalize();
+    w->Release(); free(pic); vo->Release(); vi->Release(); attrs->Release();
+    int total = 0; *keysOut = Mp4KeyFrames(path, &total);
+    unsigned long long sz = FileSz(path);
+    Rep(L"INFO", L"  size [%s] choice %d (%d kbit/s asked): %llu bytes, %d frames written, finalize 0x%08lX, %d key frames%s", v.name, choice, bitrate / 1000, sz, done, (unsigned long)hf, *keysOut, note);
+    return sz;
+}
+} // namespace
+
+static int RunKeyLab9()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab9: MFStartup failed"); return 1; }
+    const int W = 470, H = 302, fps = 25, secs = 7, W2 = W * 2;
+    int amp = 32; { wchar_t e[16]; if (GetEnvironmentVariableW(L"C2S_QS_AMP", e, 16)) amp = _wtoi(e); }
+    DWORD* noise = (DWORD*)malloc((size_t)W2 * H * 4); unsigned sd = 777;
+    for (size_t i = 0; i < (size_t)W2 * H; ++i) {
+        int x = (int)(i % W2), y = (int)(i / W2); int ch[3] = { x * 255 / W2, y * 255 / H, 128 }; DWORD c = 0;
+        for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = ch[k] + (int)((sd >> 16) % (2 * amp + 1)) - amp; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+        noise[i] = c;
+    }
+    Rep(L"INFO", L"keylab9: H.264, %dx%d at %d fps for %d s, a smooth picture with noise +-%d scrolling; asked 900 / 600 / 360 kbit/s", W, H, fps, secs, amp);
+    //                          name                                          rc  mean maxMul quality maxQp
+    static const SizeVariant vars[] = {
+        { L"as the recorder: bit rate in the type only",                      -1, false, 0,   0, 0  },
+        { L"CBR + mean bit rate",                                              0, true,  0,   0, 0  },
+        { L"peak constrained VBR + mean + max = mean",                         2, true,  1.0, 0, 0  },
+        { L"unconstrained VBR + mean",                                         1, true,  0,   0, 0  },
+        { L"quality mode + quality 85 / 65 / 40",                              3, false, 0,   1, 0  },
+        { L"as the recorder + max QP 34 / 40 / 46",                           -1, false, 0,   0, 1  },
+        { L"CBR + mean + max QP 34 / 40 / 46",                                 0, true,  0,   0, 1  },
+    };
+    int idx = 500;
+    for (const SizeVariant& v : vars) {
+        unsigned long long s3[3]; int keys;
+        Rep(L"INFO", L"keylab9 variant: %s", v.name);
+        for (int c = 0; c < 3; ++c) s3[c] = SizeOne(v, c, noise, W, H, fps, secs, ++idx, &keys);
+        Rep(L"INFO", L"RESULT [%s]: %llu / %llu / %llu bytes, best/medium %.2f, medium/worst %.2f", v.name, s3[0], s3[1], s3[2], s3[1] ? (double)s3[0] / s3[1] : 0.0, s3[2] ? (double)s3[1] / s3[2] : 0.0);
+    }
+    free(noise);
+    MFShutdown();
+    Rep(L"INFO", L"keylab9: done");
+    return 0;
+}
+
+static int RunKeyLab11()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab11: MFStartup failed"); return 1; }
+    const int W = 470, H = 302, fps = 25, secs = 5, W2 = W * 2;
+    static const int quals[] = { 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90 };
+    static const int amps[] = { 2, 4, 8, 16 };
+    int idx = 700;
+    for (int amp : amps) {
+        DWORD* noise = (DWORD*)malloc((size_t)W2 * H * 4); unsigned sd = 777;
+        for (size_t i = 0; i < (size_t)W2 * H; ++i) {
+            int x = (int)(i % W2), y = (int)(i / W2); int ch[3] = { x * 255 / W2, y * 255 / H, 128 }; DWORD c = 0;
+            for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = ch[k] + (int)((sd >> 16) % (2 * amp + 1)) - amp; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+            noise[i] = c;
+        }
+        wchar_t line[600] = L""; size_t ln = 0;
+        for (int q : quals) {
+            g_qual3[0] = g_qual3[1] = g_qual3[2] = q;
+            SizeVariant v = { L"curve", 3, false, 0.0, 1, 0 };
+            int keys; unsigned long long sz = SizeOne(v, 0, noise, W, H, fps, secs, ++idx, &keys);
+            ln += _snwprintf(line + ln, 600 - ln - 1, L" %d:%llu", q, sz / 1000);
+        }
+        Rep(L"INFO", L"CURVE noise %d (quality:KB for 5 s):%s", amp, line);
+        free(noise);
+    }
+    MFShutdown();
+    Rep(L"INFO", L"keylab11: done");
+    return 0;
+}
+
+static int RunKeyLab10()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab10: MFStartup failed"); return 1; }
+    const int W = 470, H = 302, fps = 25, secs = 7, W2 = W * 2;
+    g_capBase = 500000;
+    struct QSet { const wchar_t* name; int q[3]; bool cap; };
+    static const QSet sets[] = {
+        { L"quality 85/65/40",           { 85, 65, 40 }, false },
+        { L"quality 70/50/30",           { 70, 50, 30 }, false },
+        { L"quality 85/65/40 + cap 1000/600/350 kbit/s", { 85, 65, 40 }, true },
+        { L"quality 70/50/30 + cap 1000/600/350 kbit/s", { 70, 50, 30 }, true },
+        { L"quality 60/45/30 + cap 1000/600/350 kbit/s", { 60, 45, 30 }, true },
+    };
+    static const int amps[] = { 0, 4, 32 };
+    int idx = 600;
+    for (int amp : amps) {
+        DWORD* noise = (DWORD*)malloc((size_t)W2 * H * 4); unsigned sd = 777;
+        for (size_t i = 0; i < (size_t)W2 * H; ++i) {
+            int x = (int)(i % W2), y = (int)(i / W2); int ch[3] = { x * 255 / W2, y * 255 / H, 128 }; DWORD c = 0;
+            for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = amp ? ch[k] + (int)((sd >> 16) % (2 * amp + 1)) - amp : ch[k]; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+            noise[i] = c;
+        }
+        Rep(L"INFO", L"keylab10: content = a scrolling gradient with noise +-%d", amp);
+        for (const QSet& qs : sets) {
+            memcpy(g_qual3, qs.q, sizeof(g_qual3));
+            SizeVariant v = { qs.name, 3, false, qs.cap ? -1.0 : 0.0, 1, 0 };
+            unsigned long long s3[3]; int keys;
+            for (int c = 0; c < 3; ++c) s3[c] = SizeOne(v, c, noise, W, H, fps, secs, ++idx, &keys);
+            Rep(L"INFO", L"RESULT noise %d [%s]: %llu / %llu / %llu bytes, best/medium %.2f, medium/worst %.2f", amp, qs.name, s3[0], s3[1], s3[2], s3[1] ? (double)s3[0] / s3[1] : 0.0, s3[2] ? (double)s3[1] / s3[2] : 0.0);
+        }
+        free(noise);
+    }
+    MFShutdown();
+    Rep(L"INFO", L"keylab10: done");
+    return 0;
+}
+
+static const GUID kAudioWma8 = { 0x00000161, 0x0000, 0x0010, { 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71 } };
 static int RunAudioLab()
 {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -3902,6 +4246,25 @@ static int RunAudioLab()
     }
     if (col) col->Release();
     MFShutdown();
+    Rep(L"INFO", L"audiolab: MFTranscodeGetAudioOutputAvailableTypes(WMA 8) at 44.1 kHz mono");
+    {
+        IMFCollection* wc = nullptr;
+        HRESULT hw = MFTranscodeGetAudioOutputAvailableTypes(kAudioWma8, MFT_ENUM_FLAG_ALL, nullptr, &wc);
+        DWORD wn = 0; if (SUCCEEDED(hw) && wc) wc->GetElementCount(&wn);
+        Rep(L"INFO", L"  0x%08lX, %lu types", (unsigned long)hw, (unsigned long)wn);
+        for (DWORD i = 0; SUCCEEDED(hw) && wc && i < wn; ++i) {
+            IUnknown* u = nullptr; IMFMediaType* t = nullptr;
+            if (FAILED(wc->GetElement(i, &u)) || !u) continue;
+            if (SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+                UINT32 rate = 0, ch = 0, bps = 0, bits = 16; t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch);
+                t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps); t->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bits);
+                if (ch == 1) Rep(L"INFO", L"  WMA %lu Hz mono %lu bit, %lu bytes a second (%lu kbit/s)", (unsigned long)rate, (unsigned long)bits, (unsigned long)bps, (unsigned long)(bps * 8 / 1000));
+                t->Release();
+            }
+            u->Release();
+        }
+        if (wc) wc->Release();
+    }
     Rep(L"INFO", L"audiolab: done");
     return 0;
 }
@@ -4111,6 +4474,9 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab6")) return RunKeyLab6();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab7")) return RunKeyLab7();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--audiolab")) return RunAudioLab();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab9")) return RunKeyLab9();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab10")) return RunKeyLab10();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab11")) return RunKeyLab11();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
@@ -4139,7 +4505,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
