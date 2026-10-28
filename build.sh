@@ -24,7 +24,7 @@ done
 $TRIPLE-gcc -municode -mconsole -static -s -Wl,--no-insert-timestamp -Wl,-Map,"$O/c2sautotest.map" -o "$O/c2sautotest.exe" \
     "$T/c2sautotest.o" "$T/lang.o" "$T/settings.o" "$T/capture.o" "$T/picker.o" "$T/recorder.o" "$T/sinks.o" "$T/fx.o" "$T/audiomix.o" "$T/applog.o" "$T/cxxrt.o" \
     -lmfplat -lmfreadwrite -lmf -lmfuuid -lwindowscodecs -lwinmm -lmsimg32 -ldwmapi -lshlwapi -lcomctl32 -lcomdlg32 \
-    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys
+    -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys -lsetupapi -lnewdev
 if [ "$ONLY" = autotest ]; then echo "built $O/c2sautotest.exe only"; exit 0; fi
 $TRIPLE-windres Click2Screen.rc -O coff -o "$T/app.res.o"
 $TRIPLE-windres Click2Screen-Setup.rc -O coff -o "$T/setup.res.o"

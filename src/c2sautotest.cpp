@@ -14,6 +14,8 @@
 // %TEMP%\c2sautotest-<pid> (removed unless --keep). WARN: something the environment may not offer (no microphone, a
 // hotkey taken, no H.264 decoder); SKIP: not possible here (Media Foundation encoder under Wine).
 #include "c2s.h"
+#include <setupapi.h>
+#include <newdev.h>
 #include "uiids.h"
 #include <mmsystem.h>
 #include <dwmapi.h>
@@ -3394,7 +3396,7 @@ static void QsTone(bool on)
 
 // One recording of the fixture: `noise` scrolls a noisy picture over it after the first 1.5 s (the first seconds are the known colours, for the orientation).
 // Returns the size of the file, 0 when it was not made; the checks of this one recording are made here.
-static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, bool noise, int fps, double secs, const wchar_t* tag, int* audioType, bool small = false)
+static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, bool noise, int fps, double secs, const wchar_t* tag, int* audioType, bool small = false, bool byWindow = false)
 {
     RecParams p; memset(&p, 0, sizeof(p));
     SettingsDefaults(p.cfg);
@@ -3402,6 +3404,7 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     p.cfg.mic = false; p.cfg.loopback = audio; p.cfg.capMouse = false; p.cfg.highlight = false;
     p.rc = FxScreenRect();
     int regW = g_fx.w, regH = g_fx.h;
+    if (byWindow) p.hwnd = g_fx.hw;                                    // the window recording: the window is what is followed
     if (small) { regW = 128; regH = 96; p.rc.right = p.rc.left + regW; p.rc.bottom = p.rc.top + regH; }          // the sound part: a tiny picture, the sound is almost all of the file
     wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\qs-%d-%d-%d-%d.%s", g_dir, vc, vq, ac, aq, VideoFormatExt(vc));
     DeleteFileW(path); wcscpy(p.path, path);
@@ -3514,6 +3517,208 @@ static void T_QualitySizes()
         Check(vs[0] > vs[1] * 1.20, L"quality sizes: the best video quality is a file at least 20 % bigger than the medium one", d);
         Check(vs[1] > vs[2] * 1.20, L"quality sizes: the medium video quality is a file at least 20 % bigger than the worst one", d);
     }
+}
+
+struct MonInfo { RECT rc; wchar_t dev[40]; bool primary; };
+struct MonEnumCtx { MonInfo* out; int n; };
+static BOOL CALLBACK MonEnumCb(HMONITOR m, HDC, LPRECT, LPARAM lp)
+{
+    auto* v = (MonEnumCtx*)lp;
+    MONITORINFOEXW mi; memset(&mi, 0, sizeof(mi)); mi.cbSize = sizeof(mi);
+    if (v->n < 8 && GetMonitorInfoW(m, &mi)) {
+        MonInfo& o = v->out[v->n++];
+        o.rc = mi.rcMonitor; wcsncpy(o.dev, mi.szDevice, 39); o.dev[39] = 0; o.primary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+    }
+    return TRUE;
+}
+static int ListMonitors(MonInfo* out)
+{
+    MonEnumCtx v = { out, 0 };
+    EnumDisplayMonitors(nullptr, nullptr, MonEnumCb, (LPARAM)&v);
+    return v.n;
+}
+
+// ---- N monitors: what the screenshot and the recording take when the screen is several monitors (the machine needs them: see --vdd) ----------------
+struct Shot { int w, h; uint8_t* px; };                          // BGRA, top-down
+static Shot GrabShot(const RECT& r)
+{
+    Shot sh = { 0, 0, nullptr };
+    HBITMAP b = CaptureRect(r, false, false);
+    if (!b) return sh;
+    BITMAP bm; GetObject(b, sizeof(bm), &bm);
+    sh.w = bm.bmWidth; sh.h = bm.bmHeight;
+    sh.px = (uint8_t*)malloc((size_t)sh.w * sh.h * 4);
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi)); bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = sh.w; bi.bmiHeader.biHeight = -sh.h; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+    HDC dc = GetDC(nullptr);
+    if (!sh.px || !GetDIBits(dc, b, 0, sh.h, sh.px, &bi, DIB_RGB_COLORS)) { free(sh.px); sh.px = nullptr; }
+    ReleaseDC(nullptr, dc); DeleteObject(b);
+    return sh;
+}
+// the four quarters of the fixture at fr, looked for in the picture of `area`; returns how many of the four have the right colour
+static int QuartersRight(const Shot& sh, const RECT& area, const RECT& fr)
+{
+    if (!sh.px) return 0;
+    int ok = 0, w = fr.right - fr.left, h = fr.bottom - fr.top;
+    const int cx[4] = { w / 4, 3 * w / 4, w / 4, 3 * w / 4 }, cy[4] = { h / 4, h / 4, (h - 10) * 3 / 4, (h - 10) * 3 / 4 };
+    for (int i = 0; i < 4; ++i) {
+        int x = fr.left + cx[i] - area.left, y = fr.top + cy[i] - area.top;
+        if (x < 0 || y < 0 || x >= sh.w || y >= sh.h) continue;
+        const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4;
+        if (Near(kQuad[i], q[2], q[1], q[0], 10)) ++ok;
+    }
+    return ok;
+}
+static void PlaceFixture(int x, int y)
+{
+    SetWindowPos(g_fx.hw, HWND_TOPMOST, x, y, g_fx.w, g_fx.h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    InvalidateRect(g_fx.hw, nullptr, TRUE); UpdateWindow(g_fx.hw);
+    Pump(600);
+}
+// the arrangement of the monitors: 0 in a row to the right, 1 to the left (negative x), 2 above (negative y), 3 a grid with offsets
+static void ArrangeMonitors(int layout)
+{
+    DISPLAY_DEVICEW dd; dd.cb = sizeof(dd);
+    struct D { wchar_t name[40]; int w, h; bool primary; } d[8]; int n = 0;
+    for (DWORD i = 0; EnumDisplayDevicesW(nullptr, i, &dd, 0) && n < 8; ++i) {
+        if (!(dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP)) continue;
+        DEVMODEW dm; memset(&dm, 0, sizeof(dm)); dm.dmSize = sizeof(dm);
+        if (!EnumDisplaySettingsExW(dd.DeviceName, ENUM_CURRENT_SETTINGS, &dm, 0)) continue;
+        wcsncpy(d[n].name, dd.DeviceName, 39); d[n].name[39] = 0; d[n].w = (int)dm.dmPelsWidth; d[n].h = (int)dm.dmPelsHeight; d[n].primary = (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0; ++n;
+    }
+    int px = 0, py = 0, k = 0;
+    for (int i = 0; i < n; ++i) {
+        int x = 0, y = 0;
+        if (!d[i].primary) {
+            ++k;
+            if (layout == 0) { x = px; y = (k % 2) ? 0 : 120; px += d[i].w; }
+            else if (layout == 1) { px -= d[i].w; x = px; y = (k % 2) ? 0 : -100; }
+            else if (layout == 2) { py -= d[i].h; y = py; x = (k % 2) ? 0 : 160; }
+            else { static const int gx[4] = { 1, 0, 1, -1 }, gy[4] = { 0, 1, 1, 0 }; x = gx[(k - 1) % 4] * d[i].w; y = gy[(k - 1) % 4] * d[i].h + (k > 4 ? 50 : 0); }
+        } else { px = d[i].w; py = 0; }
+        if (d[i].primary) continue;                                    // the primary monitor stays where it is: (0, 0)
+        DEVMODEW dm; memset(&dm, 0, sizeof(dm)); dm.dmSize = sizeof(dm);
+        dm.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT; dm.dmPosition.x = x; dm.dmPosition.y = y; dm.dmPelsWidth = d[i].w; dm.dmPelsHeight = d[i].h;
+        ChangeDisplaySettingsExW(d[i].name, &dm, nullptr, CDS_UPDATEREGISTRY | CDS_NORESET, nullptr);
+    }
+    ChangeDisplaySettingsExW(nullptr, nullptr, nullptr, 0, nullptr);
+    Pump(2500);
+}
+
+static void T_Monitors()
+{
+    MonInfo mon[8]; int nm = ListMonitors(mon);
+    if (nm < 2) { SKIP(L"monitors: this machine has one monitor (the test wants several: see --vdd in the VM scripts)"); return; }
+    static const int usable[] = { VC_H264_BEST, VC_H265, VC_WMV, VC_AVI };
+    int avail[4], na = 0;
+    for (int u : usable) if (VideoFormatAvailable(u) && !g_wine) avail[na++] = u;
+    INFO(L"monitors: %d monitors", nm);
+    MakeFixture(R(300, 420), R(220, 300));
+    for (int layout = 0; layout < 4; ++layout) {
+        ArrangeMonitors(layout);
+        nm = ListMonitors(mon);
+        RECT vs = VirtualScreen();
+        wchar_t lay[500]; size_t ln = 0;
+        for (int i = 0; i < nm && ln < 440; ++i) ln += _snwprintf(lay + ln, 500 - ln, L"[%ld,%ld %ldx%ld] ", (long)mon[i].rc.left, (long)mon[i].rc.top, (long)(mon[i].rc.right - mon[i].rc.left), (long)(mon[i].rc.bottom - mon[i].rc.top));
+        wchar_t head[600]; _snwprintf(head, 600, L"layout %d, %d monitors %s, virtual screen %ld,%ld %ldx%ld", layout, nm, lay, (long)vs.left, (long)vs.top, (long)(vs.right - vs.left), (long)(vs.bottom - vs.top));
+        INFO(L"monitors: %s", head);
+        // the places: the centre of every monitor, and the edge between every two that touch (the fixture straddles it)
+        struct Place { int x, y; const wchar_t* kind; int mon; } pl[24]; int np = 0;
+        for (int i = 0; i < nm && np < 20; ++i)
+            pl[np++] = { (int)((mon[i].rc.left + mon[i].rc.right) / 2 - g_fx.w / 2), (int)((mon[i].rc.top + mon[i].rc.bottom) / 2 - g_fx.h / 2), L"inside", i };
+        for (int i = 0; i < nm; ++i) for (int j = 0; j < nm && np < 22; ++j) {
+            if (i == j) continue;
+            if (mon[i].rc.right == mon[j].rc.left && mon[i].rc.top < mon[j].rc.bottom && mon[j].rc.top < mon[i].rc.bottom) {
+                int top = (mon[i].rc.top > mon[j].rc.top ? mon[i].rc.top : mon[j].rc.top), bot = (mon[i].rc.bottom < mon[j].rc.bottom ? mon[i].rc.bottom : mon[j].rc.bottom);
+                pl[np++] = { (int)(mon[i].rc.right - g_fx.w / 2), (int)((top + bot) / 2 - g_fx.h / 2), L"straddles the edge between monitors (side by side)", i };
+            }
+            if (mon[i].rc.bottom == mon[j].rc.top && mon[i].rc.left < mon[j].rc.right && mon[j].rc.left < mon[i].rc.right) {
+                int lft = (mon[i].rc.left > mon[j].rc.left ? mon[i].rc.left : mon[j].rc.left), rgt = (mon[i].rc.right < mon[j].rc.right ? mon[i].rc.right : mon[j].rc.right);
+                pl[np++] = { (int)((lft + rgt) / 2 - g_fx.w / 2), (int)(mon[i].rc.bottom - g_fx.h / 2), L"straddles the edge between monitors (one above the other)", i };
+            }
+        }
+        // the whole virtual screen once per layout
+        PlaceFixture(pl[0].x, pl[0].y);
+        { Shot sh = GrabShot(vs); RECT fr = FxScreenRect();
+          wchar_t d[700]; _snwprintf(d, 700, L"%s: the picture is %dx%d, the screen %ldx%ld, quarters right %d of 4", head, sh.w, sh.h, (long)(vs.right - vs.left), (long)(vs.bottom - vs.top), QuartersRight(sh, vs, fr));
+          Check(sh.w == vs.right - vs.left && sh.h == vs.bottom - vs.top && QuartersRight(sh, vs, fr) == 4, L"monitors: a picture of all monitors has the size of the virtual screen and every colour where it is", d);
+          free(sh.px); }
+        // the recordings are made at a few of the places (random), the pictures at all of them
+        bool recAt[24] = {}; for (int k = 0; k < 4 && np; ++k) recAt[R(0, np - 1)] = true;
+        for (int i = 0; i < np; ++i) {
+            PlaceFixture(pl[i].x, pl[i].y);
+            RECT fr = FxScreenRect();
+            Shot sh = GrabShot(fr);
+            int q = QuartersRight(sh, fr, fr); free(sh.px);
+            wchar_t d[700]; _snwprintf(d, 700, L"%s: the fixture %ldx%ld at %ld,%ld (monitor %d, %s), quarters right %d of 4", head, (long)(fr.right - fr.left), (long)(fr.bottom - fr.top), (long)fr.left, (long)fr.top, pl[i].mon, pl[i].kind, q);
+            Check(q == 4, L"monitors: a region screenshot taken where the fixture is has every colour in the right place", d);
+            Shot all = GrabShot(vs); int qa = QuartersRight(all, vs, fr); free(all.px);
+            Check(qa == 4, L"monitors: the picture of all monitors shows the fixture where it is", d);
+            if (recAt[i] && na) {
+                const int vc = avail[R(0, na - 1)];
+                QsRecord(vc, 1, 0, 1, false, false, 15, 3.0, L"monitors: region", nullptr);
+                QsRecord(vc, 1, 0, 1, false, false, 15, 3.0, L"monitors: window", nullptr, false, true);
+            }
+        }
+        // the real program: the desktop hotkey saves one picture per monitor (a design of the original recorder, kept)
+        if (!g_wine) {
+            const int fm = np > 1 ? 1 : 0;                              // the fixture inside the second monitor
+            PlaceFixture(pl[fm].x, pl[fm].y);
+            Settings st; PrepareApp(st); st.notify = false; st.imageFormat = IMG_PNG; st.capMouse = false; st.highlight = false;
+            App a;
+            if (!StartApp(a, st)) { FAIL(L"monitors: Click2Screen.exe did not show its window"); StopApp(a, false); }
+            else {
+                {   // the pictures of the layout before are not what is counted
+                    wchar_t pat0[MAX_PATH]; _snwprintf(pat0, MAX_PATH, L"%s\\*.*", st.folder);
+                    WIN32_FIND_DATAW f0; HANDLE h0 = FindFirstFileW(pat0, &f0);
+                    if (h0 != INVALID_HANDLE_VALUE) { do { if (!(f0.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) { wchar_t d0[MAX_PATH]; _snwprintf(d0, MAX_PATH, L"%s\\%s", st.folder, f0.cFileName); DeleteFileW(d0); } } while (FindNextFileW(h0, &f0)); FindClose(h0); }
+                }
+                int before = CountFiles(st.folder);
+                PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
+                DWORD until = GetTickCount() + 25000;
+                while ((int)(until - GetTickCount()) > 0 && CountFiles(st.folder) < before + nm) Pump(300);
+                Pump(800);
+                // the new files: the folder holds only what this program saved in this run
+                wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.png", st.folder);
+                WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
+                int sizesMatched = 0, files = 0, fixtureOk = 0; bool used[16] = {};
+                RECT fr = FxScreenRect();
+                if (h != INVALID_HANDLE_VALUE) do {
+                    wchar_t f[MAX_PATH]; _snwprintf(f, MAX_PATH, L"%s\\%s", st.folder, fd.cFileName);
+                    int dw = 0, dh = 0; uint8_t* px = nullptr;
+                    if (!DecodePixels(f, &dw, &dh, &px)) continue;
+                    ++files;
+                    {   // the file of the monitor the fixture is on: monitors of one size cannot be told apart by the size, the colours tell
+                        const RECT& fmr = mon[pl[fm].mon].rc;
+                        if (fmr.right - fmr.left == dw && fmr.bottom - fmr.top == dh) { Shot sh = { dw, dh, px }; if (QuartersRight(sh, fmr, fr) == 4) fixtureOk = 1; }
+                    }
+                    for (int k = 0; k < nm; ++k) if (!used[k] && mon[k].rc.right - mon[k].rc.left == dw && mon[k].rc.bottom - mon[k].rc.top == dh) { used[k] = true; ++sizesMatched; break; }
+                    delete[] px;
+                } while (FindNextFileW(h, &fd));
+                if (h != INVALID_HANDLE_VALUE) FindClose(h);
+                wchar_t d[700]; _snwprintf(d, 700, L"%s: %d pictures for %d monitors, %d of them the size of a monitor, the monitor with the fixture (%d) shows it: %d", head, files, nm, sizesMatched, pl[fm].mon, fixtureOk);
+                Check(files == nm && sizesMatched == nm && fixtureOk, L"monitors: the program's desktop screenshot is one picture per monitor, each of the size of its monitor, the colours where they are", d);
+                StopApp(a, false);
+            }
+        }
+        // the whole screen recorded
+        if (na) {
+            RecParams p; memset(&p, 0, sizeof(p)); SettingsDefaults(p.cfg); p.cfg.mic = false; p.cfg.loopback = false; p.cfg.fps = 10; p.cfg.capMouse = false;
+            p.cfg.videoCodec = avail[0]; p.rc = vs;
+            wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\allmon-%d.%s", g_dir, layout, VideoFormatExt(p.cfg.videoCodec)); wcscpy(p.path, path);
+            Recorder rec; wchar_t err[300] = L"";
+            if (!rec.Start(p, err, 300)) FAIL(L"monitors: the recording of all monitors did not start: %s (%s)", err, head);
+            else {
+                DWORD t0 = GetTickCount(); while ((int)(GetTickCount() - t0) < 3000) Pump(100);
+                double el = rec.ElapsedSec(); int rw = rec.Width(), rh = rec.Height(); bool st = rec.Stop();
+                int ew, eh; FitSizeForVideo(p.cfg.videoCodec, vs.right - vs.left, vs.bottom - vs.top, ew, eh);
+                bool pic = false, miss = false; int chk = 0;
+                VideoInfo v = Inspect(path, false, &pic, &chk, &miss);
+                wchar_t d[700]; _snwprintf(d, 700, L"%s: the recording is %dx%d (asked %dx%d), file %dx%d, %.2f s, %d frames", head, rw, rh, ew, eh, v.w, v.h, el, v.frames);
+                Check(st && rw == ew && rh == eh && v.ok && v.w == ew && v.h == eh && v.frames > el * 10 * 0.2, L"monitors: a recording of all monitors is made at the size of the virtual screen", d);
+            }
+        }
+    }
+    ArrangeMonitors(0);
 }
 
 static void T_KeyInterval()
@@ -4160,6 +4365,70 @@ static int RunKeyLab11()
     return 0;
 }
 
+// ---- several monitors: the Virtual Display Driver (an indirect display driver, signed) gives a Windows machine as many as asked ----------------
+// devcon install: write the settings (the count of monitors), then make the device node or restart it; wait for the monitors to appear
+static int RunVddSetup(int count, const wchar_t* dir)
+{
+    wchar_t src[MAX_PATH], inf[MAX_PATH];
+    _snwprintf(src, MAX_PATH, L"%s\\vdd_settings.xml", dir); _snwprintf(inf, MAX_PATH, L"%s\\MttVDD.inf", dir);
+    CreateDirectoryW(L"C:\\VirtualDisplayDriver", nullptr);
+    {   // the settings with <count>
+        HANDLE f = CreateFileW(src, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        if (f == INVALID_HANDLE_VALUE) { Rep(L"INFO", L"vdd: no %s", src); return 1; }
+        DWORD sz = GetFileSize(f, nullptr), got = 0; char* b = (char*)calloc(sz + 64, 1); ReadFile(f, b, sz, &got, nullptr); CloseHandle(f);
+        char* ca = strstr(b, "<count>"); char* ce = strstr(b, "</count>");
+        if (!ca || !ce) { Rep(L"INFO", L"vdd: the settings have no <count>"); free(b); return 1; }
+        char* out = (char*)calloc(got + 64, 1);
+        size_t head = (size_t)(ca + 7 - b);
+        memcpy(out, b, head);
+        int ol = (int)head; ol += sprintf(out + ol, "%d", count);
+        strcpy(out + ol, ce); ol += (int)strlen(ce);
+        HANDLE o = CreateFileW(L"C:\\VirtualDisplayDriver\\vdd_settings.xml", GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+        DWORD wr = 0; if (o != INVALID_HANDLE_VALUE) { WriteFile(o, out, (DWORD)ol, &wr, nullptr); CloseHandle(o); }
+        free(b); free(out);
+        Rep(L"INFO", L"vdd: settings written, %d monitor(s) asked", count);
+    }
+    GUID cls = { 0x4d36e968, 0xe325, 0x11ce, { 0xbf, 0xc1, 0x08, 0x00, 0x2b, 0xe1, 0x03, 0x18 } };
+    HDEVINFO set = SetupDiGetClassDevsW(&cls, nullptr, nullptr, 0);
+    SP_DEVINFO_DATA dd; dd.cbSize = sizeof(dd); bool found = false;
+    for (DWORD i = 0; set != INVALID_HANDLE_VALUE && SetupDiEnumDeviceInfo(set, i, &dd); ++i) {
+        wchar_t ids[400] = L""; SetupDiGetDeviceRegistryPropertyW(set, &dd, SPDRP_HARDWAREID, nullptr, (PBYTE)ids, sizeof(ids) - 4, nullptr);
+        if (wcsstr(ids, L"MttVDD")) { found = true; break; }
+    }
+    if (found) {
+        BOOL reboot0 = FALSE;                                          // a node left by an install that was not finished has no driver: put it
+        BOOL up0 = UpdateDriverForPlugAndPlayDevicesW(nullptr, L"Root\\MttVDD", inf, 0, &reboot0);
+        Rep(L"INFO", L"vdd: driver put on the device that is there: %d (error %lu)", (int)up0, (unsigned long)GetLastError());
+        for (int st = 0; st < 2; ++st) {                               // disable, enable: the driver reads the settings when it starts
+            SP_PROPCHANGE_PARAMS pc; memset(&pc, 0, sizeof(pc));
+            pc.ClassInstallHeader.cbSize = sizeof(SP_CLASSINSTALL_HEADER); pc.ClassInstallHeader.InstallFunction = DIF_PROPERTYCHANGE;
+            pc.StateChange = st ? DICS_ENABLE : DICS_DISABLE; pc.Scope = DICS_FLAG_GLOBAL; pc.HwProfile = 0;
+            BOOL a = SetupDiSetClassInstallParamsW(set, &dd, &pc.ClassInstallHeader, sizeof(pc));
+            BOOL b = a && SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, set, &dd);
+            Rep(L"INFO", L"vdd: device %s: %d / %d (error %lu)", st ? L"enabled" : L"disabled", (int)a, (int)b, (unsigned long)GetLastError());
+            Sleep(st ? 100 : 1500);
+        }
+    } else {
+        if (set != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(set);
+        set = SetupDiCreateDeviceInfoList(&cls, nullptr);
+        dd.cbSize = sizeof(dd);
+        BOOL ok = SetupDiCreateDeviceInfoW(set, L"Display", &cls, nullptr, nullptr, DICD_GENERATE_ID, &dd);
+        wchar_t hw[32] = L"Root\\MttVDD"; hw[wcslen(hw) + 1] = 0;
+        if (ok) ok = SetupDiSetDeviceRegistryPropertyW(set, &dd, SPDRP_HARDWAREID, (const BYTE*)hw, (DWORD)((wcslen(hw) + 2) * 2));
+        if (ok) ok = SetupDiCallClassInstaller(DIF_REGISTERDEVICE, set, &dd);
+        Rep(L"INFO", L"vdd: device node: %d (error %lu)", (int)ok, (unsigned long)GetLastError());
+        BOOL reboot = FALSE;
+        BOOL up = UpdateDriverForPlugAndPlayDevicesW(nullptr, L"Root\\MttVDD", inf, INSTALLFLAG_FORCE, &reboot);
+        Rep(L"INFO", L"vdd: driver installed: %d (error %lu, reboot %d)", (int)up, (unsigned long)GetLastError(), (int)reboot);
+    }
+    if (set != INVALID_HANDLE_VALUE) SetupDiDestroyDeviceInfoList(set);
+    MonInfo m[8]; int n = 0;
+    for (int w = 0; w < 60; ++w) { n = ListMonitors(m); if (n == count + 1) break; Sleep(1000); }
+    Rep(L"INFO", L"vdd: %d monitor(s) now", n);
+    for (int i = 0; i < n; ++i) Rep(L"INFO", L"  monitor %d: %ld,%ld %ldx%ld %s%s", i, (long)m[i].rc.left, (long)m[i].rc.top, (long)(m[i].rc.right - m[i].rc.left), (long)(m[i].rc.bottom - m[i].rc.top), m[i].dev, m[i].primary ? L" (primary)" : L"");
+    return n == count + 1 ? 0 : 2;
+}
+
 static int RunKeyLab10()
 {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -4475,6 +4744,7 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab6")) return RunKeyLab6();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab7")) return RunKeyLab7();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--audiolab")) return RunAudioLab();
+    for (int i = 1; i + 2 < argc; ++i) if (!wcscmp(argv[i], L"--vdd")) return RunVddSetup(_wtoi(argv[i + 1]), argv[i + 2]);
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab9")) return RunKeyLab9();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab10")) return RunKeyLab10();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab11")) return RunKeyLab11();
@@ -4506,7 +4776,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
