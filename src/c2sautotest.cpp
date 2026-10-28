@@ -1766,6 +1766,19 @@ static int CountFiles(const wchar_t* dir)
 
 struct App { PROCESS_INFORMATION pi; HWND main; Settings cfg; wchar_t img[MAX_PATH], vid[MAX_PATH]; };
 
+// The program answers a key a little later when it is busy (the balloon of the tray, a slow machine): the drawing window of the key before may
+// still be there when the next key is sent, and a stroke put to it is lost with it. A test waits for the state each key must bring.
+static HWND WaitInk(DWORD pid, bool wantThere, int ms)
+{
+    DWORD end = GetTickCount() + ms;
+    for (;;) {
+        HWND w = FindWin(pid, C2S_CLASS_INK, 0);
+        if (wantThere ? (w && IsWindowVisible(w)) : !w) return wantThere ? w : (HWND)1;
+        if ((int)(end - GetTickCount()) <= 0) return nullptr;
+        Sleep(20);
+    }
+}
+
 static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"", bool realEncoder = false)
 {
     memset(&a, 0, sizeof(a));
@@ -1945,13 +1958,15 @@ static void T_App()
 
     // the drawing hotkey switches the drawing on and off; the program stays alive and answers
     {
-        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(300);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        WaitInk(a.pi.dwProcessId, true, WMS(4000)); Pump(300);
         bool onAlive = AppAlive(a);
-        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(300);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        WaitInk(a.pi.dwProcessId, false, WMS(4000)); Pump(300);
         Check(onAlive && AppAlive(a), L"program: the drawing hotkey can be switched on and off");
         // the drawing window: it covers the screen, the left button draws, the right one wipes, Esc leaves
         PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
-        HWND ink = FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 4000);
+        HWND ink = WaitInk(a.pi.dwProcessId, true, WMS(4000));
         { DWORD vis = GetTickCount() + WMS(4000); while (ink && !IsWindowVisible(ink) && (int)(vis - GetTickCount()) > 0) Sleep(50); }     // found while it is still being created: wait until it is shown
         RECT vs = VirtualScreen(), ir = {};
         if (ink) GetWindowRect(ink, &ir);
@@ -3770,6 +3785,54 @@ static void T_Monitors()
     ArrangeMonitors(0);
 }
 
+// The drawing window again and again: on, off, on, a stroke of the left button, the see-through window with the line must come (the tests of the
+// program saw it fail now and then on a slow Windows 10 with the 32-bit build). Every round is timed; a failed one tells what the program did.
+static void T_InkStress()
+{
+    MakeFixture(R(300, 500), R(220, 360));
+    Settings s; PrepareApp(s); s.notify = false;
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"ink stress: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
+    int rounds = 30, fails = 0, noInk = 0, noTrail = 0, wrongPlace = 0; DWORD worst = 0;
+    RECT vs = VirtualScreen();
+    for (int r = 0; r < rounds && AppAlive(a); ++r) {
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        bool on1 = WaitInk(a.pi.dwProcessId, true, WMS(6000)) != nullptr; Pump(R(0, 300));
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        bool off2 = WaitInk(a.pi.dwProcessId, false, WMS(6000)) != nullptr; Pump(R(0, 300));
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0);
+        HWND ink = WaitInk(a.pi.dwProcessId, true, WMS(6000));
+        if (!ink) {
+            ++fails; ++noInk; Rep(L"INFO", L"ink stress round %d: no drawing window (after the first key: %d, after the second: %d)", r, (int)on1, (int)off2);
+            // bring the program back to "off" before the next round
+            for (int k = 0; k < 3 && FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 0); ++k) { PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(500); }
+            continue;
+        }
+        const int x0 = 60, y0 = 60;
+        PostMessageW(ink, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x0, y0));
+        for (int i = 1; i <= 12; ++i) PostMessageW(ink, WM_MOUSEMOVE, MK_LBUTTON, MAKELPARAM(x0 + i * 9, y0 + i * 5));
+        PostMessageW(ink, WM_LBUTTONUP, 0, MAKELPARAM(x0 + 108, y0 + 60));
+        DWORD t0 = GetTickCount(), te = t0 + WMS(6000);
+        bool seen = false, placed = false; RECT trc = {};
+        while ((int)(te - GetTickCount()) > 0) {
+            HWND tr = FindWin(a.pi.dwProcessId, L"Click2ScreenTrail", 0);
+            if (tr && IsWindowVisible(tr)) { seen = true; GetWindowRect(tr, &trc); placed = trc.left <= vs.left + x0 + 2 && trc.right >= vs.left + x0 + 100; if (placed) break; }
+            Sleep(20);
+        }
+        DWORD took = GetTickCount() - t0; if (took > worst) worst = took;
+        if (!placed) {
+            ++fails; if (!seen) ++noTrail; else ++wrongPlace;
+            Rep(L"INFO", L"ink stress round %d: the line did not show (%s, %lu ms): trail window %ld,%ld %ldx%ld", r, seen ? L"a window at a wrong place" : L"no window", (unsigned long)took, (long)trc.left, (long)trc.top, (long)(trc.right - trc.left), (long)(trc.bottom - trc.top));
+        }
+        PostMessageW(ink, WM_RBUTTONDOWN, MK_RBUTTON, MAKELPARAM(200, 200)); Pump(150);
+        PostMessageW(a.main, WM_HOTKEY, HK_DRAW, 0); Pump(400);                  // off again
+        DWORD gone = GetTickCount() + WMS(3000); while (FindWin(a.pi.dwProcessId, C2S_CLASS_INK, 0) && (int)(gone - GetTickCount()) > 0) Sleep(30);
+    }
+    wchar_t d[300]; _snwprintf(d, 300, L"%d rounds, %d failed (no drawing window %d, no trail window %d, a wrong place %d), the slowest line took %lu ms", rounds, fails, noInk, noTrail, wrongPlace, (unsigned long)worst);
+    Check(fails == 0 && AppAlive(a), L"ink stress: the line of every stroke shows on the screen", d);
+    StopApp(a, false);
+}
+
 static void T_KeyInterval()
 {
     if (g_wine || !VideoFormatAvailable(VC_H264_BEST)) { SKIP(L"key frames: there is no real H.264 encoder here"); return; }
@@ -4844,7 +4907,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
