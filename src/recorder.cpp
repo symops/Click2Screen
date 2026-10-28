@@ -577,8 +577,8 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         int q = p.cfg.audioQuality < 0 ? 0 : p.cfg.audioQuality > 2 ? 2 : p.cfg.audioQuality;
         if (fmt == VC_WMV) {                                         // Windows Media container: Windows Media Audio
             // The WMA 8 types for 44.1 kHz mono are 48, 32 and 20 kbit/s; the 20 is not 20 % below the 32 once the container is counted (measured),
-            // so the worst quality is the 22.05 kHz type of 16 kbit/s (the sink writer converts the rate). The AAC wishes would all land on the first.
-            static const int wmaBps[3] = { 6000, 4000, 2000 }, wmaRate[3] = { 44100, 44100, 22050 };
+            // so the worst quality is the 16 kHz type of 12 kbit/s (the sink writer converts the rate). The AAC wishes would all land on the first.
+            static const int wmaBps[3] = { 6000, 4000, 1500 }, wmaRate[3] = { 44100, 44100, 16000 };
             IMFMediaType* ao = WmaType(wmaBps[q], wmaRate[q]);
             IMFMediaType* ai = AudioType(MFAudioFormat_PCM, kAudioRate * 2, false);
             if (ao && ai && SUCCEEDED(d.sw->AddStream(ao, &d.aStream)) && SUCCEEDED(d.sw->SetInputMediaType(d.aStream, ai, nullptr))) ok = true;

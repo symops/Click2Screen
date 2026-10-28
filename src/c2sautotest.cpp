@@ -2195,6 +2195,7 @@ static void T_AppPicks()
 {
     MakeFixture(R(380, 700), R(260, 460));
     Settings s; PrepareApp(s);
+    s.notify = false;                                              // the system toast of the step before ("saved") would lie over the fixture and be captured into the next picture (seen on Windows 10)
     App a;
     if (!StartApp(a, s)) { FAIL(L"program picks: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
     RECT fr = FxScreenRect(), vs = VirtualScreen();
