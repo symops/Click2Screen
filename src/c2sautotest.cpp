@@ -259,7 +259,7 @@ static LRESULT CALLBACK FxProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         EndPaint(hw, &ps);
         return 0; }
     case WM_ERASEBKGND: return 1;
-    case WM_TIMER: ++g_phase; { RECT c; GetClientRect(hw, &c); RECT st = { 0, c.bottom - 10, c.right, c.bottom }; InvalidateRect(hw, &st, FALSE); } return 0;
+    case WM_TIMER: ++g_phase; { RECT c; GetClientRect(hw, &c); RECT st = { 0, c.bottom - 10, c.right, c.bottom }; InvalidateRect(hw, g_phase % 20 ? &st : nullptr, FALSE); } return 0;      // the strip every 40 ms, the whole window once a second
     }
     return DefWindowProcW(hw, m, wp, lp);
 }
@@ -300,6 +300,8 @@ static void CloseStartMenu()
         Sleep(500);
     }
 }
+static void EnsureFixtureShown();
+
 static void MakeFixture(int w, int h)
 {
     CloseStartMenu();
@@ -348,6 +350,7 @@ static void MakeFixture(int w, int h)
             Pump(100);
         }
     }
+    EnsureFixtureShown();
 }
 
 static RECT FxScreenRect() { RECT r; GetWindowRect(g_fx.hw, &r); return r; }
@@ -2334,6 +2337,7 @@ static void T_AppPicks()
             delete[] px;
         } else if (what == 1) {                                        // window screenshot (Alt+Shift+5)
             POINT p = { fr.left + R(20, g_fx.w - 20), fr.top + R(20, g_fx.h - 20) };
+            EnsureFixtureShown();
             int before = CountFiles(s.folder);
             PostMessageW(a.main, WM_HOTKEY, HK_WINDOW, 0);
             bool driven = DrivePicker(a.pi.dwProcessId, 1, p, p);
@@ -3508,6 +3512,17 @@ static int QuartersRight(const Shot& sh, const RECT& area, const RECT& fr)
     }
     return ok;
 }
+// All four colours of the fixture are on the screen (a quarter of the window was once left unpainted, seen on Windows 11): repaint until they are.
+static void EnsureFixtureShown()
+{
+    RECT fr = FxScreenRect();
+    for (int i = 0; i < 40; ++i) {
+        Shot sh = GrabShot(fr); int q = QuartersRight(sh, fr, fr); free(sh.px);
+        if (q == 4) return;
+        InvalidateRect(g_fx.hw, nullptr, TRUE); UpdateWindow(g_fx.hw); Pump(150);
+    }
+}
+
 // ---- a random video codec and a random audio codec at every quality: they work, the picture is upright, a worse quality is a smaller file ----------
 static void QsTone(bool on)
 {
