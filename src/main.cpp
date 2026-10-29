@@ -239,16 +239,13 @@ void DrawGrid(const Glyph& g, const char* const* rows, COLORREF c)
             if (rows[y][x] == '#') GBox(g, x, y, 1, 1, c);
 }
 
-// the mark of a recording: a red disc of 6 units in the lower right corner of the icon, with a clear ring round it
-const char* const kIconRecDot[16] = {
-    "", "", "", "", "", "", "", "", "", "",
-    "          .####.", "          ######", "          ######", "          ######", "          ######", "          .####." };
+// the mark of a recording: a red disc of 6 units in the upper left corner of the icon, with a clear ring round it
 void DrawRecDot(const Glyph& g, COLORREF ring, COLORREF red)
 {
-    GBox(g, 9, 9, 7, 7, ring);
-    for (int y = 10; y < 16; ++y)
-        for (int x = 10; x < 16; ++x) {
-            bool corner = (y == 10 || y == 15) && (x == 10 || x == 15);
+    GBox(g, 0, 0, 7, 7, ring);
+    for (int y = 0; y < 6; ++y)
+        for (int x = 0; x < 6; ++x) {
+            bool corner = (y == 0 || y == 5) && (x == 0 || x == 5);
             if (!corner) GBox(g, x, y, 1, 1, red);
         }
 }

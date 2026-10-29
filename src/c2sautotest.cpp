@@ -4001,7 +4001,7 @@ static void T_BuildTime()
 }
 
 // The look of the main window: the region screenshot icon is black like the other pictures, the three recording icons are blue with a small
-// red dot (the mark of a recording) at the lower right.
+// red dot (the mark of a recording) at the upper left.
 static void T_MainIcons()
 {
     Settings s; PrepareApp(s); s.notify = false; s.topmost = true;                // over the other windows: nothing covers the icons while they are measured
@@ -4026,8 +4026,8 @@ static void T_MainIcons()
         wchar_t d[260]; _snwprintf(d, 260, L"%s: %d black, %d blue, %d red pixels in %dx%d", b.name, black, blue, red, sh.w, sh.h);
         if (!b.rec) Check(sh.px && black > 10 && blue == 0 && red == 0, L"main icons: a screenshot icon is black (the region one too), without blue or red", d);
         else {
-            bool lowerRight = red > 0 && rx / red > sh.w / 2 && ry / red > sh.h / 2;
-            Check(sh.px && blue > 10 && red > 5 && lowerRight, L"main icons: a recording icon is blue with a small red dot at the lower right", d);
+            bool upperLeft = red > 0 && rx / red < sh.w / 2 && ry / red < sh.h / 2;
+            Check(sh.px && blue > 10 && red > 5 && upperLeft, L"main icons: a recording icon is blue with a small red dot at the upper left", d);
         }
         free(sh.px);
     }
