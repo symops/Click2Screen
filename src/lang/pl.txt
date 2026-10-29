@@ -42,7 +42,7 @@ Pokazuj wskaźnik
 Obwódka i fale kliknięć wokół wskaźnika (tylko w wideo)
 Otwórz folder docelowy po przechwyceniu
 Otwórz edytor po zrzucie ekranu
-Włącz dźwięki
+Włącz dźwięki w programie
 Nagrywaj dźwięk z mikrofonu
 Opóźnienie przed przechwyceniem:
 sekund
@@ -142,3 +142,4 @@ Rysowanie na ekranie (włącz / wyłącz)
 Rysowanie włączone: rysuj lewym przyciskiem myszy, prawy kasuje wszystko, Esc kończy.
 Rysowanie wyłączone.
 Plik będzie się nazywał:
+Nad innymi oknami

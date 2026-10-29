@@ -42,7 +42,7 @@ Mostrar o ponteiro
 Contorno e ondas de clique ao redor do ponteiro (somente em vídeo)
 Abrir a pasta de saída após a captura
 Abrir o editor após uma captura de tela
-Ativar sons
+Ativar sons no programa
 Gravar áudio do microfone
 Atraso antes da captura:
 segundos
@@ -142,3 +142,4 @@ Desenho na tela (ligar / desligar)
 Desenho ativado: desenhe com o botão esquerdo, o direito apaga tudo, Esc sai.
 Desenho desativado.
 O arquivo se chamará:
+Acima de outras janelas

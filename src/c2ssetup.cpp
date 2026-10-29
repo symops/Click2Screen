@@ -256,6 +256,14 @@ bool DoInstall()
         }
         RegCloseKey(k);
     }
+    {   // what was chosen here is what the program starts with: its settings are not "new" (the first start of the program would turn the autostart on by default)
+        HKEY ks;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Click2Screen", 0, nullptr, 0, KEY_WRITE, nullptr, &ks, nullptr) == ERROR_SUCCESS) {
+            DWORD v = g_wantAuto ? 1 : 0;
+            RegSetValueExW(ks, L"RunAtStartup", 0, REG_DWORD, (const BYTE*)&v, sizeof(v));
+            RegCloseKey(ks);
+        }
+    }
     Say(T(S_SU_LOG_DONE));
     return true;
 }
@@ -494,7 +502,7 @@ void BuildControls()
     Add(L"BUTTON", L"", WS_TABSTOP | BS_AUTOCHECKBOX, 300, 384, 280, 22, IDC_AUTO);
     CheckDlgButton(hw, IDC_DESKTOP, g_wantDesktop ? BST_CHECKED : BST_UNCHECKED);
     CheckDlgButton(hw, IDC_START, g_wantStart ? BST_CHECKED : BST_UNCHECKED);
-    CheckDlgButton(hw, IDC_AUTO, g_wantAuto ? BST_CHECKED : BST_UNCHECKED);
+    CheckDlgButton(hw, IDC_AUTO, BST_CHECKED);                       // autostart is on by default (the options of the program say the same); a silent install asks for it with /autostart
     CheckDlgButton(hw, IDC_RUNAFTER, g_wantRun ? BST_CHECKED : BST_UNCHECKED);
     Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 12, 414, 144, 30, IDC_LAUNCH);
     Add(L"BUTTON", L"", WS_TABSTOP | BS_PUSHBUTTON, 472, 414, 116, 30, IDC_CLOSE);

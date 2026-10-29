@@ -42,7 +42,7 @@ Show the mouse pointer
 Outline and click waves around the pointer (video only)
 Open the output folder after capture
 Open the editor after a screenshot
-Enable sounds
+Enable sounds in the program
 Record audio from the microphone
 Delay before capture:
 seconds
@@ -142,3 +142,4 @@ Drawing on the screen (on / off)
 Drawing is on: draw with the left mouse button, the right button erases everything, Esc leaves.
 Drawing is off.
 The file will be named:
+On top of other windows

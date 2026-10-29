@@ -42,7 +42,7 @@ Mauszeiger anzeigen
 Umrandung und Klickwellen um den Mauszeiger (nur im Video)
 Ausgabeordner nach der Aufnahme öffnen
 Editor nach einem Screenshot öffnen
-Töne aktivieren
+Töne im Programm aktivieren
 Audio vom Mikrofon aufnehmen
 Verzögerung vor der Aufnahme:
 Sekunden
@@ -142,3 +142,4 @@ Zeichnen auf dem Bildschirm (an / aus)
 Zeichnen ist an: mit der linken Maustaste zeichnen, die rechte löscht alles, Esc beendet.
 Zeichnen ist aus.
 Der Dateiname wird:
+Über anderen Fenstern

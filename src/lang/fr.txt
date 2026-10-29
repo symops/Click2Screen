@@ -42,7 +42,7 @@ Afficher le pointeur
 Contour et ondes de clic autour du pointeur (vidéo uniquement)
 Ouvrir le dossier de sortie après la capture
 Ouvrir l’éditeur après une capture d’écran
-Activer les sons
+Activer les sons dans le programme
 Enregistrer le son du microphone
 Délai avant la capture :
 secondes
@@ -142,3 +142,4 @@ Dessin à l'écran (activer / désactiver)
 Dessin activé : dessinez avec le bouton gauche, le bouton droit efface tout, Échap quitte.
 Dessin désactivé.
 Le fichier s'appellera :
+Au-dessus des autres fenêtres

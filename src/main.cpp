@@ -51,6 +51,7 @@ void DrawResume();
 bool RecordingEffectsOn();
 LRESULT CALLBACK TrailProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
 LRESULT CALLBACK InkProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
+void ApplyTopmost();
 
 UINT g_dpi = 96;                 // DPI of the monitor the main window is on (WM_DPICHANGED keeps it current)
 int Sc(int v) { return MulDiv(v, (int)g_dpi, 96); }
@@ -196,7 +197,7 @@ void TrayAdd()
 void ShowMain(bool show)
 {
     if (!g_main) return;
-    if (show) { ShowWindow(g_main, SW_SHOW); ShowWindow(g_main, SW_RESTORE); SetForegroundWindow(g_main); }
+    if (show) { ShowWindow(g_main, SW_SHOW); ShowWindow(g_main, SW_RESTORE); ApplyTopmost(); SetForegroundWindow(g_main); }
     else ShowWindow(g_main, SW_HIDE);
 }
 
@@ -236,6 +237,20 @@ void DrawGrid(const Glyph& g, const char* const* rows, COLORREF c)
     for (int y = 0; y < 16; ++y)
         for (int x = 0; x < 16; ++x)
             if (rows[y][x] == '#') GBox(g, x, y, 1, 1, c);
+}
+
+// the mark of a recording: a red disc of 6 units in the lower right corner of the icon, with a clear ring round it
+const char* const kIconRecDot[16] = {
+    "", "", "", "", "", "", "", "", "", "",
+    "          .####.", "          ######", "          ######", "          ######", "          ######", "          .####." };
+void DrawRecDot(const Glyph& g, COLORREF ring, COLORREF red)
+{
+    GBox(g, 9, 9, 7, 7, ring);
+    for (int y = 10; y < 16; ++y)
+        for (int x = 10; x < 16; ++x) {
+            bool corner = (y == 10 || y == 15) && (x == 10 || x == 15);
+            if (!corner) GBox(g, x, y, 1, 1, red);
+        }
 }
 
 void DrawShotIcon(const Glyph& g, int id, COLORREF c)
@@ -280,7 +295,8 @@ void DrawMainItem(const DRAWITEMSTRUCT* d)
         } else {
             bool rec = id == IDC_REC_DESKTOP || id == IDC_REC_REGION || id == IDC_REC_WINDOW;
             Glyph g = { dc, rc.left + (w - Sc(16)) / 2, rc.top + (h - Sc(16)) / 2 };
-            DrawShotIcon(g, id, rec || id == IDC_SHOT_REGION ? kBlue : RGB(0, 0, 0));   // (as the original: the region screenshot icon is blue too)
+            DrawShotIcon(g, id, rec ? kBlue : RGB(0, 0, 0));                             // the recordings are blue, the pictures black
+            if (rec) DrawRecDot(g, down ? RGB(205, 228, 245) : kBody, RGB(222, 36, 36));
         }
     }
     if (d->itemState & ODS_FOCUS) { RECT f = rc; InflateRect(&f, -1, -1); DrawFocusRect(dc, &f); }
@@ -1162,7 +1178,7 @@ void OptLoad(OptState* o)
 {
     HWND d = o->dlg; Settings& s = o->s;
     auto chk = [&](int id, bool v) { CheckDlgButton(d, id, v ? BST_CHECKED : BST_UNCHECKED); };
-    chk(O_AUTOSTART, s.runAtStartup); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
+    chk(O_AUTOSTART, s.runAtStartup); chk(O_TOPMOST, s.topmost); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
     chk(O_SOUNDS, s.sounds); chk(O_NOTIFY, s.notify); chk(O_LOOPBACK, s.loopback); chk(O_MIC, s.mic);
     EnableWindow(GetDlgItem(d, O_HILITE), s.capMouse);                // the outline and the waves are drawn round the pointer: without it there is nothing to outline
     SendDlgItemMessageW(d, O_DELAY, CB_SETCURSEL, s.delaySec < 0 ? 0 : s.delaySec > 10 ? 10 : s.delaySec, 0);
@@ -1186,7 +1202,7 @@ void OptCollect(OptState* o, Settings& s)
 {
     HWND d = o->dlg;
     auto chk = [&](int id) { return IsDlgButtonChecked(d, id) == BST_CHECKED; };
-    s.runAtStartup = chk(O_AUTOSTART); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.openFolder = chk(O_OPENFOLDER);
+    s.runAtStartup = chk(O_AUTOSTART); s.topmost = chk(O_TOPMOST); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.openFolder = chk(O_OPENFOLDER);
     s.sounds = chk(O_SOUNDS); s.notify = chk(O_NOTIFY); s.loopback = chk(O_LOOPBACK); s.mic = chk(O_MIC);
     auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
     { int i = (int)SendDlgItemMessageW(d, O_DELAY, CB_GETCURSEL, 0, 0); s.delaySec = i < 0 ? 0 : i > 10 ? 10 : i; }
@@ -1212,7 +1228,7 @@ void OptRestorePage(OptState* o)
     Settings cur = o->s; OptCollect(o, cur);
     Settings d; SettingsDefaults(d);
     switch (o->sel) {
-    case 0: cur.runAtStartup = d.runAtStartup; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.openFolder = d.openFolder;
+    case 0: cur.runAtStartup = d.runAtStartup; cur.topmost = d.topmost; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.openFolder = d.openFolder;
             cur.sounds = d.sounds; cur.notify = d.notify; cur.loopback = d.loopback; cur.mic = d.mic; cur.delaySec = d.delaySec; break;
     case 1: cur.videoCodec = d.videoCodec; cur.audioCodec = d.audioCodec; cur.videoQuality = d.videoQuality; cur.audioQuality = d.audioQuality;
             cur.fps = d.fps; cur.imageFormat = d.imageFormat; break;
@@ -1412,9 +1428,9 @@ bool OptionsDialog()
     HWND dl = combo(0, O_DELAY, 244, 58, 40);
     for (int i = 0; i <= 10; ++i) { wchar_t n[8]; _snwprintf(n, 8, L"%d", i); ComboAdd(dl, n); }
     label(0, S_OPT_SECONDS, 294, 61, 150);
-    static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE},
-        {S_OPT_OPEN_FOLDER, O_OPENFOLDER}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_NOTIFY, O_NOTIFY}, {S_OPT_MIC, O_MIC}, {S_OPT_LOOPBACK, O_LOOPBACK} };
-    for (int i = 0; i < 8; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 91 + i * 25, 460, 18, chk[i].id);
+    static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_TOPMOST, O_TOPMOST}, {S_OPT_OPEN_FOLDER, O_OPENFOLDER},
+        {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_NOTIFY, O_NOTIFY}, {S_OPT_LOOPBACK, O_LOOPBACK}, {S_OPT_MIC, O_MIC} };
+    for (int i = 0; i < 9; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 90 + i * 22, 460, 18, chk[i].id);
 
     // page 1: video (left column) and audio (right column), then the image format and the folder both go to
     label(1, S_OPT_VIDEO_OPTIONS, 35, 52, 220); label(1, S_OPT_AUDIO_OPTIONS, 270, 52, 220);
@@ -1501,12 +1517,17 @@ bool OptionsDialog()
         g_cfg = o.s;
         SettingsSave(g_cfg);
         SettingsSetAutostart(g_cfg.runAtStartup);
+        ApplyTopmost();
         Log(L"options: stored, %lu ms", (unsigned long)(GetTickCount64() - t0));
     }
     return o.ok;
 }
 
 // ---- main window ---------------------------------------------------------------------------------------------
+void ApplyTopmost()                                                      // "On top of other windows": the main window only (the recording panel is always over the others)
+{
+    if (g_main) SetWindowPos(g_main, g_cfg.topmost ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
 void LayoutMainText();
 
 // Settings changed: the language and the hotkeys (they are registered again; the stop key only while a recording is on).
@@ -1835,7 +1856,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
         if (sys) g_dpi = sys();
         else { HDC dc = GetDC(nullptr); g_dpi = (UINT)GetDeviceCaps(dc, LOGPIXELSX); ReleaseDC(nullptr, dc); }
     }
-    SettingsLoad(g_cfg);
+    {   // the very first start: the settings are written, and the autostart that is on by default is put into the Run key
+        const bool first = !SettingsStored();
+        SettingsLoad(g_cfg);
+        if (first) { SettingsSave(g_cfg); SettingsSetAutostart(g_cfg.runAtStartup); }
+    }
     LangSelect(g_cfg.language);
     INITCOMMONCONTROLSEX ic = { sizeof(ic), ICC_STANDARD_CLASSES | ICC_TAB_CLASSES | ICC_WIN95_CLASSES };
     InitCommonControlsEx(&ic);
@@ -1854,6 +1879,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
+    ApplyTopmost();
     { BOOL off = TRUE; DwmSetWindowAttribute(g_main, 3 /*DWMWA_TRANSITIONS_FORCEDISABLED*/, &off, sizeof(off)); }   // hides at once (the picker and the screenshots do not wait for a fade-out)
     RoundMain();
     LayoutMainText();
@@ -1861,6 +1887,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     RegisterHotkeys();
     bool tray = cmd && (wcsstr(cmd, L"/tray") || wcsstr(cmd, L"--tray") || wcsstr(cmd, L"/t ") || wcsstr(cmd, L"-t ") || (wcslen(cmd) >= 2 && (!wcscmp(cmd + wcslen(cmd) - 2, L"/t") || !wcscmp(cmd + wcslen(cmd) - 2, L"-t"))));
     if (!tray) ShowWindow(g_main, SW_SHOW);
+    ApplyTopmost();                                              // a window that is shown takes its place over the others for sure
     UpdateWindow(g_main);
     // Development helpers (see README): open the options / the recording panel right away.
     if (cmd && wcsstr(cmd, L"/dev-options")) PostMessageW(g_main, WM_COMMAND, IDC_OPTIONS, 0);

@@ -42,7 +42,7 @@ Bilgisayar açıldığında uygulamayı başlat
 İşaretçi çevresinde çerçeve ve tıklama dalgaları (yalnızca videoda)
 Yakalamadan sonra çıkış klasörünü aç
 Ekran görüntüsünden sonra düzenleyiciyi aç
-Sesleri etkinleştir
+Programda sesleri etkinleştir
 Mikrofondan ses kaydet
 Yakalamadan önce gecikme:
 saniye
@@ -142,3 +142,4 @@ Ekranda çizim (aç / kapat)
 Çizim açık: sol fare düğmesiyle çizin, sağ düğme her şeyi siler, Esc çıkar.
 Çizim kapalı.
 Dosya adı şöyle olacak:
+Diğer pencerelerin üstünde

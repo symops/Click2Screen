@@ -42,7 +42,7 @@ Hiển thị con trỏ
 Viền và sóng nhấp quanh con trỏ (chỉ trong video)
 Mở thư mục đầu ra sau khi quay/chụp
 Mở trình chỉnh sửa sau khi chụp ảnh màn hình
-Bật âm thanh
+Bật âm thanh trong chương trình
 Ghi âm từ micrô
 Độ trễ trước khi quay/chụp:
 giây
@@ -142,3 +142,4 @@ Vẽ trên màn hình (bật / tắt)
 Đã bật vẽ: vẽ bằng nút chuột trái, nút phải xóa tất cả, Esc để thoát.
 Đã tắt vẽ.
 Tên tệp sẽ là:
+Luôn ở trên các cửa sổ khác

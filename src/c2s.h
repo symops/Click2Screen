@@ -35,6 +35,7 @@ enum Str {
     S_OPT_FORMATS, S_OPT_SAVE, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
     S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF, S_OPT_NAMEPREVIEW,
+    S_OPT_TOPMOST,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -68,7 +69,8 @@ struct Settings {
     bool mic;                       // record audio from the default microphone
     int  hotkey[8];                 // global hotkeys: desktop, region, window screenshot, stop recording, desktop, region, window recording, drawing; (MOD_* << 16) | VK, 0 = off
     bool openFolder;                // show the finished file in Explorer
-    bool runAtStartup;
+    bool runAtStartup;              // the program starts with the computer (on by default)
+    bool topmost;                   // the main window stays over the other windows
     int  delaySec;                  // delay before capture (0..10)
     int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF
     int  audioCodec;                // 0 = AAC, 1 = MP3
@@ -79,6 +81,7 @@ struct Settings {
 };
 void SettingsDefaults(Settings& s);
 void SettingsLoad(Settings& s);
+bool SettingsStored();          // the settings were saved before (false on the very first start)
 void SettingsSave(const Settings& s);
 bool SettingsSetAutostart(bool on);
 void SettingsUseKey(const wchar_t* key);                       // another registry key under HKCU (the autotest)

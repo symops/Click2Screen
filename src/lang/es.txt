@@ -42,7 +42,7 @@ Mostrar el puntero
 Contorno y ondas de clic alrededor del puntero (solo en vídeo)
 Abrir la carpeta de destino tras la captura
 Abrir el editor tras una captura de pantalla
-Activar los sonidos
+Activar los sonidos en el programa
 Grabar audio del micrófono
 Retraso antes de la captura:
 segundos
@@ -142,3 +142,4 @@ Dibujo en la pantalla (activar / desactivar)
 Dibujo activado: dibuje con el botón izquierdo, el derecho lo borra todo, Esc sale.
 Dibujo desactivado.
 El archivo se llamará:
+Encima de otras ventanas

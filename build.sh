@@ -28,18 +28,18 @@ $TRIPLE-gcc -municode -mconsole -static -s -Wl,--no-insert-timestamp -Wl,-Map,"$
 if [ "$ONLY" = autotest ]; then echo "built $O/c2sautotest.exe only"; exit 0; fi
 $TRIPLE-windres Click2Screen.rc -O coff -o "$T/app.res.o"
 $TRIPLE-windres Click2Screen-Setup.rc -O coff -o "$T/setup.res.o"
-$TRIPLE-gcc -municode -mwindows -static -s -Wl,--no-insert-timestamp -Wl,-Map,"$O/Click2Screen.map" -o "$O/Click2Screen.exe" \
+$TRIPLE-gcc -municode -mwindows -static -s -Wl,-Map,"$O/Click2Screen.map" -o "$O/Click2Screen.exe" \
     "$T/main.o" "$T/lang.o" "$T/settings.o" "$T/capture.o" "$T/picker.o" "$T/recorder.o" "$T/sinks.o" "$T/fx.o" "$T/audiomix.o" "$T/selftest.o" "$T/applog.o" "$T/cxxrt.o" "$T/app.res.o" \
     -lmfplat -lmfreadwrite -lmf -lmfuuid -lwindowscodecs -lwinmm -lmsimg32 -ldwmapi -lshlwapi -lcomctl32 -lcomdlg32 \
     -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid -lpropsys
 if [ -f c2ssetup.cpp ]; then
-    $TRIPLE-gcc -municode -mwindows -static -s -Wl,--no-insert-timestamp -o "$O/Click2Screen-Setup.exe" \
+    $TRIPLE-gcc -municode -mwindows -static -s -o "$O/Click2Screen-Setup.exe" \
         "$T/c2ssetup.o" "$T/lang.o" "$T/applog.o" "$T/cxxrt.o" "$T/setup.res.o" \
         -lcomctl32 -lshell32 -lgdi32 -ladvapi32 -luser32 -lole32 -loleaut32 -luuid
 fi
 if [ "$ARCH" = x86 ] && [ -f c2slauncher.cpp ]; then
     $TRIPLE-windres Click2Screen-Setup.rc -O coff -o "$T/launcher.res.o"
-    $TRIPLE-gcc -municode -mwindows -static -s -Wl,--no-insert-timestamp -o "$O/c2slauncher.exe" "$T/c2slauncher.o" "$T/cxxrt.o" "$T/launcher.res.o" \
+    $TRIPLE-gcc -municode -mwindows -static -s -o "$O/c2slauncher.exe" "$T/c2slauncher.o" "$T/cxxrt.o" "$T/launcher.res.o" \
         -lsetupapi -lshell32 -luser32 -ladvapi32 -lole32
 fi
 echo "built $O"

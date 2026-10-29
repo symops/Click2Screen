@@ -59,7 +59,7 @@ void SettingsDefaults(Settings& s)
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
-    s.openFolder = true; s.runAtStartup = false;
+    s.openFolder = true; s.runAtStartup = true; s.topmost = false;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
     s.delaySec = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
@@ -147,6 +147,7 @@ void SettingsLoad(Settings& s)
     s.mic          = GetDw(k, L"EnableMicRec", d.mic) != 0;
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
+    s.topmost      = GetDw(k, L"AlwaysOnTop", d.topmost) != 0;
     s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
     s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, VC_COUNT - 1);
     if (s.videoCodec == VC_H264_FAST) s.videoCodec = VC_H264_BEST;                    // the second H.264 profile is gone from the options: its recordings are the first one now
@@ -161,6 +162,16 @@ void SettingsLoad(Settings& s)
     }
     RegCloseKey(k);
     if (!TemplateValid(s.fileName)) wcscpy(s.fileName, d.fileName);
+}
+
+bool SettingsStored()
+{
+    HKEY k;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, KEY, 0, KEY_READ, &k) != ERROR_SUCCESS) return false;
+    DWORD type = 0, size = 0;
+    bool has = RegQueryValueExW(k, L"RunAtStartup", nullptr, &type, nullptr, &size) == ERROR_SUCCESS;       // written by the program or by the installer
+    RegCloseKey(k);
+    return has;
 }
 
 void SettingsSave(const Settings& s)
@@ -178,6 +189,7 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"EnableMicRec", s.mic);
     PutDw(k, L"OpenOutFolder", s.openFolder);
     PutDw(k, L"RunAtStartup", s.runAtStartup);
+    PutDw(k, L"AlwaysOnTop", s.topmost);
     PutDw(k, L"Delay", s.delaySec);
     PutDw(k, L"VideoCodec", s.videoCodec);
     PutDw(k, L"AudioCodec", s.audioCodec);
@@ -405,6 +417,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"EnableMicRec", s.mic);
     IniInt(path, L"OpenOutFolder", s.openFolder);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
+    IniInt(path, L"AlwaysOnTop", s.topmost);
     IniInt(path, L"Delay", s.delaySec);
     IniInt(path, L"VideoCodec", s.videoCodec);
     IniInt(path, L"AudioCodec", s.audioCodec);
@@ -451,6 +464,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"EnableMicRec", 0, 1, &v)) s.mic = v != 0;
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
+    if (IniGetInt(path, L"AlwaysOnTop", 0, 1, &v)) s.topmost = v != 0;
     if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
     if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v == VC_H264_FAST ? VC_H264_BEST : v;
     if (IniGetInt(path, L"AudioCodec", 0, 1, &v)) s.audioCodec = v;

@@ -42,7 +42,7 @@ Muisaanwijzer tonen
 Omlijning en klikgolven rond de aanwijzer (alleen in video)
 De uitvoermap openen na het vastleggen
 De editor openen na een schermafbeelding
-Geluiden inschakelen
+Geluiden in het programma inschakelen
 Audio van de microfoon opnemen
 Vertraging vóór het vastleggen:
 seconden
@@ -142,3 +142,4 @@ Tekenen op het scherm (aan / uit)
 Tekenen staat aan: teken met de linkermuisknop, de rechter wist alles, Esc sluit af.
 Tekenen staat uit.
 Het bestand heet:
+Boven andere vensters

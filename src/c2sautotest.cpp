@@ -16,6 +16,7 @@
 #include "c2s.h"
 #include <setupapi.h>
 #include <newdev.h>
+#include <shlwapi.h>
 #include "uiids.h"
 #include <mmsystem.h>
 #include <dwmapi.h>
@@ -216,7 +217,7 @@ static void RandomSettings(Settings& s)
         default: _snwprintf(s.fileName, 128, L"%%USERNAME%% %s ##", name); break;
     }
     s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.notify = Chance(50); s.loopback = Chance(50); s.mic = Chance(50);
-    s.openFolder = Chance(50); s.runAtStartup = false;   // autostart is not touched by the test
+    s.openFolder = Chance(50); s.runAtStartup = false; s.topmost = Chance(50);   // autostart is not touched by the test
     s.delaySec = R(0, 10);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
@@ -230,7 +231,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
 #define CMPS(f) if (!Same(a.f, b.f)) { _snwprintf(why, 150, L"%s differs: [%s] vs [%s]", L"" #f, a.f, b.f); return false; }
 #define CMPI(f) if (a.f != b.f) { _snwprintf(why, 120, L"%s: %d vs %d", L"" #f, (int)a.f, (int)b.f); return false; }
     CMPS(folder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
-    CMPI(openFolder) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
+    CMPI(openFolder) CMPI(topmost) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
@@ -1779,11 +1780,11 @@ static HWND WaitInk(DWORD pid, bool wantThere, int ms)
     }
 }
 
-static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"", bool realEncoder = false)
+static bool StartApp(App& a, const Settings& s, const wchar_t* extraArgs = L"", bool realEncoder = false, bool save = true)
 {
     memset(&a, 0, sizeof(a));
     a.cfg = s;
-    SettingsSave(s);                                  // into the test key; the program reads it through C2S_REGKEY
+    if (save) SettingsSave(s);                                  // into the test key; the program reads it through C2S_REGKEY
     SetEnvironmentVariableW(L"C2S_REGKEY", L"Software\\Click2Screen-Autotest");
     wchar_t inst[40]; _snwprintf(inst, 40, L"-at%lu", GetCurrentProcessId());
     SetEnvironmentVariableW(L"C2S_INSTANCE", inst);
@@ -2064,7 +2065,7 @@ static void T_App()
                 if (w.hotkey[i]) SendMessageW(e, WM_KEYDOWN, (WPARAM)w.hotkey[i], 0);
             }
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
-            chk(O_AUTOSTART, false); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
+            chk(O_AUTOSTART, false); chk(O_TOPMOST, w.topmost); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
             wchar_t n[16];
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
@@ -2111,6 +2112,11 @@ static void T_App()
                 end = GetTickCount() + WMS(10000);                  // the program stores the settings just after the window closes
                 do { SettingsLoad(now); same = SettingsEqual(w, now, true, why); if (!same) Sleep(100); } while (!same && (int)(end - GetTickCount()) > 0);
                 Check(!IsWindow(o) && same, L"program: OK stores exactly what the options window showed", why);
+                {   // "On top of other windows": the main window follows the box at once
+                    DWORD te = GetTickCount() + WMS(3000); bool top = false;
+                    do { top = (GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0; if (top == w.topmost) break; Sleep(50); } while ((int)(te - GetTickCount()) > 0);
+                    Check(top == w.topmost, L"program: the box \"on top of other windows\" puts the main window over the others, and takes it back");
+                }
                 // the program registered exactly the new hotkeys: another window cannot take them, but can take the freed ones
                 {
                     static bool hreg = false;
@@ -3787,6 +3793,58 @@ static void T_Monitors()
 
 // The drawing window again and again: on, off, on, a stroke of the left button, the see-through window with the line must come (the tests of the
 // program saw it fail now and then on a slow Windows 10 with the 32-bit build). Every round is timed; a failed one tells what the program did.
+// The first start of the program on a machine (no settings yet): the defaults are written, the autostart that is on by default is put into the Run
+// key of the user, and the main window is not over the others; with the box "on top of other windows" it is.
+static void T_FirstStart()
+{
+    const wchar_t* runKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+    wchar_t had[MAX_PATH + 40] = L""; bool hadValue = false;
+    {   // what the user had: put back at the end
+        HKEY k; DWORD sz = sizeof(had) - 2, ty = 0;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, runKey, 0, KEY_READ | KEY_WRITE, &k) == ERROR_SUCCESS) {
+            hadValue = RegQueryValueExW(k, L"Click2Screen", nullptr, &ty, (BYTE*)had, &sz) == ERROR_SUCCESS;
+            RegDeleteValueW(k, L"Click2Screen"); RegCloseKey(k);
+        }
+    }
+    Settings def; SettingsDefaults(def);
+    Check(def.runAtStartup && !def.topmost, L"first start: the autostart is on by default, the window is not over the others");
+    SHDeleteKeyW(HKEY_CURRENT_USER, SettingsKeyName());                           // a machine that has not run the program
+    Check(!SettingsStored(), L"first start: a fresh key has no stored settings");
+    App a;
+    if (!StartApp(a, def, L"", false, false)) { FAIL(L"first start: Click2Screen.exe did not show its window"); StopApp(a, false); }
+    else {
+        wchar_t val[MAX_PATH + 40] = L""; bool has = false;
+        DWORD end = GetTickCount() + WMS(5000);
+        do {
+            HKEY k; DWORD sz = sizeof(val) - 2, ty = 0;
+            if (RegOpenKeyExW(HKEY_CURRENT_USER, runKey, 0, KEY_READ, &k) == ERROR_SUCCESS) { has = RegQueryValueExW(k, L"Click2Screen", nullptr, &ty, (BYTE*)val, &sz) == ERROR_SUCCESS; RegCloseKey(k); }
+            if (!has) Sleep(100);
+        } while (!has && (int)(end - GetTickCount()) > 0);
+        Check(has && wcsstr(val, L"Click2Screen.exe") && wcsstr(val, L"/tray"), L"first start: the program puts itself into the Run key of the user (autostart is on by default)", val);
+        Check(SettingsStored(), L"first start: the program has written its settings");
+        Settings now; SettingsLoad(now);
+        Check(now.runAtStartup && !now.topmost, L"first start: the stored settings are the defaults");
+        Check((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0, L"first start: the main window is not over the others");
+        StopApp(a, true);
+    }
+    {   // the box on: the window is over the others from the start
+        Settings s2 = def; s2.runAtStartup = false; s2.topmost = true;
+        App b;
+        if (!StartApp(b, s2)) { FAIL(L"first start: Click2Screen.exe (on top) did not show its window"); StopApp(b, false); }
+        else {
+            Check((GetWindowLongW(b.main, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, L"first start: with the box \"on top of other windows\" the main window is over the others from the start");
+            StopApp(b, true);
+        }
+    }
+    {   // put back
+        HKEY k;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, runKey, 0, nullptr, 0, KEY_WRITE, nullptr, &k, nullptr) == ERROR_SUCCESS) {
+            if (hadValue) RegSetValueExW(k, L"Click2Screen", 0, REG_SZ, (const BYTE*)had, (DWORD)((wcslen(had) + 1) * 2)); else RegDeleteValueW(k, L"Click2Screen");
+            RegCloseKey(k);
+        }
+    }
+}
+
 static void T_InkStress()
 {
     MakeFixture(R(300, 500), R(220, 360));
@@ -4907,7 +4965,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
