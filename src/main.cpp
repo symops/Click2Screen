@@ -1874,7 +1874,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     // A window of its own look: no system caption (the program draws the 28-unit one), 206 x 62 units, rounded corners.
     RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     int ww = Sc(kMainW), wh = Sc(kMainH);
-    CreateWindowExW(WS_EX_APPWINDOW, kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,
+    CreateWindowExW(WS_EX_APPWINDOW | (g_cfg.topmost ? WS_EX_TOPMOST : 0), kMainClass, T(S_APP), WS_POPUP | WS_MINIMIZEBOX | WS_SYSMENU | WS_CLIPCHILDREN,     // over the others from the first moment when the box says so
                     (wa.left + wa.right - ww) / 2, (wa.top + wa.bottom - wh) / 2, ww, wh, nullptr, nullptr, inst, nullptr);
     if (!g_main) return 1;
     ApplyTopmost();

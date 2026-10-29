@@ -3898,6 +3898,10 @@ static void T_FirstStart()
         Check(SettingsStored(), L"first start: the program has written its settings");
         Settings now; SettingsLoad(now);
         Check(now.runAtStartup && now.topmost && now.separateMonitors, L"first start: the stored settings are the defaults (autostart on, on top of other windows on, separate files for screens on)");
+        {   // the window is shown first and takes its place a moment later on a slow machine
+            DWORD te = GetTickCount() + WMS(3000);
+            while ((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0 && (int)(te - GetTickCount()) > 0) Sleep(50);
+        }
         Check((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, L"first start: the main window is over the others (the box is on by default)");
         StopApp(a, true);
     }
