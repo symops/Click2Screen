@@ -70,7 +70,7 @@ struct Settings {
     int  hotkey[8];                 // global hotkeys: desktop, region, window screenshot, stop recording, desktop, region, window recording, drawing; (MOD_* << 16) | VK, 0 = off
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;              // the program starts with the computer (on by default)
-    bool topmost;                   // the main window stays over the other windows
+    bool topmost;                   // the main window stays over the other windows (on by default)
     bool separateMonitors;          // the desktop screenshot / recording: one file for every monitor (on by default), else one file for all of them
     int  delaySec;                  // delay before capture (0..10)
     int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF

@@ -296,7 +296,7 @@ void DrawMainItem(const DRAWITEMSTRUCT* d)
             bool rec = id == IDC_REC_DESKTOP || id == IDC_REC_REGION || id == IDC_REC_WINDOW;
             Glyph g = { dc, rc.left + (w - Sc(16)) / 2, rc.top + (h - Sc(16)) / 2 };
             DrawShotIcon(g, id, rec ? kBlue : RGB(0, 0, 0));                             // the recordings are blue, the pictures black
-            if (rec) DrawRecDot(g, down ? RGB(205, 228, 245) : kBody, RGB(222, 36, 36));
+            if (rec) DrawRecDot(g, down ? RGB(205, 228, 245) : kBody, RGB(196, 78, 74));            // a calm red
         }
     }
     if (d->itemState & ODS_FOCUS) { RECT f = rc; InflateRect(&f, -1, -1); DrawFocusRect(dc, &f); }

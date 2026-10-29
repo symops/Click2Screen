@@ -59,7 +59,7 @@ void SettingsDefaults(Settings& s)
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
-    s.openFolder = true; s.runAtStartup = true; s.topmost = false; s.separateMonitors = true;
+    s.openFolder = true; s.runAtStartup = true; s.topmost = true; s.separateMonitors = true;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
     s.delaySec = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;

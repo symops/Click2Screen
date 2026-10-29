@@ -1835,7 +1835,7 @@ static void AppSettings(Settings& s, int language)
 {
     RandomSettings(s);
     s.language = language;
-    s.sounds = false; s.openFolder = false; s.runAtStartup = false;
+    s.sounds = false; s.openFolder = false; s.runAtStartup = false; s.topmost = false;     // not over the fixtures of the tests
     s.delaySec = R(0, 2);
     s.mic = false;
 }
@@ -2089,7 +2089,7 @@ static void T_App()
                 bool a1 = (SendMessageW(GetDlgItem(o, O_AUTOSTART), BM_GETCHECK, 0, 0) == BST_CHECKED), t1 = (SendMessageW(GetDlgItem(o, O_TOPMOST), BM_GETCHECK, 0, 0) == BST_CHECKED), m1 = (SendMessageW(GetDlgItem(o, O_SEPARATE), BM_GETCHECK, 0, 0) == BST_CHECKED);
                 wchar_t d3[160]; _snwprintf(d3, 160, L"autostart %d (default %d), on top %d (default %d), separate files %d (default %d)", (int)a1, (int)d.runAtStartup, (int)t1, (int)d.topmost, (int)m1, (int)d.separateMonitors);
                 Check(a1 == d.runAtStartup && d.runAtStartup, L"program: Restore default turns the autostart box on (it is on by default)", d3);
-                Check(t1 == d.topmost && !d.topmost, L"program: Restore default clears the \"on top of other windows\" box", d3);
+                Check(t1 == d.topmost && d.topmost, L"program: Restore default turns the \"on top of other windows\" box on (it is on by default)", d3);
                 Check(m1 == d.separateMonitors && d.separateMonitors, L"program: Restore default turns the \"separate files for different screens\" box on", d3);
             }
             Check(fpsIdx == (d.fps == 10 ? 6 : 0), L"program: Restore default leaves the other pages as they are", dd);
@@ -2270,6 +2270,7 @@ static void PrepareApp(Settings& s)
     wchar_t t[24]; _snwprintf(t, 24, L"app%d", R(0, 99999));
     _snwprintf(s.folder, MAX_PATH, L"%s\\%s\\out", g_dir, t);
     s.delaySec = 0;
+    s.topmost = false;                                      // the main window of the program is not over the fixtures of the tests (a test of the box sets it)
 }
 
 // Record from the program's panel: Start, wait, Stop. Returns false if something did not happen.
@@ -3877,7 +3878,7 @@ static void T_FirstStart()
         }
     }
     Settings def; SettingsDefaults(def);
-    Check(def.runAtStartup && !def.topmost && def.separateMonitors, L"first start: the autostart is on by default, the window is not over the others, the files of different monitors are separate");
+    Check(def.runAtStartup && def.topmost && def.separateMonitors, L"first start: the autostart is on by default, the window is over the others by default, the files of different screens are separate");
     SHDeleteKeyW(HKEY_CURRENT_USER, SettingsKeyName());                           // a machine that has not run the program
     Check(!SettingsStored(), L"first start: a fresh key has no stored settings");
     App a;
@@ -3893,16 +3894,16 @@ static void T_FirstStart()
         Check(has && wcsstr(val, L"Click2Screen.exe") && wcsstr(val, L"/tray"), L"first start: the program puts itself into the Run key of the user (autostart is on by default)", val);
         Check(SettingsStored(), L"first start: the program has written its settings");
         Settings now; SettingsLoad(now);
-        Check(now.runAtStartup && !now.topmost && now.separateMonitors, L"first start: the stored settings are the defaults (autostart on, not on top, separate files for monitors on)");
-        Check((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0, L"first start: the main window is not over the others");
+        Check(now.runAtStartup && now.topmost && now.separateMonitors, L"first start: the stored settings are the defaults (autostart on, on top of other windows on, separate files for screens on)");
+        Check((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, L"first start: the main window is over the others (the box is on by default)");
         StopApp(a, true);
     }
-    {   // the box on: the window is over the others from the start
-        Settings s2 = def; s2.runAtStartup = false; s2.topmost = true;
+    {   // the box off: the window is a window among the others
+        Settings s2 = def; s2.runAtStartup = false; s2.topmost = false;
         App b;
         if (!StartApp(b, s2)) { FAIL(L"first start: Click2Screen.exe (on top) did not show its window"); StopApp(b, false); }
         else {
-            Check((GetWindowLongW(b.main, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0, L"first start: with the box \"on top of other windows\" the main window is over the others from the start");
+            Check((GetWindowLongW(b.main, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0, L"first start: with the box \"on top of other windows\" cleared the main window is not over the others");
             StopApp(b, true);
         }
     }
@@ -4020,7 +4021,7 @@ static void T_MainIcons()
                 const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4; int B2 = q[0], G = q[1], R2 = q[2];
                 if (R2 < 60 && G < 60 && B2 < 60) ++black;
                 else if (abs(R2 - 8) < 30 && abs(G - 115) < 30 && abs(B2 - 197) < 30) ++blue;
-                else if (R2 > 190 && G < 80 && B2 < 80) { ++red; rx += x; ry += y; }
+                else if (R2 > 170 && G < 120 && B2 < 120 && R2 - G > 70) { ++red; rx += x; ry += y; }
             }
         wchar_t d[260]; _snwprintf(d, 260, L"%s: %d black, %d blue, %d red pixels in %dx%d", b.name, black, blue, red, sh.w, sh.h);
         if (!b.rec) Check(sh.px && black > 10 && blue == 0 && red == 0, L"main icons: a screenshot icon is black (the region one too), without blue or red", d);
