@@ -1962,7 +1962,10 @@ static void T_App()
                         while (IsWindowVisible(panel) && (int)(hideEnd - GetTickCount()) > 0) Sleep(50);
                         Check(asked && !IsWindowVisible(panel), L"program: Hide asks once and hides the panel");
                         PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL, 0);
-                        Sleep(300);
+                        {   // the program may still be busy with the balloon of the hiding (slower where the notifications of Windows are off)
+                            DWORD shown = GetTickCount() + WMS(5000);
+                            while (!IsWindowVisible(panel) && (int)(shown - GetTickCount()) > 0) Sleep(50);
+                        }
                         Check(IsWindowVisible(panel), L"program: the tray command shows the panel again");
                     }
                     if (Chance(50)) PostMessageW(a.main, WM_HOTKEY, HK_STOP, 0);                     // F11
