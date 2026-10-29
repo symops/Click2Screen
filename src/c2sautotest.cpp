@@ -1235,6 +1235,8 @@ static void RecordOnce(bool useNull, bool sched = false)
     FitSizeForVideo(fmt, srcw, srch, ew, eh);
     Check(rec.Width() == ew && rec.Height() == eh, L"recorder: output size follows FitSize", desc);
     DWORD t0 = GetTickCount();
+    LARGE_INTEGER qf, q0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&q0);       // the real time: the ticks of GetTickCount are lost in a loaded VM, the recorder counts with QPC
+    auto qpcSince = [&](const LARGE_INTEGER& from) { LARGE_INTEGER n; QueryPerformanceCounter(&n); return (double)(n.QuadPart - from.QuadPart) / (double)qf.QuadPart; };
     int total = R(3, 5);
     double pausedFor = 0;
     HANDLE spamT = spam ? CreateThread(nullptr, 0, PauseSpam, &rec, 0, nullptr) : nullptr;
@@ -1248,10 +1250,10 @@ static void RecordOnce(bool useNull, bool sched = false)
             SetWindowPos(g_fx.hw, HWND_TOPMOST, wa.left + R(0, wa.right - wa.left - nw), wa.top + R(0, wa.bottom - wa.top - nh), nw, nh, SWP_NOACTIVATE);
             g_fx.w = nw; g_fx.h = nh;
         }
-        if (pause && slice == 8) { rec.SetPaused(true); DWORD pt = GetTickCount(); Pump(R(700, 1500)); pausedFor += (GetTickCount() - pt) / 1000.0; rec.SetPaused(false); }
+        if (pause && slice == 8) { rec.SetPaused(true); LARGE_INTEGER pq; QueryPerformanceCounter(&pq); Pump(R(700, 1500)); pausedFor += qpcSince(pq); rec.SetPaused(false); }
     }
     if (spamT) { WaitForSingleObject(spamT, 5000); CloseHandle(spamT); }
-    double wall = (GetTickCount() - t0) / 1000.0;
+    double wall = qpcSince(q0);
     double el = rec.ElapsedSec();
     unsigned long long frames = rec.FramesWritten();
     bool stopped = rec.Stop();
