@@ -143,3 +143,4 @@ Tekenen staat aan: teken met de linkermuisknop, de rechter wist alles, Esc sluit
 Tekenen staat uit.
 Het bestand heet:
 Boven andere vensters
+Aparte bestanden opslaan voor verschillende schermen

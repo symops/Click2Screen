@@ -1021,6 +1021,7 @@ BOOL CALLBACK MonEnum(HMONITOR, HDC, LPRECT r, LPARAM p)
 // The monitors' rectangles, left to right, then top to bottom.
 int MonitorRects(RECT* out, int cap)
 {
+    if (!g_cfg.separateMonitors && cap > 0) { out[0] = VirtualScreen(); return 1; }       // one file for all the monitors: the whole screen as one area
     MonList m; m.n = 0;
     EnumDisplayMonitors(nullptr, nullptr, MonEnum, (LPARAM)&m);
     for (int i = 1; i < m.n; ++i)
@@ -1178,7 +1179,7 @@ void OptLoad(OptState* o)
 {
     HWND d = o->dlg; Settings& s = o->s;
     auto chk = [&](int id, bool v) { CheckDlgButton(d, id, v ? BST_CHECKED : BST_UNCHECKED); };
-    chk(O_AUTOSTART, s.runAtStartup); chk(O_TOPMOST, s.topmost); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_OPENFOLDER, s.openFolder);
+    chk(O_AUTOSTART, s.runAtStartup); chk(O_TOPMOST, s.topmost); chk(O_MOUSE, s.capMouse); chk(O_HILITE, s.highlight); chk(O_SEPARATE, s.separateMonitors); chk(O_OPENFOLDER, s.openFolder);
     chk(O_SOUNDS, s.sounds); chk(O_NOTIFY, s.notify); chk(O_LOOPBACK, s.loopback); chk(O_MIC, s.mic);
     EnableWindow(GetDlgItem(d, O_HILITE), s.capMouse);                // the outline and the waves are drawn round the pointer: without it there is nothing to outline
     SendDlgItemMessageW(d, O_DELAY, CB_SETCURSEL, s.delaySec < 0 ? 0 : s.delaySec > 10 ? 10 : s.delaySec, 0);
@@ -1202,7 +1203,7 @@ void OptCollect(OptState* o, Settings& s)
 {
     HWND d = o->dlg;
     auto chk = [&](int id) { return IsDlgButtonChecked(d, id) == BST_CHECKED; };
-    s.runAtStartup = chk(O_AUTOSTART); s.topmost = chk(O_TOPMOST); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.openFolder = chk(O_OPENFOLDER);
+    s.runAtStartup = chk(O_AUTOSTART); s.topmost = chk(O_TOPMOST); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.separateMonitors = chk(O_SEPARATE); s.openFolder = chk(O_OPENFOLDER);
     s.sounds = chk(O_SOUNDS); s.notify = chk(O_NOTIFY); s.loopback = chk(O_LOOPBACK); s.mic = chk(O_MIC);
     auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
     { int i = (int)SendDlgItemMessageW(d, O_DELAY, CB_GETCURSEL, 0, 0); s.delaySec = i < 0 ? 0 : i > 10 ? 10 : i; }
@@ -1228,7 +1229,7 @@ void OptRestorePage(OptState* o)
     Settings cur = o->s; OptCollect(o, cur);
     Settings d; SettingsDefaults(d);
     switch (o->sel) {
-    case 0: cur.runAtStartup = d.runAtStartup; cur.topmost = d.topmost; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.openFolder = d.openFolder;
+    case 0: cur.runAtStartup = d.runAtStartup; cur.topmost = d.topmost; cur.capMouse = d.capMouse; cur.highlight = d.highlight; cur.separateMonitors = d.separateMonitors; cur.openFolder = d.openFolder;
             cur.sounds = d.sounds; cur.notify = d.notify; cur.loopback = d.loopback; cur.mic = d.mic; cur.delaySec = d.delaySec; break;
     case 1: cur.videoCodec = d.videoCodec; cur.audioCodec = d.audioCodec; cur.videoQuality = d.videoQuality; cur.audioQuality = d.audioQuality;
             cur.fps = d.fps; cur.imageFormat = d.imageFormat; break;
@@ -1429,8 +1430,8 @@ bool OptionsDialog()
     for (int i = 0; i <= 10; ++i) { wchar_t n[8]; _snwprintf(n, 8, L"%d", i); ComboAdd(dl, n); }
     label(0, S_OPT_SECONDS, 294, 61, 150);
     static const struct { Str s; int id; } chk[] = { {S_OPT_AUTOSTART, O_AUTOSTART}, {S_OPT_TOPMOST, O_TOPMOST}, {S_OPT_OPEN_FOLDER, O_OPENFOLDER},
-        {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_NOTIFY, O_NOTIFY}, {S_OPT_LOOPBACK, O_LOOPBACK}, {S_OPT_MIC, O_MIC} };
-    for (int i = 0; i < 9; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 90 + i * 22, 460, 18, chk[i].id);
+        {S_OPT_MOUSE, O_MOUSE}, {S_OPT_HIGHLIGHT, O_HILITE}, {S_OPT_SEPARATE, O_SEPARATE}, {S_OPT_SOUNDS, O_SOUNDS}, {S_OPT_NOTIFY, O_NOTIFY}, {S_OPT_LOOPBACK, O_LOOPBACK}, {S_OPT_MIC, O_MIC} };
+    for (int i = 0; i < 10; ++i) add(0, L"BUTTON", T(chk[i].s), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 88 + i * 20, 460, 18, chk[i].id);
 
     // page 1: video (left column) and audio (right column), then the image format and the folder both go to
     label(1, S_OPT_VIDEO_OPTIONS, 35, 52, 220); label(1, S_OPT_AUDIO_OPTIONS, 270, 52, 220);

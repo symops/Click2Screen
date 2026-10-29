@@ -143,3 +143,4 @@ Rysowanie włączone: rysuj lewym przyciskiem myszy, prawy kasuje wszystko, Esc 
 Rysowanie wyłączone.
 Plik będzie się nazywał:
 Nad innymi oknami
+Zapisuj osobne pliki dla różnych ekranów

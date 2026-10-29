@@ -143,3 +143,4 @@ Desenho ativado: desenhe com o botão esquerdo, o direito apaga tudo, Esc sai.
 Desenho desativado.
 O arquivo se chamará:
 Acima de outras janelas
+Salvar arquivos separados para cada tela

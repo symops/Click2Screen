@@ -19,7 +19,7 @@ static const wchar_t* const kLangNames[kLangCount] = {
     L"\x65e5" L"\x672c" L"\x8a9e",
     L"\xd55c" L"\xad6d" L"\xc5b4",
 };
-static const wchar_t* const kStrings[kLangCount][145] = {
+static const wchar_t* const kStrings[kLangCount][146] = {
     { // en
         L"Click2Screen",
         L"Record desktop",
@@ -166,6 +166,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Drawing is off.",
         L"The file will be named:",
         L"On top of other windows",
+        L"Save separate files for different screens",
     },
     { // ru
         L"Click2Screen",
@@ -313,6 +314,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x0420" L"\x0438" L"\x0441" L"\x043e" L"\x0432" L"\x0430" L"\x043d" L"\x0438" L"\x0435" L" " L"\x0432" L"\x044b" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0435" L"\x043d" L"\x043e" L".",
         L"\x0424" L"\x0430" L"\x0439" L"\x043b" L" " L"\x0431" L"\x0443" L"\x0434" L"\x0435" L"\x0442" L" " L"\x043d" L"\x0430" L"\x0437" L"\x044b" L"\x0432" L"\x0430" L"\x0442" L"\x044c" L"\x0441" L"\x044f" L":",
         L"\x041f" L"\x043e" L"\x0432" L"\x0435" L"\x0440" L"\x0445" L" " L"\x0434" L"\x0440" L"\x0443" L"\x0433" L"\x0438" L"\x0445" L" " L"\x043e" L"\x043a" L"\x043e" L"\x043d",
+        L"\x0421" L"\x043e" L"\x0445" L"\x0440" L"\x0430" L"\x043d" L"\x044f" L"\x0442" L"\x044c" L" " L"\x043e" L"\x0442" L"\x0434" L"\x0435" L"\x043b" L"\x044c" L"\x043d" L"\x044b" L"\x0435" L" " L"\x0444" L"\x0430" L"\x0439" L"\x043b" L"\x044b" L" " L"\x0434" L"\x043b" L"\x044f" L" " L"\x0440" L"\x0430" L"\x0437" L"\x043d" L"\x044b" L"\x0445" L" " L"\x044d" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x043e" L"\x0432",
     },
     { // uk
         L"Click2Screen",
@@ -460,6 +462,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x0432" L"\x0430" L"\x043d" L"\x043d" L"\x044f" L" " L"\x0432" L"\x0438" L"\x043c" L"\x043a" L"\x043d" L"\x0435" L"\x043d" L"\x043e" L".",
         L"\x0424" L"\x0430" L"\x0439" L"\x043b" L" " L"\x043d" L"\x0430" L"\x0437" L"\x0438" L"\x0432" L"\x0430" L"\x0442" L"\x0438" L"\x043c" L"\x0435" L"\x0442" L"\x044c" L"\x0441" L"\x044f" L":",
         L"\x041f" L"\x043e" L"\x0432" L"\x0435" L"\x0440" L"\x0445" L" " L"\x0456" L"\x043d" L"\x0448" L"\x0438" L"\x0445" L" " L"\x0432" L"\x0456" L"\x043a" L"\x043e" L"\x043d",
+        L"\x0417" L"\x0431" L"\x0435" L"\x0440" L"\x0456" L"\x0433" L"\x0430" L"\x0442" L"\x0438" L" " L"\x043e" L"\x043a" L"\x0440" L"\x0435" L"\x043c" L"\x0456" L" " L"\x0444" L"\x0430" L"\x0439" L"\x043b" L"\x0438" L" " L"\x0434" L"\x043b" L"\x044f" L" " L"\x0440" L"\x0456" L"\x0437" L"\x043d" L"\x0438" L"\x0445" L" " L"\x0435" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x0456" L"\x0432",
     },
     { // be
         L"Click2Screen",
@@ -607,6 +610,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x041c" L"\x0430" L"\x043b" L"\x044e" L"\x043d" L"\x0430" L"\x043a" L" " L"\x0432" L"\x044b" L"\x043a" L"\x043b" L"\x044e" L"\x0447" L"\x0430" L"\x043d" L"\x044b" L".",
         L"\x0424" L"\x0430" L"\x0439" L"\x043b" L" " L"\x0431" L"\x0443" L"\x0434" L"\x0437" L"\x0435" L" " L"\x043d" L"\x0430" L"\x0437" L"\x044b" L"\x0432" L"\x0430" L"\x0446" L"\x0446" L"\x0430" L":",
         L"\x041f" L"\x0430" L"\x0432" L"\x0435" L"\x0440" L"\x0445" L" " L"\x0456" L"\x043d" L"\x0448" L"\x044b" L"\x0445" L" " L"\x0432" L"\x043e" L"\x043a" L"\x043d" L"\x0430" L"\x045e",
+        L"\x0417" L"\x0430" L"\x0445" L"\x043e" L"\x045e" L"\x0432" L"\x0430" L"\x0446" L"\x044c" L" " L"\x0430" L"\x0441" L"\x043e" L"\x0431" L"\x043d" L"\x044b" L"\x044f" L" " L"\x0444" L"\x0430" L"\x0439" L"\x043b" L"\x044b" L" " L"\x0434" L"\x043b" L"\x044f" L" " L"\x0440" L"\x043e" L"\x0437" L"\x043d" L"\x044b" L"\x0445" L" " L"\x044d" L"\x043a" L"\x0440" L"\x0430" L"\x043d" L"\x0430" L"\x045e",
     },
     { // de
         L"Click2Screen",
@@ -754,6 +758,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Zeichnen ist aus.",
         L"Der Dateiname wird:",
         L"\x00dc" L"ber anderen Fenstern",
+        L"Separate Dateien f" L"\x00fc" L"r verschiedene Bildschirme speichern",
     },
     { // fr
         L"Click2Screen",
@@ -901,6 +906,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Dessin d" L"\x00e9" L"sactiv" L"\x00e9" L".",
         L"Le fichier s'appellera :",
         L"Au-dessus des autres fen" L"\x00ea" L"tres",
+        L"Enregistrer des fichiers s" L"\x00e9" L"par" L"\x00e9" L"s pour chaque " L"\x00e9" L"cran",
     },
     { // es
         L"Click2Screen",
@@ -1048,6 +1054,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Dibujo desactivado.",
         L"El archivo se llamar" L"\x00e1" L":",
         L"Encima de otras ventanas",
+        L"Guardar archivos separados para cada pantalla",
     },
     { // it
         L"Click2Screen",
@@ -1195,6 +1202,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Disegno disattivato.",
         L"Il file si chiamer" L"\x00e0" L":",
         L"Sopra le altre finestre",
+        L"Salva file separati per i diversi schermi",
     },
     { // pt
         L"Click2Screen",
@@ -1342,6 +1350,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Desenho desativado.",
         L"O arquivo se chamar" L"\x00e1" L":",
         L"Acima de outras janelas",
+        L"Salvar arquivos separados para cada tela",
     },
     { // pl
         L"Click2Screen",
@@ -1489,6 +1498,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Rysowanie wy" L"\x0142" L"\x0105" L"czone.",
         L"Plik b" L"\x0119" L"dzie si" L"\x0119" L" nazywa" L"\x0142" L":",
         L"Nad innymi oknami",
+        L"Zapisuj osobne pliki dla r" L"\x00f3" L"\x017c" L"nych ekran" L"\x00f3" L"w",
     },
     { // nl
         L"Click2Screen",
@@ -1636,6 +1646,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Tekenen staat uit.",
         L"Het bestand heet:",
         L"Boven andere vensters",
+        L"Aparte bestanden opslaan voor verschillende schermen",
     },
     { // tr
         L"Click2Screen",
@@ -1783,6 +1794,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x00c7" L"izim kapal" L"\x0131" L".",
         L"Dosya ad" L"\x0131" L" " L"\x015f" L"\x00f6" L"yle olacak:",
         L"Di" L"\x011f" L"er pencerelerin " L"\x00fc" L"st" L"\x00fc" L"nde",
+        L"Farkl" L"\x0131" L" ekranlar i" L"\x00e7" L"in ayr" L"\x0131" L" dosyalar kaydet",
     },
     { // id
         L"Click2Screen",
@@ -1930,6 +1942,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"Menggambar nonaktif.",
         L"Nama file akan menjadi:",
         L"Di atas jendela lain",
+        L"Simpan file terpisah untuk setiap layar",
     },
     { // vi
         L"Click2Screen",
@@ -2077,6 +2090,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x0110" L"\x00e3" L" t" L"\x1eaf" L"t v" L"\x1ebd" L".",
         L"T" L"\x00ea" L"n t" L"\x1ec7" L"p s" L"\x1ebd" L" l" L"\x00e0" L":",
         L"Lu" L"\x00f4" L"n " L"\x1edf" L" tr" L"\x00ea" L"n c" L"\x00e1" L"c c" L"\x1eed" L"a s" L"\x1ed5" L" kh" L"\x00e1" L"c",
+        L"L" L"\x01b0" L"u t" L"\x1ec7" L"p ri" L"\x00ea" L"ng cho t" L"\x1eeb" L"ng m" L"\x00e0" L"n h" L"\x00ec" L"nh",
     },
     { // zh
         L"Click2Screen",
@@ -2224,6 +2238,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x7ed8" L"\x56fe" L"\x5df2" L"\x5173" L"\x95ed" L"\x3002",
         L"\x6587" L"\x4ef6" L"\x540d" L"\x5c06" L"\x662f" L":",
         L"\x7f6e" L"\x4e8e" L"\x5176" L"\x4ed6" L"\x7a97" L"\x53e3" L"\x4e4b" L"\x4e0a",
+        L"\x4e3a" L"\x4e0d" L"\x540c" L"\x7684" L"\x5c4f" L"\x5e55" L"\x5206" L"\x522b" L"\x4fdd" L"\x5b58" L"\x6587" L"\x4ef6",
     },
     { // ja
         L"Click2Screen",
@@ -2371,6 +2386,7 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\x63cf" L"\x753b" L"\x30aa" L"\x30d5" L"\x3002",
         L"\x30d5" L"\x30a1" L"\x30a4" L"\x30eb" L"\x540d" L":",
         L"\x4ed6" L"\x306e" L"\x30a6" L"\x30a3" L"\x30f3" L"\x30c9" L"\x30a6" L"\x306e" L"\x524d" L"\x9762" L"\x306b" L"\x8868" L"\x793a",
+        L"\x753b" L"\x9762" L"\x3054" L"\x3068" L"\x306b" L"\x5225" L"\x3005" L"\x306e" L"\x30d5" L"\x30a1" L"\x30a4" L"\x30eb" L"\x3067" L"\x4fdd" L"\x5b58" L"\x3059" L"\x308b",
     },
     { // ko
         L"Click2Screen",
@@ -2518,5 +2534,6 @@ static const wchar_t* const kStrings[kLangCount][145] = {
         L"\xadf8" L"\xb9ac" L"\xae30" L" " L"\xaebc" L"\xc9d0" L".",
         L"\xd30c" L"\xc77c" L" " L"\xc774" L"\xb984" L"\xc740" L" " L"\xb2e4" L"\xc74c" L"\xacfc" L" " L"\xac19" L"\xc2b5" L"\xb2c8" L"\xb2e4" L":",
         L"\xb2e4" L"\xb978" L" " L"\xcc3d" L" " L"\xc704" L"\xc5d0" L" " L"\xd45c" L"\xc2dc",
+        L"\xd654" L"\xba74" L"\xbcc4" L"\xb85c" L" " L"\xbcc4" L"\xb3c4" L" " L"\xd30c" L"\xc77c" L"\xb85c" L" " L"\xc800" L"\xc7a5",
     },
 };

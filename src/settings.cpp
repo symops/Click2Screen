@@ -59,7 +59,7 @@ void SettingsDefaults(Settings& s)
     wcscpy(s.fileName, L"File $D.$M.$Y $H-$N-$S");
     s.imageFormat = IMG_PNG;
     s.capMouse = true; s.highlight = true; s.sounds = true; s.notify = true; s.loopback = true; s.mic = true;
-    s.openFolder = true; s.runAtStartup = true; s.topmost = false;
+    s.openFolder = true; s.runAtStartup = true; s.topmost = false; s.separateMonitors = true;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = HotkeyDefault(i);
     s.delaySec = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
@@ -148,6 +148,7 @@ void SettingsLoad(Settings& s)
     s.openFolder   = GetDw(k, L"OpenOutFolder", d.openFolder) != 0;
     s.runAtStartup = GetDw(k, L"RunAtStartup", d.runAtStartup) != 0;
     s.topmost      = GetDw(k, L"AlwaysOnTop", d.topmost) != 0;
+    s.separateMonitors = GetDw(k, L"SeparateMonitorFiles", d.separateMonitors) != 0;
     s.delaySec     = Clamp((int)GetDw(k, L"Delay", d.delaySec), 0, 10);
     s.videoCodec   = Clamp((int)GetDw(k, L"VideoCodec", d.videoCodec), 0, VC_COUNT - 1);
     if (s.videoCodec == VC_H264_FAST) s.videoCodec = VC_H264_BEST;                    // the second H.264 profile is gone from the options: its recordings are the first one now
@@ -190,6 +191,7 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"OpenOutFolder", s.openFolder);
     PutDw(k, L"RunAtStartup", s.runAtStartup);
     PutDw(k, L"AlwaysOnTop", s.topmost);
+    PutDw(k, L"SeparateMonitorFiles", s.separateMonitors);
     PutDw(k, L"Delay", s.delaySec);
     PutDw(k, L"VideoCodec", s.videoCodec);
     PutDw(k, L"AudioCodec", s.audioCodec);
@@ -418,6 +420,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"OpenOutFolder", s.openFolder);
     IniInt(path, L"RunAtStartup", s.runAtStartup);
     IniInt(path, L"AlwaysOnTop", s.topmost);
+    IniInt(path, L"SeparateMonitorFiles", s.separateMonitors);
     IniInt(path, L"Delay", s.delaySec);
     IniInt(path, L"VideoCodec", s.videoCodec);
     IniInt(path, L"AudioCodec", s.audioCodec);
@@ -465,6 +468,7 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"OpenOutFolder", 0, 1, &v)) s.openFolder = v != 0;
     if (IniGetInt(path, L"RunAtStartup", 0, 1, &v)) s.runAtStartup = v != 0;
     if (IniGetInt(path, L"AlwaysOnTop", 0, 1, &v)) s.topmost = v != 0;
+    if (IniGetInt(path, L"SeparateMonitorFiles", 0, 1, &v)) s.separateMonitors = v != 0;
     if (IniGetInt(path, L"Delay", 0, 10, &v)) s.delaySec = v;
     if (IniGetInt(path, L"VideoCodec", 0, VC_COUNT - 1, &v)) s.videoCodec = v == VC_H264_FAST ? VC_H264_BEST : v;
     if (IniGetInt(path, L"AudioCodec", 0, 1, &v)) s.audioCodec = v;

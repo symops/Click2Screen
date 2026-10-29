@@ -143,3 +143,4 @@ Dibujo activado: dibuje con el botón izquierdo, el derecho lo borra todo, Esc s
 Dibujo desactivado.
 El archivo se llamará:
 Encima de otras ventanas
+Guardar archivos separados para cada pantalla

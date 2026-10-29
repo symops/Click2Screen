@@ -143,3 +143,4 @@ Vẽ trên màn hình (bật / tắt)
 Đã tắt vẽ.
 Tên tệp sẽ là:
 Luôn ở trên các cửa sổ khác
+Lưu tệp riêng cho từng màn hình

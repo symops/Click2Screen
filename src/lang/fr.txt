@@ -143,3 +143,4 @@ Dessin activé : dessinez avec le bouton gauche, le bouton droit efface tout, É
 Dessin désactivé.
 Le fichier s'appellera :
 Au-dessus des autres fenêtres
+Enregistrer des fichiers séparés pour chaque écran

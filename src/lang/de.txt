@@ -143,3 +143,4 @@ Zeichnen ist an: mit der linken Maustaste zeichnen, die rechte löscht alles, Es
 Zeichnen ist aus.
 Der Dateiname wird:
 Über anderen Fenstern
+Separate Dateien für verschiedene Bildschirme speichern

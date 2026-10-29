@@ -35,7 +35,7 @@ enum Str {
     S_OPT_FORMATS, S_OPT_SAVE, S_OPT_VIDEO_OPTIONS, S_OPT_AUDIO_OPTIONS,
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
     S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF, S_OPT_NAMEPREVIEW,
-    S_OPT_TOPMOST,
+    S_OPT_TOPMOST, S_OPT_SEPARATE,
     S__COUNT
 };
 const wchar_t* T(Str s);
@@ -71,6 +71,7 @@ struct Settings {
     bool openFolder;                // show the finished file in Explorer
     bool runAtStartup;              // the program starts with the computer (on by default)
     bool topmost;                   // the main window stays over the other windows
+    bool separateMonitors;          // the desktop screenshot / recording: one file for every monitor (on by default), else one file for all of them
     int  delaySec;                  // delay before capture (0..10)
     int  videoCodec;                // VC_*: H.264 best / fast, H.265, WMV, AVI (MJPEG), GIF
     int  audioCodec;                // 0 = AAC, 1 = MP3

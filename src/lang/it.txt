@@ -143,3 +143,4 @@ Disegno attivo: disegna con il pulsante sinistro, il destro cancella tutto, Esc 
 Disegno disattivato.
 Il file si chiamerà:
 Sopra le altre finestre
+Salva file separati per i diversi schermi

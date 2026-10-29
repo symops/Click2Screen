@@ -217,7 +217,7 @@ static void RandomSettings(Settings& s)
         default: _snwprintf(s.fileName, 128, L"%%USERNAME%% %s ##", name); break;
     }
     s.imageFormat = RandomImageFormat(); s.capMouse = Chance(50); s.highlight = Chance(50); s.sounds = Chance(50); s.notify = Chance(50); s.loopback = Chance(50); s.mic = Chance(50);
-    s.openFolder = Chance(50); s.runAtStartup = false; s.topmost = Chance(50);   // autostart is not touched by the test
+    s.openFolder = Chance(50); s.runAtStartup = false; s.topmost = Chance(50); s.separateMonitors = Chance(50);   // autostart is not touched by the test
     s.delaySec = R(0, 10);
     s.videoCodec = RandomVideoFormat(); s.audioCodec = R(0, 1); s.videoQuality = R(0, 2); s.audioQuality = R(0, 2);
     static const int f[] = { 5, 10, 15, 20, 25, 30, 45, 60 };
@@ -231,7 +231,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
 #define CMPS(f) if (!Same(a.f, b.f)) { _snwprintf(why, 150, L"%s differs: [%s] vs [%s]", L"" #f, a.f, b.f); return false; }
 #define CMPI(f) if (a.f != b.f) { _snwprintf(why, 120, L"%s: %d vs %d", L"" #f, (int)a.f, (int)b.f); return false; }
     CMPS(folder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
-    CMPI(openFolder) CMPI(topmost) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
+    CMPI(openFolder) CMPI(topmost) CMPI(separateMonitors) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
@@ -706,6 +706,23 @@ static void T_Languages()
     }
     LangSelect(0);
     Check(bad == 0, L"languages: every table is complete, with the English line breaks and placeholders", L"(17 languages)");
+    {   // the check boxes of the options that were added or renamed: translated in every language, and exactly as asked in English and Russian
+        int untranslated = 0;
+        const Str ids[3] = { S_OPT_SOUNDS, S_OPT_TOPMOST, S_OPT_SEPARATE };
+        for (int lng = 2; lng <= LangCount(); ++lng) {                 // 1 is English
+            LangSelect(lng);
+            for (Str id : ids) if (!wcscmp(T(id), en[id])) { ++untranslated; Rep(L"INFO", L"  language %d: string %d is the English one", lng, (int)id); }
+        }
+        LangSelect(1);
+        bool enOk = !wcscmp(T(S_OPT_SOUNDS), L"Enable sounds in the program") && !wcscmp(T(S_OPT_TOPMOST), L"On top of other windows") && !wcscmp(T(S_OPT_SEPARATE), L"Save separate files for different screens");
+        LangSelect(0);
+        int ru = 0; for (int lng = 1; lng <= LangCount(); ++lng) { LangSelect(lng); if (!wcscmp(T(S_OPT_SOUNDS), L"\x0412\x043a\x043b\x044e\x0447\x0438\x0442\x044c \x0437\x0432\x0443\x043a\x0438 \x0432 \x043f\x0440\x043e\x0433\x0440\x0430\x043c\x043c\x0435")) ru = lng; }
+        bool ruOk = false;
+        if (ru) { LangSelect(ru); ruOk = !wcscmp(T(S_OPT_TOPMOST), L"\x041f\x043e\x0432\x0435\x0440\x0445 \x0434\x0440\x0443\x0433\x0438\x0445 \x043e\x043a\x043e\x043d") && !wcscmp(T(S_OPT_SEPARATE), L"\x0421\x043e\x0445\x0440\x0430\x043d\x044f\x0442\x044c \x043e\x0442\x0434\x0435\x043b\x044c\x043d\x044b\x0435 \x0444\x0430\x0439\x043b\x044b \x0434\x043b\x044f \x0440\x0430\x0437\x043d\x044b\x0445 \x044d\x043a\x0440\x0430\x043d\x043e\x0432"); }
+        LangSelect(0);
+        Check(untranslated == 0, L"languages: the new check boxes (sounds in the program, on top of other windows, separate files for screens) are translated into every language");
+        Check(enOk && ruOk, L"languages: the English and Russian texts of those check boxes are as asked");
+    }
     // the formats really work with their arguments (no crash, no empty result)
     wchar_t buf[400];
     for (int lng = 1; lng <= LangCount(); ++lng) {
@@ -1475,6 +1492,11 @@ static void T_Installer()
     bool autoOn = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS && RegQueryValueExW(k, L"Click2Screen", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
     if (k) RegCloseKey(k);
     Check(autoOn == wantAuto, L"installer: the autostart box is honoured");
+    {
+        HKEY ks; DWORD v = 99, sz = sizeof(v), ty = 0; bool got = false;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Click2Screen", 0, KEY_READ, &ks) == ERROR_SUCCESS) { got = RegQueryValueExW(ks, L"RunAtStartup", nullptr, &ty, (BYTE*)&v, &sz) == ERROR_SUCCESS; RegCloseKey(ks); }
+        Check(got && (v != 0) == wantAuto, L"installer: the choice of the autostart box is written as the setting of the program");
+    }
     if (desk[0]) Check((GetFileAttributesW(desk) != INVALID_FILE_ATTRIBUTES) == wantDesk, L"installer: the desktop shortcut box is honoured");
     if (menu[0]) Check((GetFileAttributesW(menu) != INVALID_FILE_ATTRIBUTES) == wantMenu, L"installer: the Start menu shortcut box is honoured");
     // update in place, then remove
@@ -2026,7 +2048,34 @@ static void T_App()
                 wchar_t dd[120]; _snwprintf(dd, 120, L"pointer on at start %d: highlight box enabled %d, after one click %d, after two %d", (int)pointerOn, (int)en0, (int)en1, (int)en2);
                 Check(en0 == pointerOn && en1 == !pointerOn && en2 == pointerOn, L"program: the outline-and-waves box is enabled only while the pointer box is checked", dd);
             }
+            {   // the order of the check boxes down the page, and none of them under the buttons
+                static const int order[] = { O_AUTOSTART, O_TOPMOST, O_OPENFOLDER, O_MOUSE, O_HILITE, O_SEPARATE, O_SOUNDS, O_NOTIFY, O_LOOPBACK, O_MIC };
+                int prev = -100000, outOfOrder = 0, missing = 0; RECT okr = {}; GetWindowRect(GetDlgItem(o, IDOK), &okr);
+                int lowest = -100000; wchar_t seq[200] = L"";
+                for (int id : order) {
+                    HWND c = GetDlgItem(o, id); RECT r;
+                    if (!c || !GetWindowRect(c, &r)) { ++missing; continue; }
+                    if (r.top <= prev) ++outOfOrder;
+                    prev = r.top; if (r.bottom > lowest) lowest = r.bottom;
+                    wchar_t t[8]; _snwprintf(t, 8, L"%d ", (int)r.top); wcsncat(seq, t, 199 - wcslen(seq));
+                }
+                wchar_t dd[300]; _snwprintf(dd, 300, L"tops %s; the lowest box ends at %d, the OK button starts at %d", seq, lowest, (int)okr.top);
+                Check(!missing && !outOfOrder, L"program: the check boxes of the first page are in the order: autostart, on top, open the folder, pointer, outline, separate files, sounds, notifications, speakers, microphone", dd);
+                Check(lowest < okr.top, L"program: all the check boxes of the first page are above the buttons", dd);
+                wchar_t txt[200]; WinText(GetDlgItem(o, O_SOUNDS), txt, 200);
+                Check(!wcscmp(txt, T(S_OPT_SOUNDS)), L"program: the sounds box says \"sounds in the program\"", txt);
+                WinText(GetDlgItem(o, O_TOPMOST), txt, 200);
+                Check(!wcscmp(txt, T(S_OPT_TOPMOST)), L"program: the \"on top of other windows\" box has its text", txt);
+                WinText(GetDlgItem(o, O_SEPARATE), txt, 200);
+                Check(!wcscmp(txt, T(S_OPT_SEPARATE)), L"program: the \"separate files for different screens\" box has its text", txt);
+                // the speakers box stands before the microphone box (the text says what it is)
+                WinText(GetDlgItem(o, O_LOOPBACK), txt, 200); Check(!wcscmp(txt, T(S_OPT_LOOPBACK)), L"program: the box above the microphone one is the speakers one", txt);
+            }
             Settings d; SettingsDefaults(d);
+            // the boxes that were added: set the other way, then "Restore default" must bring them back (autostart on, the window not on top, separate files on)
+            SendMessageW(GetDlgItem(o, O_AUTOSTART), BM_SETCHECK, d.runAtStartup ? BST_UNCHECKED : BST_CHECKED, 0);
+            SendMessageW(GetDlgItem(o, O_TOPMOST), BM_SETCHECK, d.topmost ? BST_UNCHECKED : BST_CHECKED, 0);
+            SendMessageW(GetDlgItem(o, O_SEPARATE), BM_SETCHECK, d.separateMonitors ? BST_UNCHECKED : BST_CHECKED, 0);
             SendMessageW(GetDlgItem(o, O_SOUNDS), BM_SETCHECK, d.sounds ? BST_UNCHECKED : BST_CHECKED, 0);       // a general setting, changed
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, d.fps == 10 ? 6 : 0, 0);                              // a video setting, changed
             SendMessageW(GetDlgItem(o, O_HK0), WM_KEYDOWN, VK_BACK, 0);                                           // a hotkey, switched off
@@ -2036,6 +2085,13 @@ static void T_App()
             wchar_t hk0[80]; WinText(GetDlgItem(o, O_HK0), hk0, 80);
             wchar_t dd[200]; _snwprintf(dd, 200, L"general back to default: %d, the video setting is item %d, the hotkey field says [%s]", generalBack, fpsIdx, hk0);
             Check(generalBack, L"program: Restore default sets back the settings of the open page", dd);
+            {
+                bool a1 = (SendMessageW(GetDlgItem(o, O_AUTOSTART), BM_GETCHECK, 0, 0) == BST_CHECKED), t1 = (SendMessageW(GetDlgItem(o, O_TOPMOST), BM_GETCHECK, 0, 0) == BST_CHECKED), m1 = (SendMessageW(GetDlgItem(o, O_SEPARATE), BM_GETCHECK, 0, 0) == BST_CHECKED);
+                wchar_t d3[160]; _snwprintf(d3, 160, L"autostart %d (default %d), on top %d (default %d), separate files %d (default %d)", (int)a1, (int)d.runAtStartup, (int)t1, (int)d.topmost, (int)m1, (int)d.separateMonitors);
+                Check(a1 == d.runAtStartup && d.runAtStartup, L"program: Restore default turns the autostart box on (it is on by default)", d3);
+                Check(t1 == d.topmost && !d.topmost, L"program: Restore default clears the \"on top of other windows\" box", d3);
+                Check(m1 == d.separateMonitors && d.separateMonitors, L"program: Restore default turns the \"separate files for different screens\" box on", d3);
+            }
             Check(fpsIdx == (d.fps == 10 ? 6 : 0), L"program: Restore default leaves the other pages as they are", dd);
             Check(wcscmp(hk0, T(S_HK_NONE)) == 0, L"program: Restore default leaves the hotkeys page as it is", dd);
             PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
@@ -2065,7 +2121,7 @@ static void T_App()
                 if (w.hotkey[i]) SendMessageW(e, WM_KEYDOWN, (WPARAM)w.hotkey[i], 0);
             }
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
-            chk(O_AUTOSTART, false); chk(O_TOPMOST, w.topmost); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
+            chk(O_AUTOSTART, false); chk(O_TOPMOST, w.topmost); chk(O_SEPARATE, w.separateMonitors); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
             wchar_t n[16];
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
@@ -2688,6 +2744,7 @@ static void T_SetupGuiInstall()
     if (GetFileAttributesW(exe) != INVALID_FILE_ATTRIBUTES) { SKIP(L"installer window: Click2Screen is already installed here; not touching it"); return; }
     PROCESS_INFORMATION pi; HWND w = nullptr;
     if (!LaunchSetupGui(pi, w)) { FAIL(L"installer window: it did not appear"); return; }
+    Check(SendMessageW(GetDlgItem(w, SU_AUTO), BM_GETCHECK, 0, 0) == BST_CHECKED, L"installer window: the autostart box is on when the window opens (as the option of the program)");
     bool wantDesk = Chance(50), wantMenu = Chance(50), wantAuto = Chance(50);
     SendMessageW(GetDlgItem(w, SU_DESKTOP), BM_SETCHECK, wantDesk ? BST_CHECKED : BST_UNCHECKED, 0);
     SendMessageW(GetDlgItem(w, SU_START), BM_SETCHECK, wantMenu ? BST_CHECKED : BST_UNCHECKED, 0);
@@ -2704,6 +2761,11 @@ static void T_SetupGuiInstall()
     HKEY k; bool autoOn = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS && RegQueryValueExW(k, L"Click2Screen", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
     if (k) RegCloseKey(k);
     Check(autoOn == wantAuto, L"installer window: the autostart box is honoured");
+    {   // what was chosen is the setting of the program too: its first start does not turn the autostart on by itself
+        HKEY ks; DWORD v = 99, sz = sizeof(v), ty = 0; bool got = false;
+        if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Click2Screen", 0, KEY_READ, &ks) == ERROR_SUCCESS) { got = RegQueryValueExW(ks, L"RunAtStartup", nullptr, &ty, (BYTE*)&v, &sz) == ERROR_SUCCESS; RegCloseKey(ks); }
+        Check(got && (v != 0) == wantAuto, L"installer window: the choice of the autostart box is written as the setting of the program");
+    }
     // Remove: asks first
     PostMessageW(w, WM_COMMAND, SU_REMOVE, 0);
     bool asked = DismissBox(pi.dwProcessId, IDYES, 10000);
@@ -3661,11 +3723,12 @@ static void ArrangeMonitors(int layout)
 
 // The real program: the desktop hotkey saves one picture per monitor (a design of the original recorder, kept). The program shows a toast of the
 // system when it starts (its keys are used by another instance): it comes last, after every other measure of the layout.
-static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm)
+static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm, bool separate = true)
 {
     const int fmon = nm > 1 ? 1 : 0;                                   // the fixture inside the second monitor
     PlaceFixture((int)((mon[fmon].rc.left + mon[fmon].rc.right) / 2 - g_fx.w / 2), (int)((mon[fmon].rc.top + mon[fmon].rc.bottom) / 2 - g_fx.h / 2));
-    Settings st; PrepareApp(st); st.notify = false; st.imageFormat = IMG_PNG; st.capMouse = false; st.highlight = false;
+    Settings st; PrepareApp(st); st.notify = false; st.imageFormat = IMG_PNG; st.capMouse = false; st.highlight = false; st.separateMonitors = separate;
+    const int want = separate ? nm : 1;                                  // one picture for every monitor, or one for all of them
     App a;
     if (!StartApp(a, st)) { FAIL(L"monitors: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
     {   // the pictures of the layout before are not what is counted
@@ -3676,7 +3739,7 @@ static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm)
     int before = CountFiles(st.folder);
     PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
     DWORD until = GetTickCount() + 25000;
-    while ((int)(until - GetTickCount()) > 0 && CountFiles(st.folder) < before + nm) Pump(300);
+    while ((int)(until - GetTickCount()) > 0 && CountFiles(st.folder) < before + want) Pump(300);
     Pump(800);
     wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.png", st.folder);
     WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
@@ -3687,16 +3750,22 @@ static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm)
         int dw = 0, dh = 0; uint8_t* px = nullptr;
         if (!DecodePixels(f, &dw, &dh, &px)) continue;
         ++files;
-        {   // the file of the monitor the fixture is on: monitors of one size cannot be told apart by the size, the colours tell
-            const RECT& fmr = mon[fmon].rc;
-            if (fmr.right - fmr.left == dw && fmr.bottom - fmr.top == dh) { Shot sh = { dw, dh, px }; if (QuartersRight(sh, fmr, fr) == 4) fixtureOk = 1; }
+        if (!separate) {                                                 // the one picture of the whole screen
+            RECT vsA = VirtualScreen();
+            if (dw == vsA.right - vsA.left && dh == vsA.bottom - vsA.top) { ++sizesMatched; Shot sh = { dw, dh, px }; if (QuartersRight(sh, vsA, fr) == 4) fixtureOk = 1; }
+        } else {
+            {   // the file of the monitor the fixture is on: monitors of one size cannot be told apart by the size, the colours tell
+                const RECT& fmr = mon[fmon].rc;
+                if (fmr.right - fmr.left == dw && fmr.bottom - fmr.top == dh) { Shot sh = { dw, dh, px }; if (QuartersRight(sh, fmr, fr) == 4) fixtureOk = 1; }
+            }
+            for (int k = 0; k < nm; ++k) if (!used[k] && mon[k].rc.right - mon[k].rc.left == dw && mon[k].rc.bottom - mon[k].rc.top == dh) { used[k] = true; ++sizesMatched; break; }
         }
-        for (int k = 0; k < nm; ++k) if (!used[k] && mon[k].rc.right - mon[k].rc.left == dw && mon[k].rc.bottom - mon[k].rc.top == dh) { used[k] = true; ++sizesMatched; break; }
         delete[] px;
     } while (FindNextFileW(h, &fd));
     if (h != INVALID_HANDLE_VALUE) FindClose(h);
-    wchar_t d[700]; _snwprintf(d, 700, L"%s: %d pictures for %d monitors, %d of them the size of a monitor, the monitor with the fixture (%d) shows it: %d", head, files, nm, sizesMatched, fmon, fixtureOk);
-    Check(files == nm && sizesMatched == nm && fixtureOk, L"monitors: the program's desktop screenshot is one picture per monitor, each of the size of its monitor, the colours where they are", d);
+    wchar_t d[700]; _snwprintf(d, 700, L"%s, separate files %d: %d pictures for %d monitors, %d of the right size, the fixture (monitor %d) shows: %d", head, (int)separate, files, nm, sizesMatched, fmon, fixtureOk);
+    Check(files == want && sizesMatched == want && fixtureOk, separate ? L"monitors: the program's desktop screenshot is one picture per monitor, each of the size of its monitor, the colours where they are"
+                                                                      : L"monitors: with the box \"separate files for different screens\" off the desktop screenshot is one picture of the whole screen, the colours where they are", d);
     StopApp(a, false);
 }
 
@@ -3784,8 +3853,9 @@ static void T_Monitors()
             nm = ListMonitors(mon);
             RECT vs2 = VirtualScreen();
             wchar_t head2[300]; _snwprintf(head2, 300, L"layout %d, %d monitors, virtual screen %ld,%ld %ldx%ld", layout, nm, (long)vs2.left, (long)vs2.top, (long)(vs2.right - vs2.left), (long)(vs2.bottom - vs2.top));
-            MonAppDesktopTest(head2, mon, nm);
+            MonAppDesktopTest(head2, mon, nm, true);
             Pump(12000);                                                // the toast of the program's start goes before the next layout
+            if (layout == 3) { MonAppDesktopTest(head2, mon, nm, false); Pump(12000); }
         }
     }
     ArrangeMonitors(0);
@@ -3807,7 +3877,7 @@ static void T_FirstStart()
         }
     }
     Settings def; SettingsDefaults(def);
-    Check(def.runAtStartup && !def.topmost, L"first start: the autostart is on by default, the window is not over the others");
+    Check(def.runAtStartup && !def.topmost && def.separateMonitors, L"first start: the autostart is on by default, the window is not over the others, the files of different monitors are separate");
     SHDeleteKeyW(HKEY_CURRENT_USER, SettingsKeyName());                           // a machine that has not run the program
     Check(!SettingsStored(), L"first start: a fresh key has no stored settings");
     App a;
@@ -3823,7 +3893,7 @@ static void T_FirstStart()
         Check(has && wcsstr(val, L"Click2Screen.exe") && wcsstr(val, L"/tray"), L"first start: the program puts itself into the Run key of the user (autostart is on by default)", val);
         Check(SettingsStored(), L"first start: the program has written its settings");
         Settings now; SettingsLoad(now);
-        Check(now.runAtStartup && !now.topmost, L"first start: the stored settings are the defaults");
+        Check(now.runAtStartup && !now.topmost && now.separateMonitors, L"first start: the stored settings are the defaults (autostart on, not on top, separate files for monitors on)");
         Check((GetWindowLongW(a.main, GWL_EXSTYLE) & WS_EX_TOPMOST) == 0, L"first start: the main window is not over the others");
         StopApp(a, true);
     }
@@ -3889,6 +3959,78 @@ static void T_InkStress()
     wchar_t d[300]; _snwprintf(d, 300, L"%d rounds, %d failed (no drawing window %d, no trail window %d, a wrong place %d), the slowest line took %lu ms", rounds, fails, noInk, noTrail, wrongPlace, (unsigned long)worst);
     Check(fails == 0 && AppAlive(a), L"ink stress: the line of every stroke shows on the screen", d);
     StopApp(a, false);
+}
+
+// The time stamp of the PE header is what Process Explorer shows as "Build Time": it must not be zero ("n/a").
+static unsigned PeTimeStamp(const wchar_t* path)
+{
+    HANDLE f = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return 0xFFFFFFFFu;
+    unsigned char hdr[512]; DWORD got = 0; unsigned ts = 0xFFFFFFFEu;
+    if (ReadFile(f, hdr, 64, &got, nullptr) && got == 64 && hdr[0] == 'M' && hdr[1] == 'Z') {
+        DWORD off = *(DWORD*)(hdr + 0x3C);
+        if (off < 400 && SetFilePointer(f, (LONG)off, nullptr, FILE_BEGIN) != INVALID_SET_FILE_POINTER && ReadFile(f, hdr, 24, &got, nullptr) && got == 24 && !memcmp(hdr, "PE\0\0", 4))
+            ts = *(DWORD*)(hdr + 8);
+    }
+    CloseHandle(f);
+    return ts;
+}
+
+static void T_BuildTime()
+{
+    wchar_t self[MAX_PATH]; GetModuleFileNameW(nullptr, self, MAX_PATH);
+    wchar_t* sl = wcsrchr(self, L'\\'); if (sl) *sl = 0;
+    static const wchar_t* const names[] = { L"Click2Screen.exe", L"Click2Screen-Setup.exe", L"c2slauncher.exe" };
+    FILETIME nowFt; GetSystemTimeAsFileTime(&nowFt);
+    unsigned long long now = (((unsigned long long)nowFt.dwHighDateTime << 32) | nowFt.dwLowDateTime) / 10000000ULL - 11644473600ULL;      // seconds since 1970
+    int seen = 0;
+    for (const wchar_t* n : names) {
+        wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\%s", self, n);
+        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) continue;
+        ++seen;
+        unsigned ts = PeTimeStamp(path);
+        WIN32_FILE_ATTRIBUTE_DATA fa; unsigned long long mt = 0;
+        if (GetFileAttributesExW(path, GetFileExInfoStandard, &fa)) mt = (((unsigned long long)fa.ftLastWriteTime.dwHighDateTime << 32) | fa.ftLastWriteTime.dwLowDateTime) / 10000000ULL - 11644473600ULL;
+        wchar_t d[200]; _snwprintf(d, 200, L"%s: build time stamp %u, the file was written at %llu, now %llu", n, ts, (unsigned long long)mt, now);
+        Check(ts != 0 && ts != 0xFFFFFFFFu && ts != 0xFFFFFFFEu, L"build time: the executable has a build time in its header (Process Explorer shows it; zero is n/a)", d);
+        Check(ts > 1735689600u && ts <= now + 86400, L"build time: the build time is a real date (after 2025, not in the future)", d);
+        Check(mt == 0 || (mt + 86400 * 2 > ts && ts + 86400 * 2 > mt), L"build time: the build time is the time the file was made (within two days of its last write)", d);
+    }
+    if (!seen) SKIP(L"build time: no program executable beside the autotest");
+}
+
+// The look of the main window: the region screenshot icon is black like the other pictures, the three recording icons are blue with a small
+// red dot (the mark of a recording) at the lower right.
+static void T_MainIcons()
+{
+    Settings s; PrepareApp(s); s.notify = false; s.topmost = true;                // over the other windows: nothing covers the icons while they are measured
+    App a;
+    if (!StartApp(a, s)) { FAIL(L"main icons: Click2Screen.exe did not show its window"); StopApp(a, false); return; }
+    SetForegroundWindow(a.main); Pump(600);
+    struct B { int id; bool rec; const wchar_t* name; } bt[] = {
+        { IDC_SHOT_DESKTOP, false, L"screenshot of the desktop" }, { IDC_SHOT_REGION, false, L"screenshot of a region" }, { IDC_SHOT_WINDOW, false, L"screenshot of a window" },
+        { IDC_REC_DESKTOP, true, L"recording of the desktop" }, { IDC_REC_REGION, true, L"recording of a region" }, { IDC_REC_WINDOW, true, L"recording of a window" } };
+    for (const B& b : bt) {
+        HWND bw = GetDlgItem(a.main, b.id);
+        RECT r; if (!bw || !GetWindowRect(bw, &r)) { FAIL(L"main icons: no button %s", b.name); continue; }
+        Shot sh = GrabShot(r);
+        int black = 0, blue = 0, red = 0; long rx = 0, ry = 0;
+        for (int y = 0; sh.px && y < sh.h; ++y)
+            for (int x = 0; x < sh.w; ++x) {
+                const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4; int B2 = q[0], G = q[1], R2 = q[2];
+                if (R2 < 60 && G < 60 && B2 < 60) ++black;
+                else if (abs(R2 - 8) < 30 && abs(G - 115) < 30 && abs(B2 - 197) < 30) ++blue;
+                else if (R2 > 190 && G < 80 && B2 < 80) { ++red; rx += x; ry += y; }
+            }
+        wchar_t d[260]; _snwprintf(d, 260, L"%s: %d black, %d blue, %d red pixels in %dx%d", b.name, black, blue, red, sh.w, sh.h);
+        if (!b.rec) Check(sh.px && black > 10 && blue == 0 && red == 0, L"main icons: a screenshot icon is black (the region one too), without blue or red", d);
+        else {
+            bool lowerRight = red > 0 && rx / red > sh.w / 2 && ry / red > sh.h / 2;
+            Check(sh.px && blue > 10 && red > 5 && lowerRight, L"main icons: a recording icon is blue with a small red dot at the lower right", d);
+        }
+        free(sh.px);
+    }
+    StopApp(a, true);
 }
 
 static void T_KeyInterval()
@@ -4965,7 +5107,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
