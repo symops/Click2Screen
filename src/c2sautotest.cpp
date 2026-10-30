@@ -1119,7 +1119,7 @@ static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, b
     uint8_t* d = nullptr;
     AviInfo a = ReadAvi(path, 3, &d);
     wchar_t dd[260];
-    _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks, idx1 %u, fps %u", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, a.idxCount, a.fps);
+    _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks (%.2f s), idx1 %u, fps %u, recorded %.2f s", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, (double)a.aBytes / 88200.0, a.idxCount, a.fps, el);
     Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
     Check(a.idxCount == a.vChunks + a.aChunks && a.total == a.vChunks, L"recorder: AVI index lists every chunk, the frame count is the video chunk count", dd);
     Check(a.fps == (unsigned)fps && fabs((double)a.total / (fps ? fps : 1) - el) < 1.2, L"recorder: AVI duration matches the recorded time", dd);
@@ -3672,6 +3672,10 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     Check(stopped && !rec.Failed(), L"quality sizes: Stop finalizes the file", desc);
     unsigned long long sz = FileSz(path);
     Check(sz > 1500, L"quality sizes: the file is not empty", desc);
+    {   // C2S_KEEP_DIR: a copy of the recording for a look from outside (key frames, pictures)
+        wchar_t kd[MAX_PATH];
+        if (!small && GetEnvironmentVariableW(L"C2S_KEEP_DIR", kd, MAX_PATH)) { wchar_t dst[MAX_PATH]; _snwprintf(dst, MAX_PATH, L"%s\\keep-%S-%d-%d-%d-%d.%s", kd, tag[0] == 'v' ? "video" : "other", vc, vq, ac, aq, VideoFormatExt(vc)); CopyFileW(path, dst, FALSE); }
+    }
     if (vc == VC_AVI) {
         VerifyAvi(path, ew, eh, el, fps, audio, !small, desc);
         return sz;
@@ -3682,7 +3686,7 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     }
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     VideoInfo v = Inspect(path, !small, &pictureOk, &pictureChecked, &decoderMissing);
-    wchar_t d3[320]; _snwprintf(d3, 320, L"%s: file %dx%d, %.2f s, %d frames, %llu bytes", desc, v.w, v.h, v.dur, v.frames, sz);
+    wchar_t d3[320]; _snwprintf(d3, 320, L"%s: file %dx%d, %.2f s (recorded %.2f s), %d frames, %llu bytes", desc, v.w, v.h, v.dur, el, v.frames, sz);
     bool codecOk = vc == VC_H265 ? v.hevc : vc == VC_WMV ? v.wmv : v.h264;
     Check(v.ok && codecOk && v.w == ew && v.h == eh, L"quality sizes: the video has the chosen codec at the expected size", d3);
     Check(fabs(v.dur - el) < (vc == VC_WMV ? 1.6 : 0.9), L"quality sizes: the duration matches the recorded time", d3);

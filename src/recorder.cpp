@@ -559,6 +559,19 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         if (SUCCEEDED(hrc) && api) {
             VARIANT v; VariantInit(&v); v.vt = VT_UI4; v.ulVal = 25;
             hrc = api->SetValue(&kQualityVsSpeed, &v);
+            // The key frame every 20 s (the encoder makes one every 3 s otherwise, 220-360 KB each at 1080p: more than half of a calm recording) and
+            // the quality choice as a quality, not a bit rate (measured on Windows 11: the three bit rates gave 1.90 / 1.91 / 1.71 MB on a calm
+            // screen, the best quality the smallest; the quality mode gives 378 / 122 / 90 KB on a busy picture). Only the GOP size is taken by this
+            // encoder: MF_MT_MAX_KEYFRAME_SPACING in the type makes the file unfinishable. An encoder that refuses keeps the bit rate of the type.
+            VARIANT gv; VariantInit(&gv); gv.vt = VT_UI4; gv.ulVal = (ULONG)(d.fps * 20);
+            HRESULT hrG = api->SetValue(&kGopSize, &gv);
+            static const int quality[3] = { 75, 50, 20 };
+            const int qi = p.cfg.videoQuality < 0 ? 0 : p.cfg.videoQuality > 2 ? 2 : p.cfg.videoQuality;
+            VARIANT rv; VariantInit(&rv); rv.vt = VT_UI4; rv.ulVal = 3;                           // eAVEncCommonRateControlMode_Quality
+            HRESULT hrRc = api->SetValue(&kRateControl, &rv);
+            VARIANT qv; VariantInit(&qv); qv.vt = VT_UI4; qv.ulVal = (ULONG)quality[qi];
+            HRESULT hrQ = SUCCEEDED(hrRc) ? api->SetValue(&kCommonQuality, &qv) : hrRc;
+            Log(L"video encoder: WMV key frame interval %d frames: 0x%08lX, quality mode %d: 0x%08lX / 0x%08lX", d.fps * 20, (unsigned long)hrG, quality[qi], (unsigned long)hrRc, (unsigned long)hrQ);
             api->Release();
         }
         Log(L"video encoder: WMV quality vs speed 25 set: 0x%08lX", (unsigned long)hrc);
