@@ -687,7 +687,12 @@ bool Recorder::Stop()
     if (d.aThread) { WaitForSingleObject(d.aThread, 10000); CloseHandle(d.aThread); d.aThread = nullptr; }
     d.CloseAudio();
     bool ok = !d.failed;
-    if (d.alt) { ok = d.alt->Close(ok) && ok; delete d.alt; d.alt = nullptr; }
+    if (d.alt) {
+        // The picture stands until the end: a video thread that was held up (a busy machine) leaves the tail of the file without frames while the
+        // sound runs to the end. The last picture goes in once more at the time of the stop (the sink repeats it for the frames in between).
+        if (ok && d.haveFrame && d.mediaNow > d.lastVideoTs + 10000000LL / d.fps) ok = d.alt->Video(d.grab.Bits(), d.mediaNow) && ok;
+        ok = d.alt->Close(ok) && ok; delete d.alt; d.alt = nullptr;
+    }
     if (d.sw) {
         ULONGLONG before = FileBytes();
         DWORD t0 = GetTickCount();
