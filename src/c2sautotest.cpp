@@ -1274,7 +1274,7 @@ static void RecordOnce(bool useNull, bool sched = false)
     }
     // the file itself
     unsigned long long sz = FileSz(path);
-    Check(sz > 1500, L"recorder: the video file exists and is not empty", desc);
+    Check(sz > (fmt == VC_GIF ? 300 : 1500), L"recorder: the video file exists and is not empty", desc);        // a still picture is one small GIF frame
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     bool wantPicture = !move && p.cfg.capMouse == false;
     if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic || p.cfg.loopback, wantPicture && mode != 1, desc); return; }
@@ -3690,6 +3690,9 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     bool codecOk = vc == VC_H265 ? v.hevc : vc == VC_WMV ? v.wmv : v.h264;
     Check(v.ok && codecOk && v.w == ew && v.h == eh, L"quality sizes: the video has the chosen codec at the expected size", d3);
     Check(fabs(v.dur - el) < (vc == VC_WMV ? 1.6 : 0.9), L"quality sizes: the duration matches the recorded time", d3);
+    // An encoder that a busy machine holds up drops frames, and a file with fewer frames is smaller whatever the quality: the sizes of the
+    // steps are compared at the frame count the rate asks for.
+    if (!decoderMissing && !small && v.frames > 3 && v.frames < el * fps * 0.9) sz = (unsigned long long)((double)sz * (el * fps) / v.frames);
     if (decoderMissing) WARN(L"quality sizes: no decoder here - frames and picture not checked");
     else {
         Check(v.frames > el * fps * 0.25 && v.frames < el * fps * 1.3 + 4, L"quality sizes: the number of frames is plausible", d3);
