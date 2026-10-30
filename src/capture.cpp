@@ -333,12 +333,13 @@ bool SaveBitmap(HBITMAP bmp, const wchar_t* path, int format)
     return false;
 }
 
-void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h)
+void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h, int quality)
 {
     FitSize(srcW, srcH, w, h);
-    if (vc == VC_GIF) {                              // a GIF has no inter-frame compression: smaller pictures
-        if (w > 960) { h = h * 960 / w; w = 960; }
-        if (h > 540) { w = w * 540 / h; h = 540; }
+    if (vc == VC_GIF) {                              // a GIF has no inter-frame compression: smaller pictures, the lower the quality the smaller
+        const int mw = quality <= 0 ? 960 : quality == 1 ? 800 : 640, mh = mw * 9 / 16;
+        if (w > mw) { h = h * mw / w; w = mw; }
+        if (h > mh) { w = w * mh / h; h = mh; }
         w &= ~1; h &= ~1;
         if (w < 2) w = 2;
         if (h < 2) h = 2;

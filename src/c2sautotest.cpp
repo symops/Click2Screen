@@ -1181,7 +1181,8 @@ static void VerifyGif(const wchar_t* path, int ew, int eh, double el, int fps, b
     _snwprintf(dd, 200, L"%u frames, delays %.2fs, recorded %.2fs, at most %d fps", frames, delaySum, el, fps);
     Check(decoded, L"recorder: the GIF decodes", dd);
     if (!decoded) return;
-    Check(frames >= 2 && (double)frames > el * fps * 0.1 && (double)frames < el * fps * 1.5 + 4, L"recorder: the GIF has about as many frames as the frame rate gives", dd);
+    // a picture that did not change is stored once and stays on the screen (one frame whose delay is the whole time); a changing one has about as many frames as the frame rate gives
+    Check(frames >= 1 && (double)frames < el * fps * 1.5 + 4 && (frames == 1 ? (delaySum == 0 || fabs(delaySum - el) < 1.5) : (double)frames > el * fps * 0.02), L"recorder: the GIF has about as many frames as the frame rate gives", dd);
     if (delaySum > 0) Check(fabs(delaySum - el) < 1.5, L"recorder: the GIF frame delays add up to the recorded time", dd);
     if (wantPicture) {
         Check(fw == ew && fh == eh, L"recorder: the GIF has the expected size", dd);
@@ -1210,12 +1211,12 @@ static void RecordOnce(bool useNull, bool sched = false)
     if (mode == 1) { pw = R(120, g_fx.w); ph = R(100, g_fx.h - 12); px = R(0, g_fx.w - pw); py = R(0, g_fx.h - ph - 12); p.rc.left = fr.left + px; p.rc.top = fr.top + py; p.rc.right = p.rc.left + pw; p.rc.bottom = p.rc.top + ph; }
     if (mode == 2) p.hwnd = g_fx.hw;
     RandomSettings(p.cfg);
-    static const int fps[] = { 10, 15, 20, 25, 30, 45, 60 };
-    p.cfg.fps = fps[R(0, 6)];
+    static const int fps[] = { 5, 8, 10, 12, 15, 20, 24, 25, 30, 40, 45, 50, 60 };
+    p.cfg.fps = fps[R(0, 12)];
     const int fmt = p.cfg.videoCodec;
     const bool own = fmt == VC_AVI || fmt == VC_GIF;            // written by our own sinks: no Media Foundation, runs under Wine too
     if (own && !sched && VideoFormatAvailable(fmt)) useNull = false;
-    const int effFps = fmt == VC_GIF && p.cfg.fps > 15 ? 15 : p.cfg.fps;
+    const int effFps = p.cfg.fps;
     p.cfg.capMouse = Chance(40); p.cfg.highlight = Chance(30);
     p.cfg.mic = !useNull && Chance(40);
     bool pause = Chance(40), spam = Chance(25), move = mode == 2 && Chance(40);
@@ -1232,7 +1233,7 @@ static void RecordOnce(bool useNull, bool sched = false)
     if (err[0]) WARN(L"%s: %s", desc, err);
     int ew, eh; int srcw = pw, srch = ph;
     if (mode == 2) { RECT vis; WindowVisibleRect(g_fx.hw, &vis); srcw = vis.right - vis.left; srch = vis.bottom - vis.top; }
-    FitSizeForVideo(fmt, srcw, srch, ew, eh);
+    FitSizeForVideo(fmt, srcw, srch, ew, eh, p.cfg.videoQuality);
     Check(rec.Width() == ew && rec.Height() == eh, L"recorder: output size follows FitSize", desc);
     DWORD t0 = GetTickCount();
     LARGE_INTEGER qf, q0; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&q0);       // the real time: the ticks of GetTickCount are lost in a loaded VM, the recorder counts with QPC
@@ -2085,7 +2086,7 @@ static void T_App()
             SendMessageW(GetDlgItem(o, O_TOPMOST), BM_SETCHECK, d.topmost ? BST_UNCHECKED : BST_CHECKED, 0);
             SendMessageW(GetDlgItem(o, O_SEPARATE), BM_SETCHECK, d.separateMonitors ? BST_UNCHECKED : BST_CHECKED, 0);
             SendMessageW(GetDlgItem(o, O_SOUNDS), BM_SETCHECK, d.sounds ? BST_UNCHECKED : BST_CHECKED, 0);       // a general setting, changed
-            SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, d.fps == 10 ? 6 : 0, 0);                              // a video setting, changed
+            SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, d.fps == 10 ? 12 : 0, 0);                              // a video setting, changed
             SendMessageW(GetDlgItem(o, O_HK0), WM_KEYDOWN, VK_BACK, 0);                                           // a hotkey, switched off
             PostMessageW(o, WM_COMMAND, O_DEFAULTS, 0); Sleep(300); Pump(100);                                    // the general page is open
             bool generalBack = (SendMessageW(GetDlgItem(o, O_SOUNDS), BM_GETCHECK, 0, 0) == BST_CHECKED) == d.sounds;
@@ -2100,7 +2101,7 @@ static void T_App()
                 Check(t1 == d.topmost && d.topmost, L"program: Restore default turns the \"on top of other windows\" box on (it is on by default)", d3);
                 Check(m1 == d.separateMonitors && d.separateMonitors, L"program: Restore default turns the \"separate files for different screens\" box on", d3);
             }
-            Check(fpsIdx == (d.fps == 10 ? 6 : 0), L"program: Restore default leaves the other pages as they are", dd);
+            Check(fpsIdx == (d.fps == 10 ? 12 : 0), L"program: Restore default leaves the other pages as they are", dd);
             Check(wcscmp(hk0, T(S_HK_NONE)) == 0, L"program: Restore default leaves the hotkeys page as it is", dd);
             PostMessageW(o, WM_COMMAND, IDCANCEL, 0);
             DWORD cend = GetTickCount() + WMS(8000);
@@ -2116,8 +2117,8 @@ static void T_App()
             Settings w; RandomSettings(w);
             w.runAtStartup = false; w.sounds = false; w.openFolder = false;
             wcscpy(w.folder, s.folder);
-            static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
-            w.fps = fpsv[R(0, 6)];
+            static const int fpsv[] = { 5, 8, 10, 12, 15, 20, 24, 25, 30, 40, 45, 50, 60 };
+            w.fps = fpsv[R(0, 12)];
             w.language = R(0, LangCount());
             RandomHotkeys(w.hotkey, true);                          // function keys: pressed without a modifier held
             bool dupKeys = Chance(25);
@@ -2134,7 +2135,7 @@ static void T_App()
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
-            int fi = 0; for (int i = 0; i < 7; ++i) if (fpsv[i] == w.fps) fi = i;
+            int fi = 0; for (int i = 0; i < 13; ++i) if (fpsv[i] == w.fps) fi = i;
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, fi, 0);
             SelData(GetDlgItem(o, O_IMGFMT), w.imageFormat);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
@@ -3005,6 +3006,78 @@ static void T_AviStill()
     DeleteFileW(path);
 }
 
+// Small changes of the picture are put on the AVI less often (each is a whole JPEG), a big change at once; the last waiting change is not lost.
+static void T_AviSmallChanges()
+{
+    if (!ImageFormatAvailable(IMG_JPG)) { SKIP(L"avi small changes: no JPEG encoder here"); return; }
+    const int W = 640, H = 360, FPS = 25;
+    uint8_t* dib = new uint8_t[(size_t)W * H * 4];
+    auto base = [&]() { for (size_t i = 0; i < (size_t)W * H; ++i) ((uint32_t*)dib)[i] = (i / W) % 2 ? 0x00FF8000u : 0x000080FFu; };
+    auto block = [&](int size, int frame) { for (int y = 20; y < 20 + size; ++y) for (int x = 20; x < 20 + size; ++x) ((uint32_t*)dib)[(size_t)y * W + x] = (frame & 1) ? 0x00FFFFFFu : 0x00000000u; };
+    struct Res { bool ok; unsigned real, chunks; };
+    auto run = [&](const wchar_t* name, int frames, int size /* 0: everything changes, -1: one tiny change at the end */) -> Res {
+        wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\small-%s.avi", g_dir, name);
+        wchar_t why[160] = L"";
+        FrameSink* sink = CreateAviSink(path, W, H, FPS, 1, false, why, 160);
+        if (!sink) return { false, 0, 0 };
+        bool ok = true;
+        for (int i = 0; i < frames && ok; ++i) {
+            base();
+            if (size > 0) block(size, i);
+            else if (size == 0) for (size_t k = 0; k < (size_t)W * H; ++k) ((uint32_t*)dib)[k] ^= (uint32_t)(i * 0x010203 + k * 7) & 0x00FFFFFFu;     // a picture that is another one each time
+            else if (i == frames - 1) block(8, 1);                         // the very last frame: a tiny change, too soon after the first picture to be encoded at once
+            ok = sink->Video(dib, (LONGLONG)i * 10000000LL / FPS);
+        }
+        ok = sink->Close(ok) && ok;
+        delete sink;
+        uint8_t* keep = nullptr; AviInfo a = ReadAvi(path, 0, &keep); delete[] keep;
+        DeleteFileW(path);
+        return { ok && a.ok, a.vChunks - a.emptyV, a.vChunks };
+    };
+    Res tiny = run(L"tiny", 50, 8), medium = run(L"medium", 50, 40), big = run(L"big", 50, 0), tail = run(L"tail", 4, -1);
+    wchar_t d[300]; _snwprintf(d, 300, L"2 s at 25 fps: a 8x8 block flips every frame -> %u real frames of 50 (%.2f%% of the picture), a 40x40 block -> %u, the whole picture -> %u", tiny.real, 100.0 * 64 / (W * H), medium.real, big.real);
+    Check(tiny.ok && tiny.real >= 5 && tiny.real <= 12, L"avi small changes: a change of a few pixels is put on the picture about 5 times a second, not every frame", d);
+    Check(medium.ok && medium.real >= 18 && medium.real <= 27, L"avi small changes: a change of a small part of the picture is put on it about 12 times a second", d);
+    Check(big.ok && big.real >= 49, L"avi small changes: a picture that changes all over is written every frame", d);
+    wchar_t d2[160]; _snwprintf(d2, 160, L"%u chunks (4 frames and the waiting change), %u real", tail.chunks, tail.real);
+    Check(tail.ok && tail.real == 2 && tail.chunks == 5, L"avi small changes: a small change that was still waiting when the recording ended is written at the end", d2);
+    delete[] dib;
+}
+
+// The same noisy frames written as a GIF at the three qualities: a lower quality is a file at least a fifth smaller (size of the picture and colours).
+static void T_GifQuality()
+{
+    if (!ImageFormatAvailable(IMG_GIF)) { SKIP(L"gif quality: no GIF encoder here"); return; }
+    const int W = 1280, H = 720, FPS = 15, N = 12;
+    uint8_t* dib = new uint8_t[(size_t)W * H * 4];
+    unsigned long long sz[3] = {}; bool ok[3] = {};
+    for (int q = 0; q < 3; ++q) {
+        wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\gifq-%d.gif", g_dir, q);
+        wchar_t why[160] = L"";
+        int ew, eh; FitSizeForVideo(VC_GIF, W, H, ew, eh, q);
+        FrameSink* sink = CreateGifSink(path, ew, eh, FPS, q, why, 160);
+        if (!sink) { FAIL(L"gif quality: no sink at quality %d: %s", q, why); continue; }
+        bool good = true;
+        for (int i = 0; i < N && good; ++i) {
+            unsigned sd = 99 + i * 17;                                   // a different noisy picture each frame
+            for (int y = 0; y < eh; ++y) for (int x = 0; x < ew; ++x) {
+                sd = sd * 1664525u + 1013904223u;
+                int v = (x * 255 / ew + (int)((sd >> 16) % 80)) & 255;
+                ((uint32_t*)dib)[(size_t)y * ew + x] = (uint32_t)(v | ((y * 255 / eh) << 8) | (((sd >> 8) & 255) << 16));
+            }
+            good = sink->Video(dib, (LONGLONG)i * 10000000LL / FPS);
+        }
+        good = sink->Close(good) && good;
+        delete sink;
+        ok[q] = good; sz[q] = FileSz(path); DeleteFileW(path);
+    }
+    delete[] dib;
+    wchar_t d[200]; _snwprintf(d, 200, L"%d frames of noise: best %llu, medium %llu, worst %llu bytes", N, sz[0], sz[1], sz[2]);
+    Check(ok[0] && ok[1] && ok[2] && sz[2] > 1500, L"gif quality: a file is made at every quality", d);
+    Check(sz[0] > sz[1] * 1.20, L"gif quality: the best quality is a file at least 20 % bigger than the medium one", d);
+    Check(sz[1] > sz[2] * 1.20, L"gif quality: the medium quality is a file at least 20 % bigger than the worst one", d);
+}
+
 static void T_Audio()
 {
     // 48 kHz stereo -> mono 44.1 kHz: the length, the pitch and the loudness stay, the stream is continuous over the blocks
@@ -3570,7 +3643,7 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     }
     Recorder rec; wchar_t err[300] = L"";
     if (!rec.Start(p, err, 300)) { FAIL(L"quality sizes: Start failed (%s): %s", desc, err); return 0; }
-    int ew, eh; FitSizeForVideo(vc, regW, regH, ew, eh);
+    int ew, eh; FitSizeForVideo(vc, regW, regH, ew, eh, vq);
     // the noise: a bitmap twice as wide as the fixture, scrolled
     HDC wdc = GetDC(g_fx.hw), mdc = CreateCompatibleDC(wdc);
     HBITMAP nb = CreateCompatibleBitmap(wdc, g_fx.w * 2, g_fx.h);
@@ -3603,6 +3676,10 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
         VerifyAvi(path, ew, eh, el, fps, audio, !small, desc);
         return sz;
     }
+    if (vc == VC_GIF) {
+        VerifyGif(path, ew, eh, el, fps, !small);
+        return sz;
+    }
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     VideoInfo v = Inspect(path, !small, &pictureOk, &pictureChecked, &decoderMissing);
     wchar_t d3[320]; _snwprintf(d3, 320, L"%s: file %dx%d, %.2f s, %d frames, %llu bytes", desc, v.w, v.h, v.dur, v.frames, sz);
@@ -3626,34 +3703,29 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     return sz;
 }
 
-static void T_QualitySizes()
+static bool QsFormatUsable(int i) { return VideoFormatAvailable(i) && (!g_wine || i == VC_AVI || i == VC_GIF); }
+
+// One cell of the matrix: video format x audio codec. The sound steps (audio quality) and the picture steps (video quality) are measured apart,
+// each of the three qualities must make a file at least a fifth bigger than the next one; `secs` is the length of one recording.
+static void QsCell(int vc, int ac, int fps, double secs)
 {
-    if (g_wine && !VideoFormatAvailable(VC_AVI)) { SKIP(L"quality sizes: nothing to record with here"); return; }
-    int avail[VC_COUNT], na = 0;
-    for (int i = 0; i < VC_COUNT; ++i) if (i != VC_GIF && VideoFormatAvailable(i) && (!g_wine || i == VC_AVI)) avail[na++] = i;
-    if (!na) { SKIP(L"quality sizes: no video format here"); return; }
-    int vc = avail[R(0, na - 1)], ac = R(0, 1);
-    const int fps = R(0, 1) ? 15 : 25;
-    { wchar_t e[16];                                                   // C2S_QS_VC / C2S_QS_AC: one codec of the matrix instead of a random one
-      if (GetEnvironmentVariableW(L"C2S_QS_VC", e, 16)) { int w = _wtoi(e); for (int i = 0; i < na; ++i) if (avail[i] == w) vc = w; }
-      if (GetEnvironmentVariableW(L"C2S_QS_AC", e, 16)) ac = _wtoi(e) ? 1 : 0; }
     MakeFixture(R(420, 640), R(260, 380));
     wchar_t head[200]; _snwprintf(head, 200, L"video codec %d, audio codec %d (%s), %d fps", vc, ac, ac ? L"MP3" : L"AAC", fps);
     INFO(L"quality sizes: %s", head);
     bool dev = false;
     if (!g_wine) { SpeakerCapture sc; dev = sc.Open(); }
-    const bool snd = !g_wine;                                           // the speakers are asked for always; with no playback device the track is silence (the encoder still has its bit rate)
+    const bool snd = !g_wine && vc != VC_GIF;                           // the speakers are asked for always; with no playback device the track is silence (the encoder still has its bit rate)
     if (!dev) INFO(L"quality sizes: no playback device here - the sound track is silence");
     // The sound first, on a still picture: what the sound adds to the file is the file with it less the same file without it. The three audio
     // qualities must be 20 % apart in that; the sound of the medium quality is then taken off the files of the video part, so that a constant
     // sound track (about 100 KB for 7 s) does not hide the steps of the video quality.
     unsigned long long audioAdd[3] = {};
     if (snd) {
-        const unsigned long long noSnd = QsRecord(vc, 1, ac, 1, false, false, fps, 7.0, L"no sound", nullptr, true);
+        const unsigned long long noSnd = QsRecord(vc, 1, ac, 1, false, false, fps, secs, L"no sound", nullptr, true);
         if (dev) QsTone(true);
         for (int q = 0; q < 3; ++q) {
             if (vc == VC_AVI && q != 1) continue;                          // the AVI holds the sound uncompressed: no audio quality there
-            unsigned long long t = QsRecord(vc, 1, ac, q, snd, false, fps, 7.0, L"audio quality", nullptr, true);
+            unsigned long long t = QsRecord(vc, 1, ac, q, snd, false, fps, secs, L"audio quality", nullptr, true);
             audioAdd[q] = t > noSnd ? t - noSnd : 0;
         }
         if (dev) QsTone(false);
@@ -3667,15 +3739,43 @@ static void T_QualitySizes()
     // the video quality: a moving noisy picture, the audio quality fixed; the sound of the medium quality is not counted
     unsigned long long vs[3] = {};
     if (dev) QsTone(true);
-    for (int q = 0; q < 3; ++q) { unsigned long long t = QsRecord(vc, q, ac, 1, snd, true, fps, 7.0, L"video quality", nullptr); vs[q] = t > audioAdd[1] ? t - audioAdd[1] : t; }
+    for (int q = 0; q < 3; ++q) { unsigned long long t = QsRecord(vc, q, ac, 1, snd, true, fps, secs, L"video quality", nullptr); vs[q] = t > audioAdd[1] ? t - audioAdd[1] : t; }
     if (dev) QsTone(false);
     wchar_t d[300]; _snwprintf(d, 300, L"%s: best %llu, medium %llu, worst %llu bytes (the sound taken off)", head, vs[0], vs[1], vs[2]);
-    if (vs[0] && vs[1] && vs[2] && g_wine) {
+    if (vc == VC_GIF) {                                                // the steps of a GIF are measured by gif-quality (the same frames at every quality, no real time involved)
+        if (!(vs[0] && vs[1] && vs[2])) FAIL(L"quality sizes: a recording of a quality gave no file: %s", d);
+    } else if (vs[0] && vs[1] && vs[2] && g_wine && vc == VC_AVI) {
         if (!(vs[0] > vs[1] * 1.20 && vs[1] > vs[2] * 1.20)) WARN(L"quality sizes: Wine's JPEG encoder does not follow the quality (the check is made on Windows): %s", d);
     } else if (vs[0] && vs[1] && vs[2]) {
         Check(vs[0] > vs[1] * 1.20, L"quality sizes: the best video quality is a file at least 20 % bigger than the medium one", d);
         Check(vs[1] > vs[2] * 1.20, L"quality sizes: the medium video quality is a file at least 20 % bigger than the worst one", d);
+    } else FAIL(L"quality sizes: a recording of a quality gave no file: %s", d);
+}
+
+// A random cell of the matrix (one every run of the whole test set; C2S_QS_VC / C2S_QS_AC choose one).
+static void T_QualitySizes()
+{
+    int avail[VC_COUNT], na = 0;
+    for (int i = 0; i < VC_COUNT; ++i) if (QsFormatUsable(i)) avail[na++] = i;
+    if (!na) { SKIP(L"quality sizes: no video format here"); return; }
+    int vc = avail[R(0, na - 1)], ac = R(0, 1);
+    const int fps = R(0, 1) ? 15 : 25;
+    { wchar_t e[16];
+      if (GetEnvironmentVariableW(L"C2S_QS_VC", e, 16)) { int w = _wtoi(e); for (int i = 0; i < na; ++i) if (avail[i] == w) vc = w; }
+      if (GetEnvironmentVariableW(L"C2S_QS_AC", e, 16)) ac = _wtoi(e) ? 1 : 0; }
+    QsCell(vc, ac, fps, 7.0);
+}
+
+// The whole matrix: every video format x (every audio codec where the format has one) x the three video qualities x the three audio qualities.
+static void T_QualityMatrix()
+{
+    int n = 0;
+    for (int vc = 0; vc < VC_COUNT; ++vc) {
+        if (!QsFormatUsable(vc)) continue;
+        const bool audioChoice = vc != VC_AVI && vc != VC_GIF && vc != VC_WMV;      // AAC / MP3 are the choice of the MP4 formats
+        for (int ac = 0; ac < (audioChoice ? 2 : 1); ++ac) { ++n; QsCell(vc, ac, vc == VC_GIF ? 12 : 25, 5.0); }
     }
+    if (!n) SKIP(L"quality matrix: no video format here");
 }
 
 struct MonInfo { RECT rc; wchar_t dev[40]; bool primary; };
@@ -3860,7 +3960,7 @@ static void T_Monitors()
             else {
                 DWORD t0 = GetTickCount(); while ((int)(GetTickCount() - t0) < 3000) Pump(100);
                 double el = rec.ElapsedSec(); int rw = rec.Width(), rh = rec.Height(); bool st = rec.Stop();
-                int ew, eh; FitSizeForVideo(p.cfg.videoCodec, vs.right - vs.left, vs.bottom - vs.top, ew, eh);
+                int ew, eh; FitSizeForVideo(p.cfg.videoCodec, vs.right - vs.left, vs.bottom - vs.top, ew, eh, p.cfg.videoQuality);
                 bool pic = false, miss = false; int chk = 0;
                 VideoInfo v = Inspect(path, false, &pic, &chk, &miss);
                 wchar_t d[700]; _snwprintf(d, 700, L"%s: the recording is %dx%d (asked %dx%d), file %dx%d, %.2f s, %d frames", head, rw, rh, ew, eh, v.w, v.h, el, v.frames);
@@ -4672,6 +4772,111 @@ static int RunKeyLab9()
     return 0;
 }
 
+// ---- round 12: the WMV encoder: what makes its key frames rare (the default is one every ~3 s) and its size follow the quality ----------------------------
+static const GUID kLabMaxKd = { 0x2987123a, 0xba93, 0x4704, { 0xb4, 0x89, 0xec, 0x1e, 0x5f, 0x25, 0x29, 0x2c } };      // AVEncVideoMaxKeyframeDistance
+
+static void WmvOne(int content, int var, int choice, const DWORD* noise, int W, int H, int fps, int secs)
+{
+    wchar_t pd[MAX_PATH] = L"", path[MAX_PATH + 60];
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    _snwprintf(path, MAX_PATH + 60, L"%s\\Click2Screen\\logs\\wmv12-c%d-v%d-q%d.wmv", pd, content, var, choice);
+    DeleteFileW(path);
+    static const int bitrates[3] = { 1800000, 1200000, 720000 }, qualities[3] = { 75, 50, 20 };
+    const int bitrate = bitrates[choice];
+    IMFAttributes* attrs = nullptr; IMFSinkWriter* w = nullptr;
+    MFCreateAttributes(&attrs, 2); attrs->SetUINT32(MF_READWRITE_ENABLE_HARDWARE_TRANSFORMS, TRUE); attrs->SetUINT32(MF_SINK_WRITER_DISABLE_THROTTLING, TRUE);
+    if (FAILED(MFCreateSinkWriterFromURL(path, nullptr, attrs, &w)) || !w) { attrs->Release(); return; }
+    IMFMediaType* vo = nullptr; IMFMediaType* vi = nullptr; MFCreateMediaType(&vo); MFCreateMediaType(&vi);
+    vo->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vo->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_WMV3);
+    vo->SetUINT32(MF_MT_AVG_BITRATE, (UINT32)bitrate); vo->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vo, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vo, MF_MT_FRAME_RATE, fps, 1); MFSetAttributeRatio(vo, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    if (var == 2 || var == 5) vo->SetUINT32(kLabMaxSpacing, (UINT32)(fps * 20));
+    vi->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video); vi->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32); vi->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    MFSetAttributeSize(vi, MF_MT_FRAME_SIZE, W, H); MFSetAttributeRatio(vi, MF_MT_FRAME_RATE, fps, 1); MFSetAttributeRatio(vi, MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+    vi->SetUINT32(MF_MT_DEFAULT_STRIDE, (UINT32)(LONG)(-W * 4));
+    DWORD st = 0;
+    HRESULT hr = w->AddStream(vo, &st);
+    if (SUCCEEDED(hr)) hr = w->SetInputMediaType(st, vi, nullptr);
+    wchar_t note[400] = L"";
+    if (SUCCEEDED(hr)) {
+        ICodecAPI* api = nullptr;
+        if (SUCCEEDED(w->GetServiceForStream(st, GUID_NULL, kLabIidApi, (void**)&api)) && api) {
+            VARIANT x; VariantInit(&x);
+            auto setU = [&](const GUID& g, unsigned val, const wchar_t* nm) {
+                HRESULT sup = api->IsSupported(&g);
+                x.vt = VT_UI4; x.ulVal = val; HRESULT r = api->SetValue(&g, &x);
+                VARIANT back; VariantInit(&back); unsigned bv = 0xFFFFFFFFu; if (SUCCEEDED(api->GetValue(&g, &back))) bv = back.ulVal;
+                _snwprintf(note + wcslen(note), 395 - wcslen(note), L" %s=%u(sup 0x%lX set 0x%lX read %u)", nm, val, (unsigned long)sup, (unsigned long)r, bv);
+            };
+            setU(kLabQvS, 25, L"qvs");
+            if (var == 1 || var == 5) setU(kLabGopSz, (unsigned)(fps * 20), L"gop");
+            if (var == 3 || var == 5) setU(kLabMaxKd, (unsigned)(fps * 20), L"maxkd");
+            if (var == 4 || var == 5) { setU(kLabRc, 3, L"rc"); setU(kLabQual, (unsigned)qualities[choice], L"quality"); }
+            api->Release();
+        }
+        IMFSinkWriterEx* wx = nullptr;
+        if (SUCCEEDED(w->QueryInterface(__uuidof(IMFSinkWriterEx), (void**)&wx)) && wx) {
+            for (DWORD ti = 0; ti < 6; ++ti) {
+                IMFTransform* t = nullptr; GUID cg = GUID_NULL;
+                if (FAILED(wx->GetTransformForStream(st, ti, &cg, &t)) || !t) break;
+                if (IsEqualGUID(cg, MFT_CATEGORY_VIDEO_ENCODER)) {
+                    IMFMediaType* to = nullptr; IMFMediaType* ti2 = nullptr; t->GetOutputCurrentType(0, &to); t->GetInputCurrentType(0, &ti2);
+                    HRESULT r1 = to ? t->SetOutputType(0, to, 0) : E_FAIL, r2 = ti2 ? t->SetInputType(0, ti2, 0) : E_FAIL;
+                    _snwprintf(note + wcslen(note), 395 - wcslen(note), L" retype 0x%lX/0x%lX", (unsigned long)r1, (unsigned long)r2);
+                    if (to) to->Release();
+                    if (ti2) ti2->Release();
+                }
+                t->Release();
+            }
+            wx->Release();
+        }
+        hr = w->BeginWriting();
+    }
+    const size_t bytes = (size_t)W * H * 4;
+    BYTE* pic = (BYTE*)malloc(bytes);
+    const int W2 = W * 2;
+    int done = 0;
+    for (int i = 0; i < fps * secs && SUCCEEDED(hr); ++i) {
+        int off = content == 1 ? (i * 13) % W : 0;                     // 0: a still picture with a small block that changes (a calm screen), 1: the picture scrolls
+        for (int y = 0; y < H; ++y) memcpy(pic + (size_t)(H - 1 - y) * W * 4, noise + (size_t)y * W2 + off, (size_t)W * 4);
+        if (content == 0) {                                            // the block: 48 x 48 at the lower left, another colour every frame
+            DWORD col = (DWORD)(0x00404040 + (i * 0x050301) % 0x00B0B0B0);
+            for (int y = H - 60; y < H - 12; ++y) { DWORD* row = (DWORD*)(pic + (size_t)(H - 1 - y) * W * 4); for (int x = 20; x < 68; ++x) row[x] = col; }
+        }
+        IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+        if (FAILED(MFCreateMemoryBuffer((DWORD)bytes, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) break;
+        memcpy(d, pic, bytes); b->Unlock(); b->SetCurrentLength((DWORD)bytes);
+        MFCreateSample(&sm); sm->AddBuffer(b);
+        sm->SetSampleTime((LONGLONG)i * 10000000LL / fps); sm->SetSampleDuration(10000000LL / fps);
+        hr = w->WriteSample(st, sm); sm->Release(); b->Release();
+        if (SUCCEEDED(hr)) ++done;
+    }
+    HRESULT hf = w->Finalize();
+    w->Release(); free(pic); vo->Release(); vi->Release(); attrs->Release();
+    Rep(L"INFO", L"  wmv content %d variant %d choice %d (%d kbit/s asked): %llu bytes, %d frames, finalize 0x%08lX;%s", content, var, choice, bitrate / 1000, FileSz(path), done, (unsigned long)hf, note);
+}
+
+static int RunKeyLab12()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab12: MFStartup failed"); return 1; }
+    const int W = 960, H = 540, fps = 15, secs = 10, W2 = W * 2;
+    DWORD* noise = (DWORD*)malloc((size_t)W2 * H * 4); unsigned sd = 777;
+    for (size_t i = 0; i < (size_t)W2 * H; ++i) {
+        int x = (int)(i % W2), y = (int)(i / W2); int ch[3] = { x * 255 / W2, y * 255 / H, 128 }; DWORD c = 0;
+        for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = ch[k] + (int)((sd >> 16) % 9) - 4; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+        noise[i] = c;
+    }
+    Rep(L"INFO", L"keylab12: WMV %dx%d at %d fps for %d s; variants: 0 as the recorder, 1 GOP size, 2 max key frame spacing in the type, 3 max key frame distance, 4 quality mode, 5 all of them", W, H, fps, secs);
+    for (int content = 0; content < 2; ++content)
+        for (int var = 0; var < 6; ++var)
+            for (int c = 0; c < 3; ++c) WmvOne(content, var, c, noise, W, H, fps, secs);
+    free(noise);
+    MFShutdown();
+    Rep(L"INFO", L"keylab12: done");
+    return 0;
+}
+
 static int RunKeyLab11()
 {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -5104,6 +5309,7 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab9")) return RunKeyLab9();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab10")) return RunKeyLab10();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab11")) return RunKeyLab11();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab12")) return RunKeyLab12();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
@@ -5132,7 +5338,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();

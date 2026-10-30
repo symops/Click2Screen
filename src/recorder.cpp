@@ -402,9 +402,8 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     if (sw0 < 2 || sh0 < 2) { if (err) wcsncpy(err, T(S_ERR_REGION_SMALL), errLen - 1); return false; }
     int fmt = p.cfg.videoCodec < 0 || p.cfg.videoCodec >= VC_COUNT ? VC_H264_BEST : p.cfg.videoCodec;
     d.fmt = fmt;
-    FitSizeForVideo(fmt, sw0, sh0, d.w, d.h);
+    FitSizeForVideo(fmt, sw0, sh0, d.w, d.h, p.cfg.videoQuality);
     d.fps = p.cfg.fps < 5 ? 5 : p.cfg.fps > 60 ? 60 : p.cfg.fps;
-    if (fmt == VC_GIF && d.fps > 15) d.fps = 15;       // a GIF is for slow pictures: 15 frames a second at most
     if (!d.grab.Init(d.w, d.h)) { if (err) wcsncpy(err, T(S_ERR_CAPTURE), errLen - 1); return false; }
 
     if (GetEnvironmentVariableW(L"C2S_NULLSINK", nullptr, 0) > 0) {
@@ -428,7 +427,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         d.hasAudio = wantAudio;
         d.vStream = 0; d.aStream = 1;
         d.alt = fmt == VC_AVI ? CreateAviSink(p.path, d.w, d.h, d.fps, p.cfg.videoQuality, wantAudio, why, 160)
-                              : CreateGifSink(p.path, d.w, d.h, d.fps, why, 160);
+                              : CreateGifSink(p.path, d.w, d.h, d.fps, p.cfg.videoQuality, why, 160);
         if (!d.alt) {
             d.CloseAudio();
             if (err) _snwprintf(err, errLen, T(S_ERR_RECORDER), why[0] ? why : L"file");

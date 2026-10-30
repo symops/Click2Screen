@@ -37,7 +37,7 @@ public:
     ~AviSink() override
     {
         if (m_file != INVALID_HANDLE_VALUE) CloseHandle(m_file);
-        free(m_idx); free(m_flip); free(m_prev);
+        free(m_idx); free(m_flip); free(m_prev); free(m_last);
         if (m_wic) m_wic->Release();
     }
 
@@ -65,14 +65,33 @@ public:
         // A picture that is the same as the last one is not encoded again: empty chunks repeat the last picture (a still screen then costs
         // nothing, not a full JPEG of 100-400 KB 25 times a second).
         const size_t bytes = (size_t)m_w * m_h * 4;
-        if (m_prev && m_havePrev && !memcmp(dib, m_prev, bytes)) {
-            if (!Chunk('0', '0', 'd', 'c', nullptr, 0, 0)) return false;
-            m_nextFrame = want + 1;
-            if (m_pos > 3900000000ULL) m_full = true;
-            return true;
+        if (m_prev && m_havePrev) {
+            // How much of the picture differs from the last one that was encoded. Every change costs a whole JPEG (100-400 KB at 1920 x 1040), and
+            // most changes of a screen are small (a pointer, a figure that ticks, a blinking caret): they are put on the picture less often, a
+            // big change at once. A change that waits is not lost: it is still different from the last encoded picture at the next frames.
+            const size_t px = (size_t)m_w * m_h; size_t changed = 0;
+            const uint32_t* pa = (const uint32_t*)dib; const uint32_t* pb = (const uint32_t*)m_prev;
+            for (size_t i = 0; i < px; ++i) changed += pa[i] != pb[i];
+            bool wait = changed == 0;
+            if (!wait) {
+                const double frac = (double)changed / (double)px;
+                const LONGLONG need = frac < 0.001 ? 2000000 : frac < 0.005 ? 1200000 : frac < 0.02 ? 800000 : 0;      // 200 / 120 / 80 ms, 100 ns units
+                if (need && ts - m_lastReal < need) {
+                    if (!m_last) m_last = (u8*)malloc(bytes);
+                    if (m_last) { memcpy(m_last, dib, bytes); m_pending = true; }
+                    wait = true;
+                }
+            }
+            if (wait) {
+                if (!Chunk('0', '0', 'd', 'c', nullptr, 0, 0)) return false;
+                m_nextFrame = want + 1;
+                if (m_pos > 3900000000ULL) m_full = true;
+                return true;
+            }
         }
         if (!m_prev) m_prev = (u8*)malloc(bytes);
         if (m_prev) { memcpy(m_prev, dib, bytes); m_havePrev = true; }
+        m_lastReal = ts; m_pending = false;
         FlipRows(dib, m_flip, m_w, m_h);
         IWICBitmap* bmp = nullptr;
         if (FAILED(m_wic->CreateBitmapFromMemory(m_w, m_h, GUID_WICPixelFormat32bppBGR, m_w * 4, (UINT)((size_t)m_w * m_h * 4), m_flip, &bmp))) return false;
@@ -96,6 +115,15 @@ public:
     {
         if (m_file == INVALID_HANDLE_VALUE) return false;
         bool good = ok;
+        if (good && m_pending && m_last) {                           // the last small change that was waiting: the picture ends as the screen did
+            FlipRows(m_last, m_flip, m_w, m_h);
+            IWICBitmap* bmp = nullptr;
+            if (SUCCEEDED(m_wic->CreateBitmapFromMemory(m_w, m_h, GUID_WICPixelFormat32bppBGR, m_w * 4, (UINT)((size_t)m_w * m_h * 4), m_flip, &bmp))) {
+                if (EncodeJpeg(bmp)) ++m_nextFrame;
+                bmp->Release();
+            }
+            m_pending = false;
+        }
         const DWORD moviEnd = (DWORD)m_pos;
         if (good) {                                               // idx1
             good = PutFcc('i', 'd', 'x', '1') && Put32((DWORD)(m_nIdx * 16));
@@ -230,6 +258,7 @@ private:
     HANDLE m_file = INVALID_HANDLE_VALUE;
     u8* m_flip = nullptr;
     u8* m_prev = nullptr; bool m_havePrev = false;         // the last picture as it came, to tell an unchanged one
+    u8* m_last = nullptr; bool m_pending = false; LONGLONG m_lastReal = 0;       // the newest picture that waits for its turn (a small change), the time of the last encoded one
     uint64_t m_pos = 0;
     LONGLONG m_interval = 400000;
     LONGLONG m_nextFrame = 0;
@@ -246,7 +275,7 @@ private:
 // =================================================================================================================
 class GifSink : public FrameSink {
 public:
-    GifSink(int w, int h, int fps) : m_w(w), m_h(h), m_interval(10000000LL / fps) {}
+    GifSink(int w, int h, int fps, int quality) : m_w(w), m_h(h), m_interval(10000000LL / fps), m_colours(quality <= 0 ? 256 : quality == 1 ? 128 : 64) {}
     ~GifSink() override
     {
         if (m_enc) m_enc->Release();
@@ -286,12 +315,9 @@ public:
     {
         FlipRows(dib, m_cur, m_w, m_h);
         bool ok = true;
-        if (m_have) {
-            int cs = (int)((ts - m_prevTs + 50000) / 100000);       // 1/100 s
-            if (cs < 2) cs = 2;
-            if (cs > 6000) cs = 6000;
-            ok = WriteFrame(m_prev, cs);
-        }
+        m_lastTs = ts;
+        if (m_have && !memcmp(m_cur, m_prev, (size_t)m_w * m_h * 4)) return true;     // the same picture again: it stays on the screen longer, nothing is stored
+        if (m_have) ok = WriteHeld(m_prev, ts - m_prevTs);
         u8* t = m_prev; m_prev = m_cur; m_cur = t;
         m_prevTs = ts; m_have = true;
         return ok;
@@ -302,7 +328,7 @@ public:
     bool Close(bool ok) override
     {
         bool good = ok;
-        if (m_have && good) { int cs = (int)(m_interval / 100000); good = WriteFrame(m_prev, cs < 2 ? 2 : cs); }
+        if (m_have && good) good = WriteHeld(m_prev, m_lastTs - m_prevTs + m_interval);       // the last picture stays until the end of the recording
         if (good && m_frames > 0) good = SUCCEEDED(m_enc->Commit());
         else good = false;
         return good;
@@ -316,9 +342,19 @@ private:
         bool ok = false;
         if (m_w >= 90 && m_h >= 90 && SUCCEEDED(m_wic->CreateBitmapScaler(&sc)) &&
             SUCCEEDED(sc->Initialize(bmp, m_w / 3, m_h / 3, WICBitmapInterpolationModeNearestNeighbor)))
-            ok = SUCCEEDED(pal->InitializeFromBitmap(sc, 256, FALSE));
+            ok = SUCCEEDED(pal->InitializeFromBitmap(sc, m_colours, FALSE));
         if (sc) sc->Release();
-        return ok || SUCCEEDED(pal->InitializeFromBitmap(bmp, 256, FALSE));
+        return ok || SUCCEEDED(pal->InitializeFromBitmap(bmp, m_colours, FALSE));
+    }
+
+    // A picture that stays for `hold` (100 ns): one frame, or several when it is longer than the delay of a frame can say comfortably (60 s).
+    bool WriteHeld(const u8* topDown, LONGLONG hold)
+    {
+        int cs = (int)((hold + 50000) / 100000);                   // 1/100 s
+        if (cs < 2) cs = 2;
+        bool ok = true;
+        while (ok && cs > 6000) { ok = WriteFrame(topDown, 6000); cs -= 6000; }
+        return ok && WriteFrame(topDown, cs < 2 ? 2 : cs);
     }
 
     bool WriteFrame(const u8* topDown, int delayCs)
@@ -355,11 +391,12 @@ private:
 
     int m_w, m_h;
     LONGLONG m_interval;
+    int m_colours;
     IWICImagingFactory* m_wic = nullptr;
     IWICStream* m_st = nullptr;
     IWICBitmapEncoder* m_enc = nullptr;
     u8* m_prev = nullptr; u8* m_cur = nullptr;
-    LONGLONG m_prevTs = 0;
+    LONGLONG m_prevTs = 0, m_lastTs = 0;
     bool m_have = false;
     int m_frames = 0;
 };
@@ -374,9 +411,9 @@ FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality
     return s;
 }
 
-FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, wchar_t* why, int whyLen)
+FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, int quality, wchar_t* why, int whyLen)
 {
-    GifSink* s = new GifSink(w, h, fps);
+    GifSink* s = new GifSink(w, h, fps, quality);
     if (!s->Open(path, why, whyLen)) { delete s; DeleteFileW(path); return nullptr; }
     return s;
 }

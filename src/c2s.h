@@ -51,7 +51,7 @@ const wchar_t* ImageFormatName(int fmt);              // "PNG", "JPG", ...
 const wchar_t* ImageFormatExt(int fmt);               // "png", "jpg", ...
 bool ImageFormatAvailable(int fmt);                   // an encoder for it is installed (WebP / JPEG XR may be missing)
 int  ImageFormatFromPath(const wchar_t* path);        // by the extension; -1 when it is none of ours
-void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h);   // FitSize, and the smaller frame a GIF gets
+void FitSizeForVideo(int vc, int srcW, int srcH, int& w, int& h, int quality = 0);   // FitSize, and the smaller frame a GIF gets (the smaller, the lower the quality)
 const wchar_t* VideoFormatName(int vc);               // "H.264 (MP4, slower)" ...
 const wchar_t* VideoFormatExt(int vc);                // "mp4", "wmv", "avi", "gif"
 const wchar_t* SettingsKeyName();                   // the registry key under HKCU the settings live in
@@ -157,7 +157,7 @@ public:
     virtual bool Close(bool ok) = 0;                                  // finishes the file; false: it is unusable
 };
 FrameSink* CreateAviSink(const wchar_t* path, int w, int h, int fps, int quality, bool audio, wchar_t* why, int whyLen);   // Motion-JPEG + PCM
-FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, wchar_t* why, int whyLen);                            // animated, no sound
+FrameSink* CreateGifSink(const wchar_t* path, int w, int h, int fps, int quality, wchar_t* why, int whyLen);                            // animated, no sound
 
 // ---- sound (audiomix.cpp) ----------------------------------------------------------------------------------------
 // Mono 44.1 kHz 16 bit from interleaved float frames at any rate (`phase` / `prev` carry over between calls).

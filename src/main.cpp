@@ -1184,8 +1184,8 @@ void OptLoad(OptState* o)
     SendDlgItemMessageW(d, O_ACODEC, CB_SETCURSEL, s.audioCodec, 0);
     SendDlgItemMessageW(d, O_VQ, CB_SETCURSEL, s.videoQuality, 0);
     SendDlgItemMessageW(d, O_AQ, CB_SETCURSEL, s.audioQuality, 0);
-    static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
-    int fi = 3; for (int i = 0; i < 7; ++i) if (fpsv[i] == s.fps) fi = i;
+    static const int fpsv[] = { 5, 8, 10, 12, 15, 20, 24, 25, 30, 40, 45, 50, 60 };
+    int fi = 7; for (int i = 0; i < (int)(sizeof(fpsv) / sizeof(fpsv[0])); ++i) if (fpsv[i] == s.fps) fi = i;
     SendDlgItemMessageW(d, O_FPS, CB_SETCURSEL, fi, 0);
     SetDlgItemTextW(d, O_FOLDER, s.folder);
     ComboSelectData(d, O_IMGFMT, s.imageFormat);
@@ -1208,8 +1208,8 @@ void OptCollect(OptState* o, Settings& s)
     s.audioCodec = (int)SendDlgItemMessageW(d, O_ACODEC, CB_GETCURSEL, 0, 0);
     s.videoQuality = (int)SendDlgItemMessageW(d, O_VQ, CB_GETCURSEL, 0, 0);
     s.audioQuality = (int)SendDlgItemMessageW(d, O_AQ, CB_GETCURSEL, 0, 0);
-    static const int fpsv[] = { 10, 15, 20, 25, 30, 45, 60 };
-    int fi = (int)SendDlgItemMessageW(d, O_FPS, CB_GETCURSEL, 0, 0); if (fi < 0 || fi > 6) fi = 3;
+    static const int fpsv[] = { 5, 8, 10, 12, 15, 20, 24, 25, 30, 40, 45, 50, 60 };
+    int fi = (int)SendDlgItemMessageW(d, O_FPS, CB_GETCURSEL, 0, 0); if (fi < 0 || fi > 12) fi = 7;
     s.fps = fpsv[fi];
     GetDlgItemTextW(d, O_FOLDER, s.folder, MAX_PATH);
     s.imageFormat = ComboGetData(d, O_IMGFMT, s.imageFormat);
@@ -1442,7 +1442,7 @@ bool OptionsDialog()
     for (HWND q : qs) { ComboAdd(q, T(S_Q_HIGH)); ComboAdd(q, T(S_Q_MEDIUM)); ComboAdd(q, T(S_Q_LOW)); }
     label(1, S_OPT_FPS, 35, 170, 140);
     HWND fp = combo(1, O_FPS, 180, 166, 77);
-    static const wchar_t* const fpsText[7] = { L"10", L"15", L"20", L"25", L"30", L"45", L"60" };
+    static const wchar_t* const fpsText[13] = { L"5", L"8", L"10", L"12", L"15", L"20", L"24", L"25", L"30", L"40", L"45", L"50", L"60" };
     for (const wchar_t* f : fpsText) ComboAdd(fp, f);
     label(1, S_OPT_IMGFORMAT, 35, 216, 140);                  // below the video block; a faint line between them is drawn by PaintOptions
     HWND fm = combo(1, O_IMGFMT, 180, 212, 88);
