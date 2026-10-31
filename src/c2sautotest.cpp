@@ -1117,7 +1117,7 @@ static bool PictureMatchesFixture(const uint8_t* px, int w, int h, int tol, int*
 static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc)
 {
     uint8_t* d = nullptr;
-    AviInfo a = ReadAvi(path, 3, &d);
+    AviInfo a = ReadAvi(path, 0, &d);          // the first real picture: the pictures that do not change are not stored, a later one may already be the noise
     wchar_t dd[260];
     _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks (%.2f s), idx1 %u, fps %u, recorded %.2f s", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, (double)a.aBytes / 88200.0, a.idxCount, a.fps, el);
     Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
@@ -1162,7 +1162,7 @@ static void VerifyGif(const wchar_t* path, int ew, int eh, double el, int fps, b
                 PropVariantClear(&pv);
                 mq->Release();
             }
-            if (i == (frames > 2 ? 2 : 0) && wantPicture) {
+            if (i == 0 && wantPicture) {                       // the first frame: the next ones are stored only when the picture changes
                 IWICFormatConverter* cv = nullptr;
                 if (SUCCEEDED(f->CreateFormatConverter(&cv)) && SUCCEEDED(cv->Initialize(fr, GUID_WICPixelFormat32bppBGRA, WICBitmapDitherTypeNone, nullptr, 0, WICBitmapPaletteTypeCustom))) {
                     UINT uw = 0, uh = 0; cv->GetSize(&uw, &uh); fw = (int)uw; fh = (int)uh;
