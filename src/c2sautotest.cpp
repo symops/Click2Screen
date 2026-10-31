@@ -4902,6 +4902,112 @@ static int RunKeyLab12()
     return 0;
 }
 
+// ---- round 13: H.264 quality mode as the recorder sets it (repeated: is it steady?) against the bit rate modes, and the AAC bit rates -------------------
+static void AacOne(int bytesPerSec, int rep, int rate, const BYTE* pcm, int samples)
+{
+    wchar_t pd[MAX_PATH] = L"", path[MAX_PATH + 60];
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    _snwprintf(path, MAX_PATH + 60, L"%s\\Click2Screen\\logs\\aac13-%d-%d-%d.mp4", pd, bytesPerSec, rate, rep);
+    DeleteFileW(path);
+    IMFSinkWriter* w = nullptr;
+    if (FAILED(MFCreateSinkWriterFromURL(path, nullptr, nullptr, &w)) || !w) { Rep(L"INFO", L"  aac %d B/s: no sink writer", bytesPerSec); return; }
+    IMFMediaType* ao = nullptr; IMFMediaType* ai = nullptr; MFCreateMediaType(&ao); MFCreateMediaType(&ai);
+    ao->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio); ao->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_AAC);
+    ao->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16); ao->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, rate); ao->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1);
+    ao->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, bytesPerSec); ao->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 1);
+    ao->SetUINT32(MF_MT_AAC_PAYLOAD_TYPE, 0); ao->SetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, 0x29);
+    ai->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio); ai->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_PCM);
+    ai->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 16); ai->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, rate); ai->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 1);
+    ai->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, rate * 2); ai->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 2);
+    DWORD st = 0;
+    HRESULT h1 = w->AddStream(ao, &st), h2 = SUCCEEDED(h1) ? w->SetInputMediaType(st, ai, nullptr) : h1, h3 = SUCCEEDED(h2) ? w->BeginWriting() : h2;
+    int chunks = 0;
+    for (int pos = 0; SUCCEEDED(h3) && pos < samples; pos += 4096) {
+        int n = samples - pos < 4096 ? samples - pos : 4096;
+        IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
+        if (FAILED(MFCreateMemoryBuffer(n * 2, &b)) || FAILED(b->Lock(&d, nullptr, nullptr))) break;
+        memcpy(d, pcm + (size_t)pos * 2, (size_t)n * 2); b->Unlock(); b->SetCurrentLength(n * 2);
+        MFCreateSample(&sm); sm->AddBuffer(b);
+        sm->SetSampleTime((LONGLONG)pos * 10000000LL / rate); sm->SetSampleDuration((LONGLONG)n * 10000000LL / rate);
+        h3 = w->WriteSample(st, sm); sm->Release(); b->Release(); ++chunks;
+    }
+    HRESULT hf = w->Finalize();
+    w->Release(); ao->Release(); ai->Release();
+    const unsigned long long sz = FileSz(path);
+    Rep(L"INFO", L"  aac %5d B/s (%3d kbit/s) at %d Hz, repeat %d: %llu bytes = %.1f kB/s of the %.1f s; AddStream 0x%08lX, input 0x%08lX, write 0x%08lX, finalize 0x%08lX, object type 0x%02X",
+        bytesPerSec, bytesPerSec * 8 / 1000, rate, rep, sz, sz / 1000.0 / ((double)samples / rate), (double)samples / rate, (unsigned long)h1, (unsigned long)h2, (unsigned long)h3, (unsigned long)hf, Mp4AudioObjectType(path));
+}
+
+static int RunKeyLab13()
+{
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    if (FAILED(MFStartup(MF_VERSION, MFSTARTUP_FULL))) { Rep(L"INFO", L"keylab13: MFStartup failed"); return 1; }
+    OSVERSIONINFOW ov; memset(&ov, 0, sizeof(ov)); ov.dwOSVersionInfoSize = sizeof(ov);
+    Rep(L"INFO", L"keylab13: %s-bit process, wow64 %d", sizeof(void*) == 8 ? L"64" : L"32", 0);
+    // ---- AAC ----
+    Rep(L"INFO", L"keylab13 AAC: the output types Windows lists for AAC");
+    {
+        IMFCollection* col = nullptr;
+        HRESULT hr = MFTranscodeGetAudioOutputAvailableTypes(MFAudioFormat_AAC, MFT_ENUM_FLAG_ALL, nullptr, &col);
+        DWORD n = 0; if (SUCCEEDED(hr) && col) col->GetElementCount(&n);
+        Rep(L"INFO", L"  listing 0x%08lX, %lu types", (unsigned long)hr, (unsigned long)n);
+        for (DWORD i = 0; i < n; ++i) {
+            IUnknown* u = nullptr; IMFMediaType* t = nullptr;
+            if (SUCCEEDED(col->GetElement(i, &u)) && u && SUCCEEDED(u->QueryInterface(IID_PPV_ARGS(&t))) && t) {
+                UINT32 rate = 0, ch = 0, bps = 0, pay = 99, lvl = 0, bits = 0;
+                t->GetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, &rate); t->GetUINT32(MF_MT_AUDIO_NUM_CHANNELS, &ch); t->GetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, &bps);
+                t->GetUINT32(MF_MT_AAC_PAYLOAD_TYPE, &pay); t->GetUINT32(MF_MT_AAC_AUDIO_PROFILE_LEVEL_INDICATION, &lvl); t->GetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, &bits);
+                Rep(L"INFO", L"  type %2lu: %u Hz, %u ch, %u bit, %u B/s (%u kbit/s), payload %u, level 0x%02X", (unsigned long)i, rate, ch, bits, bps, bps * 8 / 1000, pay, lvl);
+                t->Release();
+            }
+            if (u) u->Release();
+        }
+        if (col) col->Release();
+    }
+    {
+        const int rate = 44100, samples = rate * 7;
+        BYTE* pcm = (BYTE*)malloc((size_t)samples * 2); short* sp = (short*)pcm; unsigned sd = 12345;
+        for (int i = 0; i < samples; ++i) { sd = sd * 1664525u + 1013904223u; sp[i] = (short)(9000 * sin(6.283185307179586 * 1000.0 * i / rate) + (int)((sd >> 16) % 6000) - 3000); }
+        static const int bps[] = { 24000, 20000, 16000, 12000, 8000 };
+        for (int b : bps) for (int rep = 0; rep < 2; ++rep) AacOne(b, rep, rate, pcm, samples);
+        free(pcm);
+    }
+    // ---- H.264 ----
+    const int W = 470, H = 302, fps = 25, secs = 7, W2 = W * 2;
+    DWORD* noise = (DWORD*)malloc((size_t)W2 * H * 4); unsigned sd = 777;
+    for (size_t i = 0; i < (size_t)W2 * H; ++i) {
+        int x = (int)(i % W2), y = (int)(i / W2); int ch[3] = { x * 255 / W2, y * 255 / H, 128 }; DWORD c = 0;
+        for (int k = 0; k < 3; ++k) { sd = sd * 1664525u + 1013904223u; int v = ch[k] + (int)((sd >> 16) % 65) - 32; v = v < 0 ? 0 : v > 255 ? 255 : v; c = (c << 8) | (DWORD)v; }
+        noise[i] = c;
+    }
+    g_qual3[0] = 75; g_qual3[1] = 50; g_qual3[2] = 20;               // what the recorder asks
+    g_capBase = 900000;
+    Rep(L"INFO", L"keylab13 H.264: %dx%d, %d fps, %d s, scrolling noise; the recorder's quality 75 / 50 / 20 five times, then the bit rate modes", W, H, fps, secs);
+    static const SizeVariant qv = { L"quality mode as the recorder", 3, false, 0, 1, 0 };
+    int idx = 700;
+    for (int rep = 0; rep < 5; ++rep) {
+        unsigned long long s3[3]; int keys;
+        for (int c = 0; c < 3; ++c) s3[c] = SizeOne(qv, c, noise, W, H, fps, secs, ++idx, &keys);
+        Rep(L"INFO", L"RESULT quality mode as the recorder, repeat %d: %llu / %llu / %llu bytes, best/medium %.2f, medium/worst %.2f", rep, s3[0], s3[1], s3[2], s3[1] ? (double)s3[0] / s3[1] : 0.0, s3[2] ? (double)s3[1] / s3[2] : 0.0);
+    }
+    static const SizeVariant others[] = {
+        { L"bit rate in the type only (900 / 600 / 360 kbit/s)", -1, false, 0, 0, 0 },
+        { L"CBR + mean bit rate", 0, true, 0, 0, 0 },
+        { L"quality mode + the cap 2.0 / 1.2 / 0.7 x 900 kbit/s", 3, false, -1, 1, 0 },
+        { L"unconstrained VBR + mean", 1, true, 0, 0, 0 },
+        { L"CBR + mean + max QP 34 / 40 / 46", 0, true, 0, 0, 1 },
+    };
+    for (const SizeVariant& v : others) {
+        unsigned long long s3[3]; int keys;
+        for (int c = 0; c < 3; ++c) s3[c] = SizeOne(v, c, noise, W, H, fps, secs, ++idx, &keys);
+        Rep(L"INFO", L"RESULT [%s]: %llu / %llu / %llu bytes, best/medium %.2f, medium/worst %.2f", v.name, s3[0], s3[1], s3[2], s3[1] ? (double)s3[0] / s3[1] : 0.0, s3[2] ? (double)s3[1] / s3[2] : 0.0);
+    }
+    free(noise);
+    MFShutdown();
+    Rep(L"INFO", L"keylab13: done");
+    return 0;
+}
+
 static int RunKeyLab11()
 {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
@@ -5335,6 +5441,7 @@ int wmain(int argc, wchar_t** argv)
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab10")) return RunKeyLab10();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab11")) return RunKeyLab11();
     for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab12")) return RunKeyLab12();
+    for (int i = 1; i < argc; ++i) if (!wcscmp(argv[i], L"--keylab13")) return RunKeyLab13();
     for (int i = 1; i < argc; ++i) {
         if (!wcscmp(argv[i], L"--seed") && i + 1 < argc) seed = _wcstoui64(argv[++i], nullptr, 10);
         else if (!wcscmp(argv[i], L"--keep")) keep = true;
