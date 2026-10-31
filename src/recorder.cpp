@@ -693,6 +693,10 @@ bool Recorder::Stop()
         if (ok && d.haveFrame && d.mediaNow > d.lastVideoTs + 10000000LL / d.fps) ok = d.alt->Video(d.grab.Bits(), d.mediaNow) && ok;
         ok = d.alt->Close(ok) && ok; delete d.alt; d.alt = nullptr;
     }
+    // The picture stands until the end here, too: a held-up video thread leaves the file shorter than the recording (6 s of 8 measured). The last
+    // picture goes in once more at the time of the stop; not after a gap of more than 10 s (the encoder would fill the gap with frames at once).
+    if (d.sw && ok && d.haveFrame && d.mediaNow > d.lastVideoTs + 10000000LL / d.fps && d.mediaNow - d.lastVideoTs < 100000000LL)
+        d.WriteSample(d.vStream, d.grab.Bits(), (DWORD)((size_t)d.w * d.h * 4), d.mediaNow, 10000000LL / d.fps);
     if (d.sw) {
         ULONGLONG before = FileBytes();
         DWORD t0 = GetTickCount();
