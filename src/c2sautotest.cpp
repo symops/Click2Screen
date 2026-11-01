@@ -3593,6 +3593,20 @@ static int QuartersRight(const Shot& sh, const RECT& area, const RECT& fr)
     }
     return ok;
 }
+// The same for points near the four corners: a big window is painted from the middle outwards, the edges come last on a slow machine.
+static int CornersRight(const Shot& sh, const RECT& area, const RECT& fr)
+{
+    if (!sh.px) return 0;
+    int ok = 0, w = fr.right - fr.left, h = fr.bottom - fr.top;
+    const int cx[4] = { 6, w - 7, 6, w - 7 }, cy[4] = { 6, 6, h - 22, h - 22 };
+    for (int i = 0; i < 4; ++i) {
+        int x = fr.left + cx[i] - area.left, y = fr.top + cy[i] - area.top;
+        if (x < 0 || y < 0 || x >= sh.w || y >= sh.h) continue;
+        const uint8_t* q = sh.px + ((size_t)y * sh.w + x) * 4;
+        if (Near(kQuad[i], q[2], q[1], q[0], 10)) ++ok;
+    }
+    return ok;
+}
 // All four colours of the fixture are on the screen (a quarter of the window was once left unpainted, seen on Windows 11): repaint until they are.
 static void EnsureFixtureShown()
 {
@@ -3643,10 +3657,11 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     {   // a slow machine shows the fixture a moment after it was repainted: the first picture of the recording must not be the desktop behind it
         RECT fr0 = FxScreenRect();
         for (int i = 0; i < 40; ++i) {
-            Shot sh0 = GrabShot(fr0); int q0 = QuartersRight(sh0, fr0, fr0); free(sh0.px);
-            if (q0 == 4) break;
+            Shot sh0 = GrabShot(fr0); int q0 = QuartersRight(sh0, fr0, fr0), c0 = CornersRight(sh0, fr0, fr0); free(sh0.px);
+            if (q0 == 4 && c0 == 4) break;
             Pump(300);
         }
+        Pump(300);
     }
     Recorder rec; wchar_t err[300] = L"";
     if (!rec.Start(p, err, 300)) { FAIL(L"quality sizes: Start failed (%s): %s", desc, err); return 0; }
