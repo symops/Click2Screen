@@ -1400,6 +1400,7 @@ bool OptionsDialog()
     o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", T(S_OPT_TITLE), WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
                             CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, owner, nullptr, g_inst, &o);
     HWND d = o.dlg;
+    Log(L"options: window created, %lu ms", (unsigned long)(GetTickCount64() - t0));
     {   // the tab rectangles: the text width + 16 units, 21 units high
         HDC dc = GetDC(d); HGDIOBJ of = SelectObject(dc, g_font);
         const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
@@ -1490,7 +1491,9 @@ bool OptionsDialog()
     {   HWND c = nullptr;
         while ((c = FindWindowExW(d, c, nullptr, nullptr)) != nullptr) SendMessageW(c, WM_SETFONT, (WPARAM)g_font, TRUE);
     }
+    Log(L"options: controls made, %lu ms", (unsigned long)(GetTickCount64() - t0));
     OptLoad(&o);
+    Log(L"options: values loaded, %lu ms", (unsigned long)(GetTickCount64() - t0));
     ShowPage(&o, 0);
 
     // centre over the owner / screen
@@ -1498,6 +1501,7 @@ bool OptionsDialog()
     RECT wa; SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     SetWindowPos(d, HWND_TOPMOST, (wa.left + wa.right - (wr.right - wr.left)) / 2, (wa.top + wa.bottom - (wr.bottom - wr.top)) / 2, 0, 0, SWP_NOSIZE);
     ShowWindow(d, SW_SHOW);
+    Log(L"options: shown, %lu ms", (unsigned long)(GetTickCount64() - t0));
     if (owner) EnableWindow(owner, FALSE);
     MSG msg;
     bool quit = false; int quitCode = 0;
