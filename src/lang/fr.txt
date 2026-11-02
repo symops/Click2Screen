@@ -134,7 +134,7 @@ Lancer Click2Screen après l'installation
 Afficher les notifications dans la zone de notification
 Enregistrer le son des haut-parleurs
 Raccourcis
-Arrêter l'enregistrement
+Démarrer / arrêter l'enregistrement
 Cliquez dans un champ et appuyez sur la nouvelle combinaison. Retour arrière l'efface (le raccourci est alors désactivé).
 La même combinaison est attribuée à deux actions.
 aucun

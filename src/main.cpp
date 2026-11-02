@@ -372,9 +372,10 @@ void UpdatePanel()
     SetCell(g_panel, IDC_P_START, b);
     EnableWindow(GetDlgItem(g_panel, IDC_P_START), g_state != ST_COUNTDOWN);
     EnableWindow(GetDlgItem(g_panel, IDC_P_STOP), g_state == ST_RECORDING || g_state == ST_PAUSED || g_state == ST_ARMED || g_state == ST_COUNTDOWN);
-    {   // "Ctrl+F11: Stop"; where the cell is too narrow for the whole phrase (a long translation or key name) only the key is shown
+    {   // "Ctrl+F11: Start" while the recording is ready, "Ctrl+F11: Stop" after; where the cell is too narrow for the whole phrase (a long translation or key name) only the key is shown
         wchar_t hk[80]; HotkeyName(g_cfg.hotkey[3], hk, 80);
-        if (hk[0]) _snwprintf(buf, 96, L"%s: %s", hk, T(S_STOP)); else _snwprintf(buf, 96, L"%s", T(S_STOP));
+        const wchar_t* act = g_state == ST_ARMED ? T(S_START) : T(S_STOP);
+        if (hk[0]) _snwprintf(buf, 96, L"%s: %s", hk, act); else _snwprintf(buf, 96, L"%s", act);
         HDC dc = GetDC(g_panel);
         if (dc && hk[0]) {
             HGDIOBJ of = SelectObject(dc, g_fontBold);
@@ -1758,7 +1759,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case HK_DESKTOP: Shot(M_DESKTOP); break;
         case HK_REGION: Shot(M_REGION); break;
         case HK_WINDOW: Shot(M_WINDOW); break;
-        case HK_STOP: StopRecording(true); break;
+        case HK_STOP: if (g_state == ST_ARMED) StartPressed(); else StopRecording(true); break;      // the same key starts a recording that is ready and stops one that runs
         case HK_REC_DESKTOP: if (g_state == ST_IDLE) Arm(M_DESKTOP); break;      // while a recording is on the keys do nothing
         case HK_REC_REGION: if (g_state == ST_IDLE) Arm(M_REGION); break;
         case HK_REC_WINDOW: if (g_state == ST_IDLE) Arm(M_WINDOW); break;

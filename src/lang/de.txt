@@ -134,7 +134,7 @@ Click2Screen nach der Installation starten
 Benachrichtigungen im Infobereich anzeigen
 Ton von den Lautsprechern aufnehmen
 Tastenkombinationen
-Aufnahme beenden
+Aufnahme starten / beenden
 Klicken Sie auf ein Feld und drücken Sie die neue Kombination. Rücktaste löscht sie (die Tastenkombination ist dann aus).
 Dieselbe Kombination ist zwei Aktionen zugewiesen.
 keine

@@ -1946,8 +1946,17 @@ static void T_App()
         if (panel) {
             Check(!IsWindowVisible(a.main), L"program: the main window steps aside while the panel is shown");
             Check(WaitText(panel, IDC_P_START, T(S_START), 2000), L"program: the panel offers Start");
-            PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0);
+            {   // the stop key tells "Key: Start" while the recording is ready (the cell next to the Stop button)
+                HWND info = GetDlgItem(panel, IDC_P_HINT);
+                wchar_t hk[80], want[120], got[200]; HotkeyName(s.hotkey[3], hk, 80);
+                _snwprintf(want, 120, L"%s: %s", hk, T(S_START)); WinText(info, got, 200);
+                Check(!hk[0] || wcsstr(got, want) != nullptr || wcsstr(got, hk) != nullptr, L"program: the panel names the key that starts the recording", got);
+            }
+            const bool byKey = s.hotkey[3] != 0 && Chance(50);
+            if (byKey) PostMessageW(a.main, WM_HOTKEY, HK_STOP, 0);                                   // the stop key starts a recording that is ready
+            else PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0);
             bool rec = WaitText(panel, IDC_P_START, T(S_PAUSE), (s.delaySec + 6) * 1000);
+            if (byKey) Check(rec, L"program: the stop key starts a recording that is ready");
             Check(rec, L"program: after the countdown the recording runs (the button offers Pause)");
             if (rec) {
                 Sleep(1300);
