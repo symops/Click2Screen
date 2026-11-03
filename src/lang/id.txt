@@ -144,3 +144,4 @@ Menggambar nonaktif.
 Nama file akan menjadi:
 Di atas jendela lain
 Simpan file terpisah untuk setiap layar
+Opsi

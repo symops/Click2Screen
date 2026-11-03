@@ -144,3 +144,4 @@ Ekranda çizim (aç / kapat)
 Dosya adı şöyle olacak:
 Diğer pencerelerin üstünde
 Farklı ekranlar için ayrı dosyalar kaydet
+Seçenekler

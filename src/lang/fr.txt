@@ -144,3 +144,4 @@ Dessin désactivé.
 Le fichier s'appellera :
 Au-dessus des autres fenêtres
 Enregistrer des fichiers séparés pour chaque écran
+Options

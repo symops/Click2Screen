@@ -144,3 +144,4 @@ Dibujo desactivado.
 El archivo se llamará:
 Encima de otras ventanas
 Guardar archivos separados para cada pantalla
+Opciones

@@ -144,3 +144,4 @@ Rysowanie wyłączone.
 Plik będzie się nazywał:
 Nad innymi oknami
 Zapisuj osobne pliki dla różnych ekranów
+Opcje

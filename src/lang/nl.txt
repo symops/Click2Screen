@@ -144,3 +144,4 @@ Tekenen staat uit.
 Het bestand heet:
 Boven andere vensters
 Aparte bestanden opslaan voor verschillende schermen
+Opties

@@ -144,3 +144,4 @@ Drawing is off.
 The file will be named:
 On top of other windows
 Save separate files for different screens
+Options

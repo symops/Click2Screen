@@ -1397,7 +1397,8 @@ bool OptionsDialog()
     RECT r = { 0, 0, W, H };
     AdjustWindowRect(&r, WS_CAPTION | WS_SYSMENU, FALSE);
     HWND owner = g_main && IsWindowVisible(g_main) ? g_main : nullptr;
-    o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", T(S_OPT_TITLE), WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
+    wchar_t title[200]; _snwprintf(title, 200, L"%s \u2014 %s %s", T(S_APP), T(S_OPT_WINDOW), L"" C2S_VER_STR);       // "product - word version", as the control panels of Show2Cam and Speak2Mic have it
+    o.dlg = CreateWindowExW(WS_EX_DLGMODALFRAME | WS_EX_TOPMOST, L"Click2ScreenOptions", title, WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN,
                             CW_USEDEFAULT, CW_USEDEFAULT, r.right - r.left, r.bottom - r.top, owner, nullptr, g_inst, &o);
     HWND d = o.dlg;
     Log(L"options: window created, %lu ms", (unsigned long)(GetTickCount64() - t0));

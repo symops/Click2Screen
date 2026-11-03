@@ -144,3 +144,4 @@ Desenho desativado.
 O arquivo se chamará:
 Acima de outras janelas
 Salvar arquivos separados para cada tela
+Opções

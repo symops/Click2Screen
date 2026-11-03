@@ -2056,6 +2056,11 @@ static void T_App()
         HWND o = FindReady(a.pi.dwProcessId, C2S_CLASS_OPTIONS, 10000);
         Check(o != nullptr, L"program: Options opens (restore default test)");
         if (o) {
+            {   // the title: the name of the window and the version, as the control panels of Show2Cam and Speak2Mic have it
+                wchar_t tt[200], want[200]; WinText(o, tt, 200);
+                _snwprintf(want, 200, L"%s \u2014 %s %s", T(S_APP), T(S_OPT_WINDOW), L"" C2S_VER_STR);
+                Check(!wcscmp(tt, want), L"program: the title of the options window is the product, a dash, the word and the version", tt);
+            }
             {   // the outline / waves box depends on "show the pointer": greyed while that one is off
                 bool pointerOn = SendMessageW(GetDlgItem(o, O_MOUSE), BM_GETCHECK, 0, 0) == BST_CHECKED;
                 bool en0 = IsWindowEnabled(GetDlgItem(o, O_HILITE)) != 0;
@@ -3827,6 +3832,57 @@ static void T_QualityMatrix()
     if (!n) SKIP(L"quality matrix: no video format here");
 }
 
+// ---- the picture goes on living under the picker (a video plays while the target is chosen): the veil is dark, what is under it changes ---------
+struct LiveJob { int before[3], after[3]; bool ran; };
+static DWORD WINAPI LiveDriver(LPVOID p)
+{
+    LiveJob* j = (LiveJob*)p;
+    HWND ov = nullptr;
+    for (int i = 0; i < 100 && !ov; ++i) { ov = FindWindowW(L"Click2ScreenPicker", nullptr); if (!ov) Sleep(50); }
+    if (!ov) return 1;
+    Sleep(500);                                                        // the veil is drawn
+    RECT fr = FxScreenRect();
+    RECT probe = { fr.left + 30, fr.top + 30, fr.left + 38, fr.top + 38 };         // inside the red quarter, away from the lines of the fixture
+    auto sample = [&](int* out) { Shot sh = GrabShot(probe); if (sh.px) { const uint8_t* q = sh.px + ((size_t)(sh.h / 2) * sh.w + sh.w / 2) * 4; out[0] = q[2]; out[1] = q[1]; out[2] = q[0]; free(sh.px); } };
+    sample(j->before);
+    {   // what is under the veil changes: the fixture window moves away (a drawing into its own device context would be clipped by the veil above it)
+        RECT w; GetWindowRect(g_fx.hw, &w);
+        SetWindowPos(g_fx.hw, nullptr, w.left + g_fx.w / 2 + 60, w.top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    Sleep(500);
+    sample(j->after);
+    {   // the screen while the picker is up, for a look with the eyes (the logs folder)
+        wchar_t pd[MAX_PATH] = L"";
+        if (GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH) > 0) {
+            wchar_t path[MAX_PATH + 40]; _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\picker-live.png", pd);
+            RECT vs = VirtualScreen();
+            HBITMAP bm = CaptureRect(vs, false, false);
+            if (bm) { SaveBitmap(bm, path, IMG_PNG); DeleteObject(bm); }
+        }
+    }
+    j->ran = true;
+    ov = FindWindowW(L"Click2ScreenPicker", nullptr);
+    if (ov) SendMessageW(ov, WM_KEYDOWN, VK_ESCAPE, 0);
+    return 0;
+}
+
+static void T_PickerLive()
+{
+    if (g_wine) { SKIP(L"picker live: Wine does not compose a layered window as Windows does"); return; }
+    MakeFixture(R(400, 700), R(300, 450));
+    EnsureFixtureShown();
+    LiveJob job; memset(&job, 0, sizeof(job));
+    HANDLE th = CreateThread(nullptr, 0, LiveDriver, &job, 0, nullptr);
+    RECT got = {0, 0, 0, 0};
+    PickRegion(nullptr, &got);
+    WaitForSingleObject(th, 8000); CloseHandle(th);
+    wchar_t d[200]; _snwprintf(d, 200, L"under the picker: before %d,%d,%d after %d,%d,%d (the red quarter, then what is behind it after the window moved)", job.before[0], job.before[1], job.before[2], job.after[0], job.after[1], job.after[2]);
+    Check(job.ran, L"picker live: the picker was up while the test looked at the screen", d);
+    Check(job.before[0] > 60 && job.before[0] < 180 && job.before[1] < 60, L"picker live: the desktop is dimmed, not hidden (the red quarter is a dark red)", d);
+    Check(abs(job.after[0] - job.before[0]) + abs(job.after[1] - job.before[1]) + abs(job.after[2] - job.before[2]) > 60, L"picker live: a change under the veil is seen at once (the picture is not a frozen snapshot)", d);
+    InvalidateRect(g_fx.hw, nullptr, TRUE); Pump(200);
+}
+
 struct MonInfo { RECT rc; wchar_t dev[40]; bool primary; };
 struct MonEnumCtx { MonInfo* out; int n; };
 static BOOL CALLBACK MonEnumCb(HMONITOR m, HDC, LPRECT, LPARAM lp)
@@ -5494,7 +5550,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"picker-live", T_PickerLive, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();
