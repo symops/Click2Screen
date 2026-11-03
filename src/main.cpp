@@ -596,12 +596,11 @@ void PlaceOverlay()
     SetWindowPos(g_panel, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE);
 }
 
-void RoundWindow(HWND w, int wpx, int hpx, int radius)         // the lower corners are round, the upper ones nearly square (as the original)
+void SquareWindow(HWND w)                                      // the corners are right angles: no region, and Windows 11 is told not to round them
 {
-    HRGN low = CreateRoundRectRgn(0, 0, wpx + 1, hpx + 1, radius, radius), top = CreateRectRgn(0, 0, wpx, hpx / 2);
-    CombineRgn(low, low, top, RGN_OR);
-    DeleteObject(top);
-    SetWindowRgn(w, low, TRUE);
+    SetWindowRgn(w, nullptr, TRUE);
+    int pref = 1;                                              // DWMWCP_DONOTROUND
+    DwmSetWindowAttribute(w, 33 /*DWMWA_WINDOW_CORNER_PREFERENCE*/, &pref, sizeof(pref));
 }
 
 LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp);
@@ -677,7 +676,7 @@ void ShowPanel()
     g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP | WS_CLIPCHILDREN,
                               0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
     ExcludeFromCapture(g_panel);
-    RoundWindow(g_panel, w, h, Sc(8));
+    SquareWindow(g_panel);
     if (g_ink) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     // time | size | F11: Stop | start / pause | stop  (cells split at 40, 80, 178, 204 of 230 units)
     static const int cell[6] = { 0, 40, 80, 178, 204, 230 };
@@ -1597,10 +1596,9 @@ void CreateMainControls(HWND hw)
     SendMessageW(g_tip, TTM_SETMAXTIPWIDTH, 0, Sc(320));
 }
 
-void RoundMain()
+void SquareMain()                                               
 {
-    RECT r; GetWindowRect(g_main, &r);
-    RoundWindow(g_main, r.right - r.left, r.bottom - r.top, Sc(8));
+    SquareWindow(g_main);
 }
 
 void PaintMain(HWND hw, HDC dc)
@@ -1657,7 +1655,7 @@ void RebuildMain(UINT dpi, const RECT* suggested)
     if (suggested)
         SetWindowPos(g_main, nullptr, suggested->left, suggested->top, Sc(kMainW), Sc(kMainH), SWP_NOZORDER | SWP_NOACTIVATE);
     else SetWindowPos(g_main, nullptr, 0, 0, Sc(kMainW), Sc(kMainH), SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOMOVE);
-    RoundMain();
+    SquareMain();
 }
 
 // The red-line drawing, with or without a recording: the lines of the drawing window (points live 10 s), shown on the
@@ -1885,7 +1883,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     if (!g_main) return 1;
     ApplyTopmost();
     { BOOL off = TRUE; DwmSetWindowAttribute(g_main, 3 /*DWMWA_TRANSITIONS_FORCEDISABLED*/, &off, sizeof(off)); }   // hides at once (the picker and the screenshots do not wait for a fade-out)
-    RoundMain();
+    SquareMain();
     LayoutMainText();
     TrayAdd();
     RegisterHotkeys();
