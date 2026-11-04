@@ -3841,7 +3841,8 @@ static DWORD WINAPI LiveDriver(LPVOID p)
     if (!ov) return 1;
     Sleep(500);                                                        // the veil is drawn
     RECT fr = FxScreenRect();
-    RECT probe = { fr.left + 30, fr.top + 30, fr.left + 38, fr.top + 38 };         // inside the red quarter, away from the lines of the fixture
+    const int py = fr.top + g_fx.h / 2 - 25;                           // the low end of the red quarter: the hint of the picker lies at the top centre of the screen and must not be under the probe
+    RECT probe = { fr.left + 30, py, fr.left + 38, py + 8 };
     auto sample = [&](int* out) { Shot sh = GrabShot(probe); if (sh.px) { const uint8_t* q = sh.px + ((size_t)(sh.h / 2) * sh.w + sh.w / 2) * 4; out[0] = q[2]; out[1] = q[1]; out[2] = q[0]; free(sh.px); } };
     sample(j->before);
     {   // what is under the veil changes: the fixture window moves away (a drawing into its own device context would be clipped by the veil above it)
