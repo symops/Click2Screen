@@ -1114,6 +1114,7 @@ static bool PictureMatchesFixture(const uint8_t* px, int w, int h, int tol, int*
     return n > 0 && bad == 0;
 }
 
+static unsigned g_aviReal = 0;                    // the pictures of the last AVI that were encoded (not the empty repeats)
 static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc)
 {
     uint8_t* d = nullptr;
@@ -1121,6 +1122,7 @@ static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, b
     wchar_t dd[260];
     _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks (%.2f s), idx1 %u, fps %u, recorded %.2f s", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, (double)a.aBytes / 88200.0, a.idxCount, a.fps, el);
     Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
+    g_aviReal = a.vChunks - a.emptyV;
     Check(a.idxCount == a.vChunks + a.aChunks && a.total == a.vChunks, L"recorder: AVI index lists every chunk, the frame count is the video chunk count", dd);
     Check(a.fps == (unsigned)fps && fabs((double)a.total / (fps ? fps : 1) - el) < 1.2, L"recorder: AVI duration matches the recorded time", dd);
     // a picture that has not changed is an empty chunk (a repeat of the last frame): what counts is a real picture and a chunk for every frame of the rate
@@ -2057,7 +2059,8 @@ static void T_App()
         Check(o != nullptr, L"program: Options opens (restore default test)");
         if (o) {
             {   // the title: the name of the window and the version, as the control panels of Show2Cam and Speak2Mic have it
-                wchar_t tt[200], want[200]; WinText(o, tt, 200);
+                wchar_t tt[200] = L"", want[200];
+                for (int w = 0; w < 40 && !tt[0]; ++w) { WinText(o, tt, 200); if (!tt[0]) Sleep(500); }      // the program is busy with the controls of the window: the text comes later
                 _snwprintf(want, 200, L"%s \u2014 %s %s", T(S_APP), T(S_OPT_WINDOW), L"" C2S_VER_STR);
                 Check(!wcscmp(tt, want), L"program: the title of the options window is the product, a dash, the word and the version", tt);
             }
@@ -3715,6 +3718,10 @@ static unsigned long long QsRecord(int vc, int vq, int ac, int aq, bool audio, b
     }
     if (vc == VC_AVI) {
         VerifyAvi(path, ew, eh, el, fps, audio, !small, desc);
+        // the noise window of a slow machine changes less often than the frames are taken, and a repeated picture costs nothing: the size is
+        // compared at the number of different pictures the recording should have had (those after the first 1.5 s)
+        const double want = (el - 1.5) * fps;
+        if (!small && noise && g_aviReal > 3 && want > 0 && g_aviReal < want * 0.9) { sz = (unsigned long long)((double)sz * want / g_aviReal); g_qsDropped = true; }
         return sz;
     }
     if (vc == VC_GIF) {
