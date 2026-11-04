@@ -424,7 +424,7 @@ void BeginRecord()
         RecParams rp = g_target;
         rp.rc = areas[i];
         if (i > 0) rp.cfg.mic = false;                           // one microphone: its sound goes into the first file
-        wcscpy(rp.path, g_outPaths[i]);
+        StrCopy(rp.path, MAX_PATH, g_outPaths[i]);
         Recorder* r = new Recorder;
         wchar_t e2[300] = L"";
         if (!r->Start(rp, e2, 300)) {
@@ -441,7 +441,7 @@ void BeginRecord()
         DeleteRecs();
         g_state = ST_ARMED; UpdatePanel(); return;
     }
-    wcscpy(g_outPath, g_outPaths[n - 1]);
+    StrCopy(g_outPath, MAX_PATH, g_outPaths[n - 1]);
     g_state = ST_RECORDING;
     Beep(false);
     SetTimer(g_panel, TIMER_UI, 250, nullptr);
@@ -1077,7 +1077,7 @@ void Shot(Mode mode)
             Warn(msg); DeleteObject(bmps[i]); bmps[i] = nullptr; continue;
         }
         saved = true;
-        wcscpy(last, path);
+        StrCopy(last, MAX_PATH, path);
         wchar_t msg[MAX_PATH + 40]; _snwprintf(msg, MAX_PATH + 40, T(S_SAVED), path);
         SetStatus(msg);
         DeleteObject(bmps[i]);
@@ -1202,7 +1202,6 @@ void OptCollect(OptState* o, Settings& s)
     auto chk = [&](int id) { return IsDlgButtonChecked(d, id) == BST_CHECKED; };
     s.runAtStartup = chk(O_AUTOSTART); s.topmost = chk(O_TOPMOST); s.capMouse = chk(O_MOUSE); s.highlight = chk(O_HILITE); s.separateMonitors = chk(O_SEPARATE); s.openFolder = chk(O_OPENFOLDER);
     s.sounds = chk(O_SOUNDS); s.notify = chk(O_NOTIFY); s.loopback = chk(O_LOOPBACK); s.mic = chk(O_MIC);
-    auto num = [&](int id, int lo, int hi) { int v = (int)GetDlgItemInt(d, id, nullptr, FALSE); return v < lo ? lo : v > hi ? hi : v; };
     { int i = (int)SendDlgItemMessageW(d, O_DELAY, CB_GETCURSEL, 0, 0); s.delaySec = i < 0 ? 0 : i > 10 ? 10 : i; }
     s.videoCodec = ComboGetData(d, O_VCODEC, s.videoCodec);
     s.audioCodec = (int)SendDlgItemMessageW(d, O_ACODEC, CB_GETCURSEL, 0, 0);
@@ -1506,9 +1505,9 @@ bool OptionsDialog()
     MSG msg;
     bool quit = false; int quitCode = 0;
     while (!o.done) {
-        BOOL r = GetMessageW(&msg, nullptr, 0, 0);
-        if (r == 0) { quit = true; quitCode = (int)msg.wParam; o.ok = false; break; }    // the program is being closed: nothing is saved
-        if (r < 0) break;
+        BOOL msgRes = GetMessageW(&msg, nullptr, 0, 0);
+        if (msgRes == 0) { quit = true; quitCode = (int)msg.wParam; o.ok = false; break; }    // the program is being closed: nothing is saved
+        if (msgRes < 0) break;
         if (!IsDialogMessageW(d, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
     if (owner) EnableWindow(owner, TRUE);
@@ -1562,7 +1561,7 @@ void LayoutMainText()
             wchar_t* nl = wcschr(txt, L'\n');
             wchar_t n[80]; HotkeyName(g_cfg.hotkey[hk], n, 80);
             if (nl) *nl = 0;
-            if (n[0]) { wcscat(txt, L"\n("); wcscat(txt, n); wcscat(txt, L")"); }
+            if (n[0]) { StrAppend(txt, 160, L"\n("); StrAppend(txt, 160, n); StrAppend(txt, 160, L")"); }
         }
         SetWindowTextW(GetDlgItem(g_main, i.id), txt);
     }
@@ -1690,8 +1689,8 @@ void RegisterHotkeys()
         if (!RegisterHotKey(g_main, id, mod, vk)) {
             wchar_t n[80]; HotkeyName(g_cfg.hotkey[i], n, 80);
             Log(L"hotkey: %s (index %d) could not be registered, error %lu", n, i, GetLastError());
-            if (bad[0]) wcscat(bad, L", ");
-            wcscat(bad, n);
+            if (bad[0]) StrAppend(bad, 160, L", ");
+            StrAppend(bad, 160, n);
         }
     }
     if (bad[0]) { wchar_t msg[260]; _snwprintf(msg, 260, T(S_ERR_HOTKEY), bad); Balloon(T(S_APP), msg); }
@@ -1844,8 +1843,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int)
     AppLogOpen(L"panel");
     // c2sautotest.exe runs the real program with its own settings key and its own single-instance name.
     wchar_t envKey[160], mutexName[96] = L"Click2Screen-SingleInstance", suffix[40];
-    if (GetEnvironmentVariableW(L"C2S_REGKEY", envKey, 160) > 0) SettingsUseKey(envKey);
-    if (GetEnvironmentVariableW(L"C2S_INSTANCE", suffix, 40) > 0) wcscat(mutexName, suffix);
+    { DWORD n = GetEnvironmentVariableW(L"C2S_REGKEY", envKey, 160); if (n > 0 && n < 160) SettingsUseKey(envKey); }       // a value that does not fit is not written: not used
+    { DWORD n = GetEnvironmentVariableW(L"C2S_INSTANCE", suffix, 40); if (n > 0 && n < 40) StrAppend(mutexName, 96, suffix); }
     HANDLE mutex = CreateMutexW(nullptr, TRUE, mutexName);
     if (GetLastError() == ERROR_ALREADY_EXISTS) {
         HWND other = FindWindowW(kMainClass, nullptr);

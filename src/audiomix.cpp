@@ -27,7 +27,6 @@ int AudioToMono44k(const float* in, int frames, int channels, int rate, double* 
     double pos = *phase;                                   // position in t[]: t[0] is the last sample of the previous block
     int n = 0;
     float p0 = *prev;
-    float last = *prev;
     auto mono = [&](int k) -> float {                      // t[k] for k >= 1 is the k-th frame of this block
         if (k == 0) return p0;
         const float* f = in + (size_t)(k - 1) * channels;
@@ -41,7 +40,7 @@ int AudioToMono44k(const float* in, int frames, int channels, int rate, double* 
         out[n++] = (int16_t)(v * 32767.0f);
         pos += step;
     }
-    last = mono(frames);
+    const float last = mono(frames);
     *phase = pos - frames;
     if (*phase < 0) *phase = 0;
     *prev = last;
@@ -248,28 +247,31 @@ void SpeakerCapture::Close()
 int SpeakerCapture::Pull(int16_t* out, int cap)
 {
     Impl& d = *m;
-    if (!d.cap) return 0;
+    const int ch = d.channels;                                      // (Open refuses a device without channels)
+    if (!d.cap || ch < 1) return 0;
     int total = 0;
     UINT32 next = 0;
     while (total < cap - 4096 && SUCCEEDED(d.cap->GetNextPacketSize(&next)) && next > 0) {
         BYTE* data = nullptr; UINT32 frames = 0; DWORD flags = 0;
         if (FAILED(d.cap->GetBuffer(&data, &frames, &flags, nullptr, nullptr))) break;
         if (frames > 0) {
-            if (d.tmpCap < (int)frames * d.channels) {
-                free(d.tmp); d.tmpCap = (int)frames * d.channels; d.tmp = (float*)malloc((size_t)d.tmpCap * sizeof(float));
+            const size_t count = (size_t)frames * (size_t)ch;      // samples of the packet (all the channels)
+            if ((size_t)d.tmpCap < count) {
+                free(d.tmp); d.tmpCap = (int)count; d.tmp = (float*)calloc(count, sizeof(float));
+                if (!d.tmp) d.tmpCap = 0;                              // a failed allocation is tried again at the next packet, not remembered as a size
             }
             if (d.tmp) {
-                if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) || !data) memset(d.tmp, 0, (size_t)frames * d.channels * sizeof(float));
-                else if (d.isFloat) memcpy(d.tmp, data, (size_t)frames * d.channels * sizeof(float));
-                else { const int16_t* s = (const int16_t*)data; for (UINT32 i = 0; i < frames * d.channels; ++i) d.tmp[i] = s[i] / 32768.0f; }
+                if ((flags & AUDCLNT_BUFFERFLAGS_SILENT) || !data) memset(d.tmp, 0, count * sizeof(float));
+                else if (d.isFloat) memcpy(d.tmp, data, count * sizeof(float));
+                else { const int16_t* s = (const int16_t*)data; for (size_t i = 0; i < count; ++i) d.tmp[i] = s[i] / 32768.0f; }
                 if (d.rs) {                                                 // the channels averaged, the rate changed by the Windows resampler
-                    if (d.monoCap < (int)frames) { free(d.mono); d.monoCap = (int)frames; d.mono = (float*)malloc((size_t)d.monoCap * sizeof(float)); }
+                    if (d.monoCap < (int)frames) { free(d.mono); d.monoCap = (int)frames; d.mono = (float*)malloc((size_t)d.monoCap * sizeof(float)); if (!d.mono) d.monoCap = 0; }
                     if (d.mono) {
-                        for (UINT32 i = 0; i < frames; ++i) { float sum = 0; for (int c = 0; c < d.channels; ++c) sum += d.tmp[(size_t)i * d.channels + c]; d.mono[i] = sum / d.channels; }
+                        for (UINT32 i = 0; i < frames; ++i) { float sum = 0; for (int c = 0; c < ch; ++c) sum += d.tmp[(size_t)i * ch + c]; d.mono[i] = sum / ch; }
                         total += d.rs->Process(d.mono, (int)frames, out + total, cap - total);
                     }
                 } else
-                    total += AudioToMono44k(d.tmp, (int)frames, d.channels, d.rate, &d.phase, &d.prev, out + total, cap - total);
+                    total += AudioToMono44k(d.tmp, (int)frames, ch, d.rate, &d.phase, &d.prev, out + total, cap - total);
             }
         }
         d.cap->ReleaseBuffer(frames);

@@ -1379,9 +1379,9 @@ static void T_HotkeyKeys()
         HWND hp = CreateWindowExW(0, L"STATIC", L"", WS_POPUP, 0, 0, 10, 10, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         wchar_t alone[200] = L"", withCtrl[200] = L"";
         for (int i = 0; i < 24 && hp; ++i) {
-            wchar_t n[8]; _snwprintf(n, 8, L" F%d", i + 1);
-            if (RegisterHotKey(hp, 9, MOD_NOREPEAT, VK_F1 + i)) UnregisterHotKey(hp, 9); else wcscat(alone, n);
-            if (RegisterHotKey(hp, 9, MOD_CONTROL | MOD_NOREPEAT, VK_F1 + i)) UnregisterHotKey(hp, 9); else wcscat(withCtrl, n);
+            wchar_t fk[8]; _snwprintf(fk, 8, L" F%d", i + 1);
+            if (RegisterHotKey(hp, 9, MOD_NOREPEAT, VK_F1 + i)) UnregisterHotKey(hp, 9); else wcscat(alone, fk);
+            if (RegisterHotKey(hp, 9, MOD_CONTROL | MOD_NOREPEAT, VK_F1 + i)) UnregisterHotKey(hp, 9); else wcscat(withCtrl, fk);
         }
         if (hp) DestroyWindow(hp);
         INFO(L"function keys this system refuses as hotkeys: alone [%s ], with Ctrl [%s ]", alone, withCtrl);
@@ -1711,10 +1711,10 @@ static void T_LongRecord()
     {
         Grabber g; RECT rc = FxScreenRect();
         if (g.Init((rc.right - rc.left + 1) & ~1, (rc.bottom - rc.top + 1) & ~1)) {
-            LARGE_INTEGER f, a, b; QueryPerformanceFrequency(&f); QueryPerformanceCounter(&a);
+            LARGE_INTEGER qf, a, b; QueryPerformanceFrequency(&qf); QueryPerformanceCounter(&a);
             for (int i = 0; i < 20; ++i) g.Grab(rc, p.cfg.capMouse, p.cfg.highlight, true);        // the same work as the recorder does for a frame
             QueryPerformanceCounter(&b);
-            cost = (double)(b.QuadPart - a.QuadPart) / f.QuadPart / 20.0;
+            cost = (double)(b.QuadPart - a.QuadPart) / qf.QuadPart / 20.0;
         }
     }
     // The recorder takes a frame on a boundary of the frame interval, so a capture that is longer than one interval costs two (or more) of them.
@@ -2145,7 +2145,6 @@ static void T_App()
             }
             auto chk = [&](int id, bool v) { SendMessageW(GetDlgItem(o, id), BM_SETCHECK, v ? BST_CHECKED : BST_UNCHECKED, 0); };
             chk(O_AUTOSTART, false); chk(O_TOPMOST, w.topmost); chk(O_SEPARATE, w.separateMonitors); chk(O_MOUSE, w.capMouse); chk(O_HILITE, w.highlight); chk(O_OPENFOLDER, false); chk(O_SOUNDS, false); chk(O_NOTIFY, w.notify); chk(O_LOOPBACK, w.loopback); chk(O_MIC, w.mic);
-            wchar_t n[16];
             SendMessageW(GetDlgItem(o, O_DELAY), CB_SETCURSEL, w.delaySec, 0);
             SelData(GetDlgItem(o, O_VCODEC), w.videoCodec); SendMessageW(GetDlgItem(o, O_ACODEC), CB_SETCURSEL, w.audioCodec, 0);
             SendMessageW(GetDlgItem(o, O_VQ), CB_SETCURSEL, w.videoQuality, 0); SendMessageW(GetDlgItem(o, O_AQ), CB_SETCURSEL, w.audioQuality, 0);
@@ -2469,7 +2468,7 @@ static void T_AppOddities()
     } else if (which >= 4) {                           // the installer closes the program (WM_C2S_QUIT) in the middle of something
         App a;
         if (!StartApp(a, s)) { FAIL(L"program oddities: no window"); StopApp(a, false); return; }
-        const wchar_t* what = L"";
+        const wchar_t* what;
         if (which == 4) {                              // while the region picker is on the screen
             what = L"while the region picker is open";
             PostMessageW(a.main, WM_COMMAND, IDC_REC_REGION, 0);
@@ -2953,9 +2952,9 @@ static void T_Effects()
         FxWipe();
         int after = FxTrailSnapshot(pt, br, 4096, &ver);
         FxStop();
-        wchar_t dd[120]; _snwprintf(dd, 120, L"%d points in two strokes (shape ok %d), after the wipe %d", n, (int)shape, after);
-        Check(shape, L"drawing: the mouse pen adds points in strokes (a repeated point is skipped)", dd);
-        Check(after == 0, L"drawing: wiping removes every line at once", dd);
+        wchar_t dd2[120]; _snwprintf(dd2, 120, L"%d points in two strokes (shape ok %d), after the wipe %d", n, (int)shape, after);
+        Check(shape, L"drawing: the mouse pen adds points in strokes (a repeated point is skipped)", dd2);
+        Check(after == 0, L"drawing: wiping removes every line at once", dd2);
     }
     // the yellow circle round the pointer is for recordings only: a screenshot never has it
     {
@@ -4416,7 +4415,6 @@ namespace {
 const GUID kLabGop        = { 0x95f31b26, 0x95a4, 0x41aa, { 0x93, 0x03, 0x24, 0x6a, 0x7f, 0xc6, 0xee, 0xf1 } };
 const GUID kLabRate       = { 0x1c0608e9, 0x370c, 0x4710, { 0x8a, 0x58, 0xcb, 0x61, 0x81, 0xc4, 0x24, 0x23 } };
 const GUID kLabQvS        = { 0x98332df8, 0x03cd, 0x476b, { 0x89, 0xfa, 0x3f, 0x9e, 0x44, 0x2d, 0xec, 0x9f } };
-const GUID kLabQuality    = { 0xfcbf57a3, 0x7ea5, 0x4b0c, { 0x96, 0x44, 0x69, 0xb4, 0x0c, 0x39, 0xc3, 0x91 } };
 const GUID kLabMaxSpacing = { 0xc16eb52b, 0x73a1, 0x476f, { 0x8d, 0x62, 0x83, 0x9d, 0x6a, 0x02, 0x06, 0x52 } };   // MF_MT_MAX_KEYFRAME_SPACING
 const GUID kLabContentType = { 0x66117aca, 0xeb77, 0x459d, { 0x93, 0x0c, 0xa4, 0x8d, 0x9d, 0x06, 0x83, 0xfc } };
 const GUID kLabRealTime    = { 0x143a0ff6, 0xa131, 0x43da, { 0xb8, 0x1e, 0x98, 0xfb, 0xb8, 0xec, 0x37, 0x8e } };
@@ -4424,7 +4422,6 @@ const GUID kLabCommonLow   = { 0x9d3ecd55, 0x89e8, 0x490a, { 0x97, 0x0a, 0x0c, 0
 const GUID kLabTemporal    = { 0x19caebff, 0xb74d, 0x4cfd, { 0x8c, 0x27, 0xc2, 0xf9, 0xd9, 0x7d, 0x5f, 0x52 } };
 const GUID kLabMaxRef      = { 0x964829ed, 0x94f9, 0x43b4, { 0xb7, 0x4d, 0xef, 0x40, 0x94, 0x4b, 0x69, 0xa0 } };
 const GUID kLabIidApi     = { 0x901db4c7, 0x31ce, 0x41a2, { 0x85, 0xdc, 0x8f, 0xa0, 0xbf, 0x41, 0xb8, 0xda } };
-const GUID kLabIidSwEx    = { 0x588d72ab, 0x5bc1, 0x496a, { 0x87, 0x14, 0xb7, 0x06, 0x17, 0x14, 0x1b, 0x25 } };
 
 static bool LabKeys(const wchar_t* path, int* keys, int cap, int* nKeys, int* total)
 {
@@ -4723,7 +4720,7 @@ static void DirectOne(const DirectCfg& c)
     wchar_t list[300] = L""; size_t ln = 0;
     for (int k = 0; k < idrs && k < 12; ++k) ln += _snwprintf(list + ln, 300 - ln - 1, L"%d ", idrAt[k]);
     Rep(L"INFO", L"direct [%s] %dx%d %d fps: GOP asked %d (when %d, 0x%08lX), read back %u; types out 0x%08lX in 0x%08lX; %d frames in, %d out, %d IDR: %s", c.name, c.w, c.h, c.fps, c.gop, c.when, (unsigned long)hrGop, gopNow, (unsigned long)hrO, (unsigned long)hrI, frames, outSamples, idrs, list);
-    HRESULT hrFin = S_OK; if (sw) { hrFin = sw->Finalize(); if (SUCCEEDED(hrSw) && FAILED(hrFin)) {} sw->Release(); }
+    HRESULT hrFin = S_OK; if (sw) { hrFin = sw->Finalize(); sw->Release(); }
     if (c.mp4) Rep(L"INFO", L"  sink writer on the encoded stream: setup 0x%08lX, WriteSample 0x%08lX, finalize 0x%08lX, file %s", (unsigned long)hrSw, (unsigned long)hrWr, (unsigned long)hrFin, c.file);
     free(pic);
     if (api) api->Release();
@@ -5001,7 +4998,6 @@ static void AacOne(int bytesPerSec, int rep, int rate, const BYTE* pcm, int samp
     ai->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, rate * 2); ai->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 2);
     DWORD st = 0;
     HRESULT h1 = w->AddStream(ao, &st), h2 = SUCCEEDED(h1) ? w->SetInputMediaType(st, ai, nullptr) : h1, h3 = SUCCEEDED(h2) ? w->BeginWriting() : h2;
-    int chunks = 0;
     for (int pos = 0; SUCCEEDED(h3) && pos < samples; pos += 4096) {
         int n = samples - pos < 4096 ? samples - pos : 4096;
         IMFMediaBuffer* b = nullptr; IMFSample* sm = nullptr; BYTE* d = nullptr;
@@ -5009,7 +5005,7 @@ static void AacOne(int bytesPerSec, int rep, int rate, const BYTE* pcm, int samp
         memcpy(d, pcm + (size_t)pos * 2, (size_t)n * 2); b->Unlock(); b->SetCurrentLength(n * 2);
         MFCreateSample(&sm); sm->AddBuffer(b);
         sm->SetSampleTime((LONGLONG)pos * 10000000LL / rate); sm->SetSampleDuration((LONGLONG)n * 10000000LL / rate);
-        h3 = w->WriteSample(st, sm); sm->Release(); b->Release(); ++chunks;
+        h3 = w->WriteSample(st, sm); sm->Release(); b->Release();
     }
     HRESULT hf = w->Finalize();
     w->Release(); ao->Release(); ai->Release();
@@ -5130,7 +5126,7 @@ static int RunVddSetup(int count, const wchar_t* dir)
         if (f == INVALID_HANDLE_VALUE) { Rep(L"INFO", L"vdd: no %s", src); return 1; }
         DWORD sz = GetFileSize(f, nullptr), got = 0; char* b = (char*)calloc(sz + 64, 1); ReadFile(f, b, sz, &got, nullptr); CloseHandle(f);
         char* ca = strstr(b, "<count>"); char* ce = strstr(b, "</count>");
-        if (!ca || !ce) { Rep(L"INFO", L"vdd: the settings have no <count>"); free(b); return 1; }
+        if (!ca || !ce || ce < ca) { Rep(L"INFO", L"vdd: the settings have no <count>"); free(b); return 1; }
         char* out = (char*)calloc(got + 64, 1);
         size_t head = (size_t)(ca + 7 - b);
         memcpy(out, b, head);

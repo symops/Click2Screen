@@ -135,7 +135,7 @@ void SettingsLoad(Settings& s)
     {   // one folder; the settings of an older version kept two, the one of the videos stays
         wchar_t f[MAX_PATH]; GetStr(k, L"OutputFolder", f, MAX_PATH, L"");
         if (!f[0]) GetStr(k, L"VidOutputFolder", f, MAX_PATH, L"");
-        if (f[0]) wcscpy(s.folder, f);
+        if (f[0]) StrCopy(s.folder, MAX_PATH, f);
     }
     GetStr(k, L"FileName", s.fileName, 128, d.fileName);
     s.imageFormat  = Clamp((int)GetDw(k, L"ImageFormat", d.imageFormat), 0, IMG_COUNT - 1);
@@ -162,7 +162,7 @@ void SettingsLoad(Settings& s)
         s.hotkey[i] = c == 0 || HotkeyUsable(c) ? c : d.hotkey[i];
     }
     RegCloseKey(k);
-    if (!TemplateValid(s.fileName)) wcscpy(s.fileName, d.fileName);
+    if (!TemplateValid(s.fileName)) StrCopy(s.fileName, 128, d.fileName);
 }
 
 bool SettingsStored()
@@ -233,7 +233,7 @@ bool TemplateValid(const wchar_t* tpl)
     for (const wchar_t* p = tpl; *p; ++p) {
         if (*p == L'#') { if (!inRun) { ++runs; inRun = true; } continue; }
         inRun = false;
-        if (*p == L'$' && wcschr(L"YMDHNS", p[1]) && p[1]) { ++p; ++literal; continue; }
+        if (*p == L'$' && p[1] && wcschr(L"YMDHNS", p[1])) { ++p; ++literal; continue; }
         if (*p == L'%') {   // %USERNAME% only
             if (_wcsnicmp(p, L"%USERNAME%", 10) == 0) { p += 9; ++literal; continue; }
         }

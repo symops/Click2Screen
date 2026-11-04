@@ -38,6 +38,22 @@ enum Str {
     S_OPT_TOPMOST, S_OPT_SEPARATE, S_OPT_WINDOW,
     S__COUNT
 };
+// Bounded copies: the destination (n characters) is always terminated and a longer source is cut, the source is read for n - 1 characters at most. For the values
+// of the registry and the paths made by _snwprintf (which does not terminate what it truncates) instead of an unbounded wcscpy / wcscat.
+inline void StrCopy(wchar_t* d, size_t n, const wchar_t* s)
+{
+    if (!n) return;
+    size_t i = 0;
+    for (; i + 1 < n && s[i]; ++i) d[i] = s[i];
+    d[i] = 0;
+}
+inline void StrAppend(wchar_t* d, size_t n, const wchar_t* s)
+{
+    size_t l = 0;
+    while (l < n && d[l]) ++l;
+    if (l >= n) { if (n) d[n - 1] = 0; return; }
+    StrCopy(d + l, n - l, s);
+}
 const wchar_t* T(Str s);
 void LangSelect(int setting);   // 0 = the Windows display language, 1..LangCount() = a language of the table
 int  LangCount();

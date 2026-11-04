@@ -55,7 +55,10 @@ void Say(const wchar_t* fmt, ...)
     va_list ap; va_start(ap, fmt); _vsnwprintf(line, 590, fmt, ap); va_end(ap);
     line[590] = 0;
     Log(L"%s", line);
-    if (!g_silent && g_wnd) PostMessageW(g_wnd, WM_APP_LOG, 0, (LPARAM)_wcsdup(line));
+    if (!g_silent && g_wnd) {
+        wchar_t* copy = _wcsdup(line);                                 // the window frees it when the message arrives; a message that was not sent is freed here
+        if (copy && !PostMessageW(g_wnd, WM_APP_LOG, 0, (LPARAM)copy)) free(copy);
+    }
 }
 
 bool KnownFolder(const KNOWNFOLDERID& id, wchar_t* out)
@@ -192,7 +195,7 @@ bool DoInstall()
 {
     Say(T(S_SU_LOG_INSTALL));
     wchar_t dir[MAX_PATH];
-    if (!GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", dir, MAX_PATH) || !dir[0]) wcscpy(dir, g_dir);   // an installed copy stays where it is
+    if (!GetRegStr(HKEY_LOCAL_MACHINE, kUninstallKey, L"InstallLocation", dir, MAX_PATH) || !dir[0]) StrCopy(dir, MAX_PATH, g_dir);   // an installed copy stays where it is
     if (!dir[0] && !ProgramDir(dir)) { Say(T(S_SU_LOG_NODIR)); return false; }
     if (!ValidDir(dir)) { Say(T(S_SU_LOG_BADDIR)); return false; }
     wchar_t srcExe[MAX_PATH], srcSetup[MAX_PATH], srcUn[MAX_PATH];
@@ -210,7 +213,7 @@ bool DoInstall()
     _snwprintf(dstUn, MAX_PATH, L"%s\\uninstall.cmd", dir);
     if (!CopyOne(srcExe, dstExe)) { Say(T(S_SU_LOG_COPY_FAIL), L"Click2Screen.exe", GetLastError()); return false; }
     wchar_t a[MAX_PATH], b[MAX_PATH];
-    wcscpy(a, srcSetup); wcscpy(b, dstSetup);
+    StrCopy(a, MAX_PATH, srcSetup); StrCopy(b, MAX_PATH, dstSetup);
     if (_wcsicmp(a, b) != 0 && !CopyOne(srcSetup, dstSetup)) { Say(T(S_SU_LOG_COPY_FAIL), L"Click2Screen-Setup.exe", GetLastError()); return false; }
     if (GetFileAttributesW(srcUn) != INVALID_FILE_ATTRIBUTES) CopyOne(srcUn, dstUn);
 
@@ -292,7 +295,7 @@ bool DoRemove()
     if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, kRunKey, 0, KEY_WRITE, &k) == ERROR_SUCCESS) { RegDeleteValueW(k, L"Click2Screen"); RegCloseKey(k); }
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_WRITE, &k) == ERROR_SUCCESS) { RegDeleteValueW(k, L"Click2Screen"); RegCloseKey(k); }
     RegDeleteKeyW(HKEY_LOCAL_MACHINE, kUninstallKey);
-    if (g_regDir[0] ? (wcscpy(dir, g_regDir), true) : ProgramDir(dir)) {
+    if (g_regDir[0] ? (StrCopy(dir, MAX_PATH, g_regDir), true) : ProgramDir(dir)) {
         wchar_t self[MAX_PATH], want[MAX_PATH];
         GetModuleFileNameW(nullptr, self, MAX_PATH);
         _snwprintf(want, MAX_PATH, L"%s\\Click2Screen-Setup.exe", dir);
@@ -364,19 +367,19 @@ void Refresh()
     SetWindowTextW(Ctl(IDC_VERSION), vl);
     {   // The version line is as wide as its text (the label must not lie under the link: it would be painted over it at every refresh), the link
         // stands right behind it, and on the next line when it does not fit in the window (a long text of another language, a large font).
-        HWND ver = Ctl(IDC_VERSION), lnk = Ctl(IDC_LINK);
+        HWND verWnd = Ctl(IDC_VERSION), lnk = Ctl(IDC_LINK);
         SIZE s1 = { 0, 0 }, s2 = { 0, 0 };
-        HDC dc = GetDC(ver);
+        HDC dc = GetDC(verWnd);
         if (dc) {
             HGDIOBJ of = SelectObject(dc, g_font); GetTextExtentPoint32W(dc, vl, (int)wcslen(vl), &s1);
             SelectObject(dc, g_fontLink ? g_fontLink : g_font); GetTextExtentPoint32W(dc, kProjectText, (int)wcslen(kProjectText), &s2);
-            SelectObject(dc, of); ReleaseDC(ver, dc);
+            SelectObject(dc, of); ReleaseDC(verWnd, dc);
         }
         RECT cr; GetClientRect(g_wnd, &cr);
         // rows as high as the font needs, one under the other, so nothing overlaps at any scale of the screen
         const int x0 = Sc(100), y0 = Sc(67), gap = Sc(8), pad = Sc(6);
         const int rowH = (s1.cy > s2.cy ? s1.cy : s2.cy) + Sc(3);
-        SetWindowPos(ver, nullptr, x0, y0, s1.cx + pad, rowH, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(verWnd, nullptr, x0, y0, s1.cx + pad, rowH, SWP_NOZORDER | SWP_NOACTIVATE);
         bool sameLine = x0 + s1.cx + gap + s2.cx + pad <= cr.right - Sc(12);
         SetWindowPos(lnk, HWND_TOP, sameLine ? x0 + s1.cx + gap : x0, sameLine ? y0 : y0 + rowH, s2.cx + pad, rowH, SWP_NOACTIVATE | SWP_SHOWWINDOW);
         {   // the header ends under the last row (with a little air); the plain header already has room for one row
@@ -638,7 +641,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show)
             d += 5; while (*d == L' ') ++d;
             bool q = *d == L'"'; if (q) ++d;
             size_t n = 0;
-            while (d[n] && (q ? d[n] != L'"' : d[n] != L' ') && n < MAX_PATH - 1) { g_dir[n] = d[n]; ++n; }
+            while (n < MAX_PATH - 1 && d[n] && (q ? d[n] != L'"' : d[n] != L' ')) { g_dir[n] = d[n]; ++n; }
             g_dir[n] = 0;
         }
     }

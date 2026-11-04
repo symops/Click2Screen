@@ -616,7 +616,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
         }
         if (!ok) {                                                           // the sound asked for cannot be recorded: an error, not a silent file
             d.CloseAudio();
-            return fail(fmt == VC_WMV ? L"WMA audio encoder" : mp3 ? L"MP3 audio encoder" : L"AAC audio encoder", hrAudio ? hrAudio : MF_E_INVALIDMEDIATYPE);
+            return fail(fmt == VC_WMV ? L"WMA audio encoder" : mp3 ? L"MP3 audio encoder" : L"AAC audio encoder", FAILED(hrAudio) ? hrAudio : MF_E_INVALIDMEDIATYPE);
         }
         bool micOk = !p.cfg.mic || (ok && d.OpenAudio());                  // the microphone: a message when it is refused
         if (ok) d.hasAudio = true;                                          // the stream exists; the mix is silence where a source gives nothing

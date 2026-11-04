@@ -44,7 +44,7 @@ BOOL CALLBACK EnumProc(HWND hw, LPARAM)
     DWORD cloaked = 0;
     if (SUCCEEDED(DwmGetWindowAttribute(hw, 14 /*DWMWA_CLOAKED*/, &cloaked, sizeof(cloaked))) && cloaked) return TRUE;
     wchar_t cls[64]; GetClassNameW(hw, cls, 64);
-    if (!wcscmp(cls, L"Progman") || !wcscmp(cls, L"WorkerW") || !wcscmp(cls, L"Shell_TrayWnd") ) { /* allowed: the taskbar can be recorded */ }
+    // (the desktop windows and the taskbar are listed too: the taskbar can be recorded)
     RECT rc;
     if (!WindowVisibleRect(hw, &rc)) return TRUE;
     if (rc.right - rc.left < 8 || rc.bottom - rc.top < 8) return TRUE;
