@@ -301,6 +301,7 @@ void FxTestTrailShade(int x, int y, bool newStroke, int shade)
     AddPoint(x, y, GetTickCount64(), newStroke, shade & 255);       // a point of this moment with the shade the test wants (the time is not moved: with a period longer than the lifetime the point would be dead at once)
 }
 
+unsigned char FxShadeAtTick(unsigned long long tickMs) { return ShadeAt(tickMs); }       // (autotest) the shade a point drawn at that tick gets
 void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }
 void FxTestClick(int x, int y, int button) { AddClick(x, y, button, GetTickCount64()); }
 void FxTestTrail(int x, int y, bool newStroke, unsigned long long ageMs)

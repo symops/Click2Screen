@@ -182,6 +182,7 @@ void FxWipe();                                     // wipes all the lines at onc
 void FxDraw(HDC dc, const RECT& src, int outW, int outH, bool waves);   // the lines always, the click waves when `waves`
 int  FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, unsigned char* shade = nullptr);   // the visible lines (the on-screen copy); shade: 0..255 round the colour wheel for each point
 void FxPaintLines(uint32_t* bits, int bw, int bh, bool topDown, bool alpha, const POINT* pt, const unsigned char* brk, const unsigned char* shade, int n, float width);   // the lines of the drawing: smooth, anti-aliased, a gradient
+unsigned char FxShadeAtTick(unsigned long long tickMs);        // (autotest) the shade of a point drawn at this GetTickCount64 value
 COLORREF FxLineColor(unsigned char shade);          // the colour of a shade of the gradient (the rainbow)
 bool FxTestHook(unsigned* clicksSeen, unsigned long* err);   // (autotest) is the hook installed, how many clicks it saw
 void FxTestTrailLifetime(unsigned ms);             // (autotest) how long a trail point lives; 0 = five minutes
