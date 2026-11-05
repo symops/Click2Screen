@@ -66,7 +66,7 @@ void SettingsDefaults(Settings& s)
     s.fps = 25; s.language = 0;
     s.panelMode = 0; s.panelH = 1; s.panelV = 2; s.panelX = 100; s.panelY = 100; s.panelInVideo = false;
     s.panelTime = s.panelSize = s.panelKey = true;
-    s.wmShot = s.wmVideo = false; s.wmParts = WMP_TEXT; wcscpy(s.wmDate, L"$D.$M.$Y $H-$N-$S"); s.wmText[0] = 0; s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmColor = RGB(120, 120, 120); s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
+    s.wmShot = s.wmVideo = false; s.wmParts = 0; wcscpy(s.wmDate, L"$D.$M.$Y $H-$N-$S"); wcscpy(s.wmText, L"Click2Screen"); s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmColor = RGB(120, 120, 120); s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
 }
 
 int PanelLayout(const Settings& s, int left[6])

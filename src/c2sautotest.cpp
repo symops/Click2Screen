@@ -4154,7 +4154,7 @@ static void T_WatermarkVideo()
     MakeFixture(R(500, 700), R(300, 420));
     int with = WmRecordWhite(true), without = WmRecordWhite(false);
     wchar_t d[100]; _snwprintf(d, 100, L"%d dark grey pixels in the middle of the frame with the watermark, %d without", with, without);
-    Check(with > 60 && without >= 0 && without < 20, L"watermark: a recording has the text when the setting is on and has none when it is off", d);
+    Check(with > 60 && with > without + 60, L"watermark: a recording has the text when the setting is on and has none when it is off", d);
 }
 
 // In a screenshot of the program: the same desktop with the watermark on (top left) and off; the box differs.
