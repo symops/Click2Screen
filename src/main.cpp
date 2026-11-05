@@ -197,8 +197,7 @@ static void TrayBlink()
 
 void TrayTip()
 {
-    if (g_state != ST_RECORDING) g_trayBlinkOff = false;
-    else if (g_trayBlinkOff) g_trayBlinkOff = false;          // (a new state starts with the circle lit)
+    if (g_state != ST_RECORDING) g_trayBlinkOff = false;       // (UpdatePanel calls this every 250 ms: during a recording the blink phase must stay)
     if (!g_trayAdded) return;
     const wchar_t* s = T(S_APP);
     if (g_state == ST_RECORDING) s = T(S_RECORDING);
