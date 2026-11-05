@@ -2,8 +2,8 @@
 #define C2S_VER_MAJOR 1
 #define C2S_VER_MINOR 0
 #define C2S_VER_BUILD 309
-#define C2S_VER_REV   1054
-#define C2S_VER_STR   "1.0.309.1054"
+#define C2S_VER_REV   1090
+#define C2S_VER_STR   "1.0.309.1090"
 #define C2S_AUTHOR_STR "Symo"
 #define C2S_EMAIL_STR "symops@gmail.com"
 #define C2S_COPYRIGHT_STR "(c) 2026 Symo"
