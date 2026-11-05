@@ -1491,7 +1491,7 @@ void PaintOptions(OptState* o, HDC dc)
     const COLORREF face = GetSysColor(COLOR_BTNFACE), line = RGB(160, 160, 160);
     RECT cr; GetClientRect(o->dlg, &cr);
     Box(dc, 0, 0, cr.right, cr.bottom, face);
-    RECT pg = { Sc(16), Sc(37), Sc(513), Sc(287) };
+    RECT pg = { Sc(16), Sc(37), Sc(513), Sc(293) };
     if (o->sel == 1) Box(dc, Sc(34), Sc(198), Sc(459), 1, RGB(214, 214, 214));          // the faint line between the video settings and the picture format
     Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
     Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
@@ -1560,8 +1560,8 @@ bool OptionsDialog()
     }
     OptState o; memset(&o, 0, sizeof(o));
     o.s = g_cfg;
-    // 526 x 340 units as the original: tabs at y 16, the page frame 16..513 x 37..287, buttons 75 x 22 at y 303.
-    int W = Sc(526), H = Sc(340);
+    // 526 x 340 units as the original: tabs at y 16, the page frame 16..513 x 37..293, buttons 75 x 22 at y 309.
+    int W = Sc(526), H = Sc(346);
     RECT r = { 0, 0, W, H };
     AdjustWindowRect(&r, WS_CAPTION | WS_SYSMENU, FALSE);
     HWND owner = g_main && IsWindowVisible(g_main) ? g_main : nullptr;
@@ -1699,7 +1699,7 @@ bool OptionsDialog()
     }
 
     // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
-    auto btn = [&](const wchar_t* text, DWORD style, int x, int w, int id) { MakeCtl(d, L"BUTTON", text, WS_TABSTOP | style, Sc(x), Sc(303), Sc(w), Sc(22), id); };
+    auto btn = [&](const wchar_t* text, DWORD style, int x, int w, int id) { MakeCtl(d, L"BUTTON", text, WS_TABSTOP | style, Sc(x), Sc(309), Sc(w), Sc(22), id); };
     btn(T(S_RESTORE_DEFAULT), BS_PUSHBUTTON, 16, 170, O_DEFAULTS);
     btn(T(S_BTN_OK), BS_DEFPUSHBUTTON, 354, 75, IDOK);
     btn(T(S_BTN_CANCEL), BS_PUSHBUTTON, 435, 75, IDCANCEL);
