@@ -356,10 +356,12 @@ static uint32_t* MarkFromText(const Settings& s, const wchar_t* text, int* mw, i
             for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
                 const int cov = (int)(bits[(size_t)y * W + x] & 0xFF);            // the coverage of the text (white on black, smoothed)
                 const int sh = x > 0 && y > 0 ? (int)(bits[(size_t)(y - 1) * W + (x - 1)] & 0xFF) : 0;       // the shadow: the same, a pixel to the lower right
-                const int at = cov * o / 100;                                     // the text: white
-                const int as = sh * o * 6 / 1000;                                 // the shadow: black, a little weaker
-                const int a = at + as * (255 - at) / 255;
-                out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)at << 16) | ((uint32_t)at << 8) | (uint32_t)at;
+                const int at = cov * o / 100;                                     // the text: dark grey (at any opacity)
+                const int as = sh * o * 6 / 1000;                                 // the halo: white, a little weaker, so the text can be read on a dark picture too
+                const int under = as * (255 - at) / 255;                          // the part of the halo that is not covered by the text
+                const int a = at + under;
+                const int c = at * 64 / 255 + under;                              // premultiplied: the grey 64 of the text + the white of the halo
+                out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)c << 16) | ((uint32_t)c << 8) | (uint32_t)c;
             }
             *mw = W; *mh = H;
         }

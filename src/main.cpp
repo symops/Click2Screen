@@ -1577,13 +1577,14 @@ bool OptionsDialog()
         const Str* names = kPageNames;
         int w[kPages], sum = 0;
         for (int i = 0; i < kPages; ++i) { SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz); w[i] = sz.cx; sum += sz.cx; }
-        int pad = Sc(16);                                                  // a long translation squeezes the padding so that all the tabs stay over the page
-        if (sum + kPages * pad > Sc(497)) pad = (Sc(497) - sum) / kPages > Sc(4) ? (Sc(497) - sum) / kPages : Sc(4);
+        int pad = (Sc(497) - sum) / kPages;                                // the tabs fill the whole width of the page frame (no step at its right edge)
+        if (pad < Sc(4)) pad = Sc(4);
         int x = Sc(16);
         for (int i = 0; i < kPages; ++i) {
             o.tabRc[i].left = x; o.tabRc[i].right = x + w[i] + pad; o.tabRc[i].top = Sc(16); o.tabRc[i].bottom = Sc(37);
             x = o.tabRc[i].right;
         }
+        o.tabRc[kPages - 1].right = Sc(513);                               // the rest of the division goes to the last tab: it ends exactly at the frame
         SelectObject(dc, of); ReleaseDC(d, dc);
     }
     // All positions are in 96-dpi units inside the dialog; Sc() scales them.

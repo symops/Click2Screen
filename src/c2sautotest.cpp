@@ -4027,10 +4027,10 @@ static void T_WatermarkApply()
         for (int k = 0; k < 2; ++k) {
             st.wmOpacity = k ? 40 : 100;
             Watermark* wm = WatermarkCreate(st, W, H); grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
-            for (int y = 100; y < 200; ++y) for (int x = 100; x < 300; ++x) { const uint8_t* q = pic + ((size_t)(H - 1 - y) * W + x) * 4; if (q[0] > 250 && q[1] > 250 && q[2] > 250) ++bright[k]; }
+            for (int y = 100; y < 200; ++y) for (int x = 100; x < 300; ++x) { const uint8_t* q = pic + ((size_t)(H - 1 - y) * W + x) * 4; if (q[0] < 90 && q[1] < 90 && q[2] < 90) ++bright[k]; }
         }
-        wchar_t d[100]; _snwprintf(d, 100, L"%d white pixels at 100 %%, %d at 40 %%", bright[0], bright[1]);
-        Check(bright[0] > 50 && bright[1] == 0, L"watermark: a weaker mark never gets as white as a full one", d);
+        wchar_t d[100]; _snwprintf(d, 100, L"%d dark pixels at 100 %%, %d at 40 %%", bright[0], bright[1]);
+        Check(bright[0] > 50 && bright[1] == 0, L"watermark: a weaker mark never gets as dark as a full one (the text is dark grey)", d);
     }
     {   // the date and time: the template is expanded for now; text + date stand one under another
         wchar_t t[160]; WatermarkDateString(L"$D.$M.$Y $H-$N-$S", t, 160);
@@ -4124,7 +4124,7 @@ static int WmRecordWhite(bool on)
             for (int y = dh / 2 - 40; y < dh / 2 + 40; ++y) for (int x = dw / 2 - 150; x < dw / 2 + 150; ++x) {
                 if (x < 0 || y < 0 || x >= dw || y >= dh) continue;
                 const uint8_t* q = px + ((size_t)y * dw + x) * 4;
-                if (q[0] > 225 && q[1] > 225 && q[2] > 225) ++white;
+                if (q[0] < 110 && q[1] < 110 && q[2] < 110 && abs((int)q[0] - (int)q[2]) < 14) ++white;       // the text is dark grey
             }
             delete[] px;
         }
@@ -4140,7 +4140,7 @@ static void T_WatermarkVideo()
     if (!ImageFormatAvailable(IMG_JPG)) { SKIP(L"watermark in a recording: no JPEG encoder here"); return; }
     MakeFixture(R(500, 700), R(300, 420));
     int with = WmRecordWhite(true), without = WmRecordWhite(false);
-    wchar_t d[100]; _snwprintf(d, 100, L"%d white pixels in the middle of the frame with the watermark, %d without", with, without);
+    wchar_t d[100]; _snwprintf(d, 100, L"%d dark grey pixels in the middle of the frame with the watermark, %d without", with, without);
     Check(with > 60 && without >= 0 && without < 20, L"watermark: a recording has the text when the setting is on and has none when it is off", d);
 }
 
