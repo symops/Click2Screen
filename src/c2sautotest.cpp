@@ -4188,6 +4188,117 @@ static void T_PanelLook()
     }
 }
 
+// ---- the icon of the tray for the states of a recording ------------------------------------------------------------------------------------------------------
+static bool IconPixels(HICON ic, uint32_t** pxOut, int* w, int* h)
+{
+    ICONINFO ii; memset(&ii, 0, sizeof(ii));
+    if (!GetIconInfo(ic, &ii) || !ii.hbmColor) return false;
+    BITMAP bm; GetObject(ii.hbmColor, sizeof(bm), &bm);
+    *w = bm.bmWidth; *h = bm.bmHeight;
+    uint32_t* px = (uint32_t*)calloc((size_t)(*w) * (*h), 4); *pxOut = px;
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = *w; bi.bmiHeader.biHeight = -*h; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+    HDC dc = GetDC(nullptr);
+    bool ok = px && GetDIBits(dc, ii.hbmColor, 0, *h, px, &bi, DIB_RGB_COLORS) != 0;
+    ReleaseDC(nullptr, dc);
+    DeleteObject(ii.hbmColor); if (ii.hbmMask) DeleteObject(ii.hbmMask);
+    return ok;
+}
+
+static void T_StateIcon()
+{
+    const int sizes[2] = { 16, 32 };
+    for (int size : sizes) {
+        // a base icon: opaque blue, 32 bit with alpha
+        BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = size; bi.bmiHeader.biHeight = -size; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+        uint32_t* bits = nullptr; HDC dc = GetDC(nullptr);
+        HBITMAP color = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, nullptr, 0); ReleaseDC(nullptr, dc);
+        HBITMAP mask = CreateBitmap(size, size, 1, 1, nullptr);
+        if (!color || !bits || !mask) { FAIL(L"state icon: no bitmap"); return; }
+        for (int i = 0; i < size * size; ++i) bits[i] = 0xFF0000FFu;
+        ICONINFO n; memset(&n, 0, sizeof(n)); n.fIcon = TRUE; n.hbmColor = color; n.hbmMask = mask;
+        HICON base = CreateIconIndirect(&n); DeleteObject(color); DeleteObject(mask);
+        Check(base != nullptr, L"state icon: a base icon");
+        Check(MakeStateIcon(base, 0) == base, L"state icon: at rest the icon is the icon of the program itself");
+        struct St { int state; int r0, r1, g0, g1, b0, b1; const wchar_t* name; } sts[] = {
+            { 1, 230, 255, 150, 220, 0, 90, L"ready (amber)" }, { 2, 230, 255, 80, 140, 0, 60, L"countdown (orange)" }, { 3, 190, 240, 0, 80, 0, 80, L"recording (red)" },
+        };
+        for (const St& st : sts) {
+            HICON ic = MakeStateIcon(base, st.state);
+            uint32_t* px = nullptr; int w = 0, h = 0;
+            bool ok = ic != base && IconPixels(ic, &px, &w, &h) && w == size;
+            int badge = 0, blue = 0, upperLeftBlue = 0;
+            if (ok) for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) {
+                const uint32_t q = px[(size_t)y * w + x]; const int R = (q >> 16) & 255, G = (q >> 8) & 255, B = q & 255;
+                if (x > w / 2 && y > h / 2 && R >= st.r0 && R <= st.r1 && G >= st.g0 && G <= st.g1 && B >= st.b0 && B <= st.b1) ++badge;
+                if (R < 30 && G < 30 && B > 220) ++blue;
+                if (x < w / 3 && y < h / 3 && R < 30 && B > 220) ++upperLeftBlue;
+            }
+            wchar_t d[160]; _snwprintf(d, 160, L"%dx%d, %d pixels of the badge in the lower right quarter, %d of the icon left, %d in the upper left third", size, size, badge, blue, upperLeftBlue);
+            Check(ok && badge >= (size >= 32 ? 40 : 10) && upperLeftBlue >= (size / 3) * (size / 3) - 1, st.name, d);
+            if (ic != base) DestroyIcon(ic);
+            free(px);
+        }
+        {   // paused: a dark disc with white bars
+            HICON ic = MakeStateIcon(base, 4);
+            uint32_t* px = nullptr; int w = 0, h = 0;
+            int white = 0, dark = 0;
+            bool ok = ic != base && IconPixels(ic, &px, &w, &h);
+            if (ok) for (int y = h / 2; y < h; ++y) for (int x = w / 2; x < w; ++x) {
+                const uint32_t q = px[(size_t)y * w + x]; const int R = (q >> 16) & 255, G = (q >> 8) & 255, B = q & 255;
+                if (R > 245 && G > 245 && B > 245) ++white;
+                if (R > 40 && R < 90 && G > 50 && G < 100 && B > 70 && B < 120) ++dark;
+            }
+            wchar_t d[100]; _snwprintf(d, 100, L"%dx%d, %d white and %d dark pixels in the lower right quarter", size, size, white, dark);
+            Check(ok && white >= 4 && dark >= 4, L"paused (bars)", d);
+            if (ic != base) DestroyIcon(ic);
+            free(px);
+        }
+        DestroyIcon(base);
+    }
+}
+
+// The panel goes to the tray and comes back at any moment of a recording (the commands of the tray menu).
+static void T_TrayPanel()
+{
+    MakeFixture(R(300, 500), R(220, 360));
+    Settings st; PrepareApp(st); st.notify = false; st.delaySec = 0; st.panelMode = 0;
+    _snwprintf(st.fileName, 128, L"tray $H-$N-$S");
+    st.videoCodec = VC_AVI;                       // a plain name: Wine without a locale does not list files with some random letters
+    App a;
+    if (!StartApp(a, st, L"", true)) { FAIL(L"tray panel: the program did not start"); StopApp(a, false); return; }
+    int before = CountFiles(st.folder);
+    PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+    HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+    Check(panel != nullptr, L"tray panel: the panel is there");
+    if (panel) {
+        auto vis = [&](bool want, DWORD ms) { DWORD e = GetTickCount() + WMS(ms); while ((IsWindowVisible(panel) != 0) != want && (int)(e - GetTickCount()) > 0) Sleep(50); return (IsWindowVisible(panel) != 0) == want; };
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_HIDEPANEL, 0);
+        Check(vis(false, 3000), L"tray panel: the tray command hides the panel while a recording is ready");
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL, 0);
+        Check(vis(true, 3000), L"tray panel: the tray command shows it again");
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_PAUSE, 0);                  // Start from the tray
+        LangSelect(st.language);
+        Check(WaitText(panel, IDC_P_START, T(S_PAUSE), 8000), L"tray panel: the recording runs");
+        Pump(800);
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_HIDEPANEL, 0);
+        Check(vis(false, 3000), L"tray panel: the panel goes to the tray while it records");
+        Pump(1000);
+        Check(AppAlive(a) && FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) != nullptr, L"tray panel: the recording goes on with the panel hidden");
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL, 0);
+        Check(vis(true, 3000), L"tray panel: and the panel comes back");
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_PANEL + 0, 0);
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_HIDEPANEL, 0);
+        Check(vis(false, 3000), L"tray panel: hidden again");
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_STOP, 0);                   // Stop from the tray: the file is saved
+        DWORD e = GetTickCount() + WMS(15000);
+        while (CountFiles(st.folder) <= before && (int)(e - GetTickCount()) > 0) Sleep(100);
+        Check(CountFiles(st.folder) > before, L"tray panel: a recording stopped from the tray with the panel hidden is saved");
+    }
+    StopApp(a);
+}
+
 struct MonInfo { RECT rc; wchar_t dev[40]; bool primary; };
 struct MonEnumCtx { MonInfo* out; int n; };
 static BOOL CALLBACK MonEnumCb(HMONITOR m, HDC, LPRECT, LPARAM lp)
@@ -4254,6 +4365,30 @@ static void ArrangeMonitors(int layout)
 
 // The real program: the desktop hotkey saves one picture per monitor (a design of the original recorder, kept). The program shows a toast of the
 // system when it starts (its keys are used by another instance): it comes last, after every other measure of the layout.
+// The strip of a whole-screen recording goes to the monitor the window of the program stood on when the recording was called.
+static void MonAppPanelTest(const wchar_t* head, const MonInfo* mon, int nm)
+{
+    Settings st; PrepareApp(st); st.notify = false; st.delaySec = 0; st.panelMode = 0; st.panelH = 1; st.panelV = 2;
+    App a;
+    if (!StartApp(a, st)) { FAIL(L"monitors: the program did not start (the strip)"); StopApp(a, false); return; }
+    for (int k = 0; k < nm && k < 3; ++k) {
+        SetWindowPos(a.main, nullptr, mon[k].rc.left + 60, mon[k].rc.top + 60, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        Pump(500);
+        PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+        HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+        RECT r = { 0, 0, 0, 0 }; if (panel) GetWindowRect(panel, &r);
+        POINT c = { (r.left + r.right) / 2, (r.top + r.bottom) / 2 };
+        const bool inside = panel && c.x >= mon[k].rc.left && c.x < mon[k].rc.right && c.y >= mon[k].rc.top && c.y < mon[k].rc.bottom;
+        wchar_t d[300]; _snwprintf(d, 300, L"%s: the window on monitor %d (%ld,%ld %ldx%ld), the strip at %ld,%ld", head, k, (long)mon[k].rc.left, (long)mon[k].rc.top, (long)(mon[k].rc.right - mon[k].rc.left), (long)(mon[k].rc.bottom - mon[k].rc.top), (long)r.left, (long)r.top);
+        Check(inside, L"monitors: the strip of a whole-screen recording stands on the monitor of the window of the program", d);
+        PostMessageW(a.main, WM_COMMAND, ID_TRAY_STOP, 0);
+        DWORD e = GetTickCount() + WMS(8000);
+        while (FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) && (int)(e - GetTickCount()) > 0) Sleep(100);
+        Pump(500);
+    }
+    StopApp(a);
+}
+
 static void MonAppDesktopTest(const wchar_t* head, const MonInfo* mon, int nm, bool separate = true)
 {
     const int fmon = nm > 1 ? 1 : 0;                                   // the fixture inside the second monitor
@@ -4386,6 +4521,7 @@ static void T_Monitors()
             wchar_t head2[300]; _snwprintf(head2, 300, L"layout %d, %d monitors, virtual screen %ld,%ld %ldx%ld", layout, nm, (long)vs2.left, (long)vs2.top, (long)(vs2.right - vs2.left), (long)(vs2.bottom - vs2.top));
             MonAppDesktopTest(head2, mon, nm, true);
             Pump(12000);                                                // the toast of the program's start goes before the next layout
+            if (nm > 1) { MonAppPanelTest(head2, mon, nm); Pump(8000); }
             if (layout == 3) { MonAppDesktopTest(head2, mon, nm, false); Pump(12000); }
         }
     }
@@ -5852,7 +5988,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"countdown-esc", T_CountdownEsc, 2 }, { L"panel-look", T_PanelLook, 2 }, { L"watermark-apply", T_WatermarkApply, 1 }, { L"watermark-video", T_WatermarkVideo, 1 }, { L"watermark-shot", T_WatermarkShot, 2 }, { L"panel-layout", T_PanelLayout, 1 }, { L"picker-live", T_PickerLive, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"countdown-esc", T_CountdownEsc, 2 }, { L"state-icon", T_StateIcon, 1 }, { L"tray-panel", T_TrayPanel, 2 }, { L"panel-look", T_PanelLook, 2 }, { L"watermark-apply", T_WatermarkApply, 1 }, { L"watermark-video", T_WatermarkVideo, 1 }, { L"watermark-shot", T_WatermarkShot, 2 }, { L"panel-layout", T_PanelLayout, 1 }, { L"picker-live", T_PickerLive, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();

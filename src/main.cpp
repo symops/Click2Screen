@@ -31,6 +31,8 @@ RecParams g_target;
 wchar_t g_outPath[MAX_PATH];
 int    g_countdown;
 bool   g_trayAdded, g_hideAsked, g_mainWasVisible = true, g_busyShot;
+HMONITOR g_armMon;                // the monitor the window of the program was on when a recording was called: the strip of a whole-screen recording goes there
+HICON  g_stateIcon[5];            // the tray icons of the states of the recording (made when they are first needed)
 UINT   g_msgTaskbar;
 NOTIFYICONDATAW g_nid;
 const wchar_t* kMainClass = L"Click2ScreenMain";
@@ -169,6 +171,15 @@ static void TrayRemove(NOTIFYICONDATAW* n)
 }
 
 // ---- tray ----------------------------------------------------------------------------------------------------------
+// The icon of the tray tells the state: the icon of the program at rest, with a badge when a recording is ready (amber), counts down (orange), runs (red), is paused (bars).
+static HICON StateIcon()
+{
+    const int idx = g_state == ST_ARMED ? 1 : g_state == ST_COUNTDOWN ? 2 : g_state == ST_RECORDING ? 3 : g_state == ST_PAUSED ? 4 : 0;
+    if (!idx) return g_iconSmall;
+    if (!g_stateIcon[idx]) g_stateIcon[idx] = MakeStateIcon(g_iconSmall, idx);
+    return g_stateIcon[idx] ? g_stateIcon[idx] : g_iconSmall;
+}
+
 void TrayTip()
 {
     if (!g_trayAdded) return;
@@ -176,7 +187,8 @@ void TrayTip()
     if (g_state == ST_RECORDING) s = T(S_RECORDING);
     else if (g_state == ST_PAUSED) s = T(S_PAUSED);
     NOTIFYICONDATAW n = g_nid;
-    n.uFlags = NIF_TIP;
+    n.uFlags = NIF_TIP | NIF_ICON;
+    n.hIcon = StateIcon(); g_nid.hIcon = n.hIcon;                // (the icon the shell gets back when it restarts)
     wcsncpy(n.szTip, s, 127); n.szTip[127] = 0;
     ULONGLONG t0 = GetTickCount64();
     Shell_NotifyIconW(NIM_MODIFY, &n);
@@ -188,7 +200,7 @@ void TrayAdd()
     memset(&g_nid, 0, sizeof(g_nid));
     g_nid.cbSize = sizeof(g_nid); g_nid.hWnd = g_main; g_nid.uID = 1;
     g_nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
-    g_nid.uCallbackMessage = WM_C2S_TRAY; g_nid.hIcon = g_iconSmall;
+    g_nid.uCallbackMessage = WM_C2S_TRAY; g_nid.hIcon = StateIcon();
     wcsncpy(g_nid.szTip, T(S_APP), 127);
     g_trayAdded = Shell_NotifyIconW(NIM_ADD, &g_nid) != FALSE;
 }
@@ -628,7 +640,8 @@ void PlaceOverlay()
     int x, y;
     if (g_modeDesktop) {
         POINT origin = { 0, 0 };
-        MONITORINFO pm; pm.cbSize = sizeof(pm); GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);
+        MONITORINFO pm; pm.cbSize = sizeof(pm);
+        if (!g_armMon || !GetMonitorInfoW(g_armMon, &pm)) GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);       // the monitor of the window of the program, else the main one
         wa = pm.rcWork;
         RECT vs = VirtualScreen();
         PanelPosition(g_cfg, wa, vs, w, h, Sc(20), &x, &y);       // the place the settings say (the bottom centre by default)
@@ -762,6 +775,7 @@ void Arm(Mode mode)
     Log(L"arm: mode %d, state %d", (int)mode, (int)g_state);
     if (g_state != ST_IDLE) { Warn(T(S_ERR_ALREADY)); return; }
     g_mainWasVisible = g_main && IsWindowVisible(g_main) && !IsIconic(g_main);          // a window the user has minimized stays minimized
+    g_armMon = g_main ? MonitorFromWindow(g_main, MONITOR_DEFAULTTOPRIMARY) : nullptr;     // the strip of a whole-screen recording goes to this monitor
     RECT rc; HWND hw;
     if (!ChooseTarget(mode, &rc, &hw)) { if (g_mainWasVisible) ShowMain(true); return; }
     if (rc.right - rc.left < 16 || rc.bottom - rc.top < 16) { Warn(T(S_ERR_REGION_SMALL)); if (g_mainWasVisible) ShowMain(true); return; }
@@ -1937,6 +1951,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case ID_TRAY_OPTIONS: if (OptionsDialog()) ApplyLanguage(); break;
         case ID_TRAY_SHOW: ShowMain(true); break;
         case ID_TRAY_PANEL: if (g_state != ST_IDLE) ShowPanel(); break;
+        case ID_TRAY_HIDEPANEL: if (g_state != ST_IDLE && g_panel) ShowWindow(g_panel, SW_HIDE); break;
         case ID_TRAY_PAUSE: if (g_state != ST_IDLE) StartPressed(); break;
         case ID_TRAY_STOP: if (g_state != ST_IDLE) StopRecording(true); break;
         case ID_TRAY_EXIT: DestroyWindow(hw); break;
@@ -1967,7 +1982,8 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             HMENU mn = CreatePopupMenu();
             if (g_state == ST_IDLE) AppendMenuW(mn, MF_STRING, ID_TRAY_SHOW, T(S_APP));
             else {
-                AppendMenuW(mn, MF_STRING, ID_TRAY_PANEL, T(S_SHOW_PANEL));
+                if (g_panel && IsWindowVisible(g_panel)) AppendMenuW(mn, MF_STRING, ID_TRAY_HIDEPANEL, T(S_TRAY_HIDEPANEL));        // at any recording: the panel goes to the tray and comes back
+                else AppendMenuW(mn, MF_STRING, ID_TRAY_PANEL, T(S_SHOW_PANEL));
                 AppendMenuW(mn, MF_STRING, ID_TRAY_PAUSE, g_state == ST_RECORDING ? T(S_PAUSE) : g_state == ST_PAUSED ? T(S_RESUME) : T(S_START));
                 AppendMenuW(mn, MF_STRING, ID_TRAY_STOP, T(S_STOP));
             }
@@ -1993,6 +2009,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         if (g_state != ST_IDLE) { g_mainWasVisible = false; g_state = ST_RECORDING; FinishRecording(true, true); }
         ClosePanel();
         if (g_trayAdded) { TrayRemove(&g_nid); g_trayAdded = false; }
+        for (HICON& ic : g_stateIcon) if (ic) { DestroyIcon(ic); ic = nullptr; }
         Log(L"exit: tray icon removed");
         InkHide();
         for (int i = 1; i <= HKI_COUNT; ++i) UnregisterHotKey(hw, i);

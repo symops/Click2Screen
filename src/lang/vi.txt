@@ -176,3 +176,4 @@ Vị trí:
 Độ đục, %:
 Chiều cao chữ, px:
 Kích thước hình, %:
+Ẩn bảng vào khay hệ thống

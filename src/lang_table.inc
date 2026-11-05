@@ -19,7 +19,7 @@ static const wchar_t* const kLangNames[kLangCount] = {
     L"\x65e5" L"\x672c" L"\x8a9e",
     L"\xd55c" L"\xad6d" L"\xc5b4",
 };
-static const wchar_t* const kStrings[kLangCount][178] = {
+static const wchar_t* const kStrings[kLangCount][179] = {
     { // en
         L"Click2Screen",
         L"Record desktop",
@@ -199,6 +199,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opacity, %:",
         L"Text height, px:",
         L"Picture size, %:",
+        L"Hide the panel to the tray",
     },
     { // ru
         L"Click2Screen",
@@ -379,6 +380,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x041d" L"\x0435" L"\x043f" L"\x0440" L"\x043e" L"\x0437" L"\x0440" L"\x0430" L"\x0447" L"\x043d" L"\x043e" L"\x0441" L"\x0442" L"\x044c" L", %:",
         L"\x0412" L"\x044b" L"\x0441" L"\x043e" L"\x0442" L"\x0430" L" " L"\x0442" L"\x0435" L"\x043a" L"\x0441" L"\x0442" L"\x0430" L", px:",
         L"\x0420" L"\x0430" L"\x0437" L"\x043c" L"\x0435" L"\x0440" L" " L"\x043a" L"\x0430" L"\x0440" L"\x0442" L"\x0438" L"\x043d" L"\x043a" L"\x0438" L", %:",
+        L"\x0421" L"\x043f" L"\x0440" L"\x044f" L"\x0442" L"\x0430" L"\x0442" L"\x044c" L" " L"\x043f" L"\x0430" L"\x043d" L"\x0435" L"\x043b" L"\x044c" L" " L"\x0432" L" " L"\x0442" L"\x0440" L"\x0435" L"\x0439",
     },
     { // uk
         L"Click2Screen",
@@ -559,6 +561,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x041d" L"\x0435" L"\x043f" L"\x0440" L"\x043e" L"\x0437" L"\x043e" L"\x0440" L"\x0456" L"\x0441" L"\x0442" L"\x044c" L", %:",
         L"\x0412" L"\x0438" L"\x0441" L"\x043e" L"\x0442" L"\x0430" L" " L"\x0442" L"\x0435" L"\x043a" L"\x0441" L"\x0442" L"\x0443" L", px:",
         L"\x0420" L"\x043e" L"\x0437" L"\x043c" L"\x0456" L"\x0440" L" " L"\x0437" L"\x043e" L"\x0431" L"\x0440" L"\x0430" L"\x0436" L"\x0435" L"\x043d" L"\x043d" L"\x044f" L", %:",
+        L"\x0421" L"\x0445" L"\x043e" L"\x0432" L"\x0430" L"\x0442" L"\x0438" L" " L"\x043f" L"\x0430" L"\x043d" L"\x0435" L"\x043b" L"\x044c" L" " L"\x0443" L" " L"\x0442" L"\x0440" L"\x0435" L"\x0439",
     },
     { // be
         L"Click2Screen",
@@ -739,6 +742,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x041d" L"\x0435" L"\x043f" L"\x0440" L"\x0430" L"\x0437" L"\x0440" L"\x044b" L"\x0441" L"\x0442" L"\x0430" L"\x0441" L"\x0446" L"\x044c" L", %:",
         L"\x0412" L"\x044b" L"\x0448" L"\x044b" L"\x043d" L"\x044f" L" " L"\x0442" L"\x044d" L"\x043a" L"\x0441" L"\x0442" L"\x0443" L", px:",
         L"\x041f" L"\x0430" L"\x043c" L"\x0435" L"\x0440" L" " L"\x043c" L"\x0430" L"\x043b" L"\x044e" L"\x043d" L"\x043a" L"\x0430" L", %:",
+        L"\x0421" L"\x0445" L"\x0430" L"\x0432" L"\x0430" L"\x0446" L"\x044c" L" " L"\x043f" L"\x0430" L"\x043d" L"\x044d" L"\x043b" L"\x044c" L" " L"\x0443" L" " L"\x0442" L"\x0440" L"\x044d" L"\x0439",
     },
     { // de
         L"Click2Screen",
@@ -919,6 +923,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Deckkraft, %:",
         L"Texth" L"\x00f6" L"he, px:",
         L"Bildgr" L"\x00f6" L"\x00df" L"e, %:",
+        L"Leiste im Infobereich verbergen",
     },
     { // fr
         L"Click2Screen",
@@ -1099,6 +1104,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opacit" L"\x00e9" L", % :",
         L"Hauteur du texte, px :",
         L"Taille de l'image, % :",
+        L"Masquer la barre dans la zone de notification",
     },
     { // es
         L"Click2Screen",
@@ -1279,6 +1285,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opacidad, %:",
         L"Altura del texto, px:",
         L"Tama" L"\x00f1" L"o de la imagen, %:",
+        L"Ocultar el panel en la bandeja",
     },
     { // it
         L"Click2Screen",
@@ -1459,6 +1466,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opacit" L"\x00e0" L", %:",
         L"Altezza testo, px:",
         L"Dimensione immagine, %:",
+        L"Nascondi la barra nell'area di notifica",
     },
     { // pt
         L"Click2Screen",
@@ -1639,6 +1647,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opacidade, %:",
         L"Altura do texto, px:",
         L"Tamanho da imagem, %:",
+        L"Ocultar o painel na bandeja",
     },
     { // pl
         L"Click2Screen",
@@ -1819,6 +1828,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Krycie, %:",
         L"Wysoko" L"\x015b" L"\x0107" L" tekstu, px:",
         L"Rozmiar obrazu, %:",
+        L"Ukryj panel w zasobniku",
     },
     { // nl
         L"Click2Screen",
@@ -1999,6 +2009,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Dekking, %:",
         L"Teksthoogte, px:",
         L"Afbeeldingsgrootte, %:",
+        L"Balk verbergen in het systeemvak",
     },
     { // tr
         L"Click2Screen",
@@ -2179,6 +2190,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opakl" L"\x0131" L"k, %:",
         L"Metin y" L"\x00fc" L"ksekli" L"\x011f" L"i, px:",
         L"Resim boyutu, %:",
+        L"Paneli bildirim alan" L"\x0131" L"na gizle",
     },
     { // id
         L"Click2Screen",
@@ -2359,6 +2371,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"Opasitas, %:",
         L"Tinggi teks, px:",
         L"Ukuran gambar, %:",
+        L"Sembunyikan panel ke baki sistem",
     },
     { // vi
         L"Click2Screen",
@@ -2539,6 +2552,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x0110" L"\x1ed9" L" " L"\x0111" L"\x1ee5" L"c, %:",
         L"Chi" L"\x1ec1" L"u cao ch" L"\x1eef" L", px:",
         L"K" L"\x00ed" L"ch th" L"\x01b0" L"\x1edb" L"c h" L"\x00ec" L"nh, %:",
+        L"\x1ea8" L"n b" L"\x1ea3" L"ng v" L"\x00e0" L"o khay h" L"\x1ec7" L" th" L"\x1ed1" L"ng",
     },
     { // zh
         L"Click2Screen",
@@ -2719,6 +2733,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x4e0d" L"\x900f" L"\x660e" L"\x5ea6" L",%:",
         L"\x6587" L"\x5b57" L"\x9ad8" L"\x5ea6" L",px:",
         L"\x56fe" L"\x7247" L"\x5927" L"\x5c0f" L",%:",
+        L"\x5c06" L"\x9762" L"\x677f" L"\x9690" L"\x85cf" L"\x5230" L"\x6258" L"\x76d8",
     },
     { // ja
         L"Click2Screen",
@@ -2899,6 +2914,7 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\x4e0d" L"\x900f" L"\x660e" L"\x5ea6" L"\x3001" L"%:",
         L"\x6587" L"\x5b57" L"\x306e" L"\x9ad8" L"\x3055" L"\x3001" L"px:",
         L"\x753b" L"\x50cf" L"\x30b5" L"\x30a4" L"\x30ba" L"\x3001" L"%:",
+        L"\x30d1" L"\x30cd" L"\x30eb" L"\x3092" L"\x30c8" L"\x30ec" L"\x30a4" L"\x306b" L"\x96a0" L"\x3059",
     },
     { // ko
         L"Click2Screen",
@@ -3079,5 +3095,6 @@ static const wchar_t* const kStrings[kLangCount][178] = {
         L"\xbd88" L"\xd22c" L"\xba85" L"\xb3c4" L", %:",
         L"\xae00" L"\xc790" L" " L"\xb192" L"\xc774" L", px:",
         L"\xadf8" L"\xb9bc" L" " L"\xd06c" L"\xae30" L", %:",
+        L"\xd328" L"\xb110" L"\xc744" L" " L"\xd2b8" L"\xb808" L"\xc774" L"\xb85c" L" " L"\xc228" L"\xae30" L"\xae30",
     },
 };

@@ -176,3 +176,4 @@ Posição:
 Opacidade, %:
 Altura do texto, px:
 Tamanho da imagem, %:
+Ocultar o painel na bandeja

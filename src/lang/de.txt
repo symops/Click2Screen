@@ -176,3 +176,4 @@ Position:
 Deckkraft, %:
 Texthöhe, px:
 Bildgröße, %:
+Leiste im Infobereich verbergen

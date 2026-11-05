@@ -8,7 +8,7 @@ enum { IDC_REC_DESKTOP = 100, IDC_REC_REGION, IDC_REC_WINDOW, IDC_SHOT_DESKTOP, 
 // A hotkey's id is its index in Settings::hotkey + 1.
 enum { HK_DESKTOP = 1, HK_REGION, HK_WINDOW, HK_STOP, HK_REC_DESKTOP, HK_REC_REGION, HK_REC_WINDOW, HK_DRAW };
 enum { HK_ESC = 9 };            // not a setting: Esc, registered only while a countdown runs (it cancels the screenshot / the recording)
-enum { ID_TRAY_SHOW = 200, ID_TRAY_PANEL, ID_TRAY_PAUSE, ID_TRAY_STOP, ID_TRAY_OPTIONS, ID_TRAY_EXIT, ID_MENU_FOLDER };
+enum { ID_TRAY_SHOW = 200, ID_TRAY_PANEL, ID_TRAY_PAUSE, ID_TRAY_STOP, ID_TRAY_OPTIONS, ID_TRAY_EXIT, ID_MENU_FOLDER, ID_TRAY_HIDEPANEL };
 enum { TIMER_UI = 1, TIMER_COUNTDOWN = 2, TIMER_BLINK = 3, TIMER_TRAIL = 4 };
 enum State { ST_IDLE, ST_ARMED, ST_COUNTDOWN, ST_RECORDING, ST_PAUSED };
 #define WM_C2S_TRAY   (WM_APP + 1)

@@ -176,3 +176,4 @@ Posizione:
 Opacità, %:
 Altezza testo, px:
 Dimensione immagine, %:
+Nascondi la barra nell'area di notifica

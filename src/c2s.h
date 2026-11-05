@@ -39,6 +39,7 @@ enum Str {
     S_OPT_PANEL, S_OPT_WATERMARK, S_PNL_WHERE, S_PNL_M_PLACE, S_PNL_M_TRAY, S_PNL_M_EXACT, S_PNL_HORZ, S_PNL_VERT, S_PNL_LEFT, S_PNL_CENTRE,
     S_PNL_RIGHT, S_PNL_TOP, S_PNL_MIDDLE, S_PNL_BOTTOM, S_PNL_INVIDEO, S_PNL_SHOWS, S_PNL_TIME, S_PNL_SIZE, S_PNL_KEY, S_WM_SHOT, S_WM_VIDEO,
     S_WM_KIND, S_WM_TEXTK, S_WM_IMAGEK, S_WM_TEXT, S_WM_IMAGE, S_WM_FILTER, S_WM_PLACE, S_WM_OPACITY, S_WM_SIZET, S_WM_SCALE,
+    S_TRAY_HIDEPANEL,
     S__COUNT
 };
 // Bounded copies: the destination (n characters) is always terminated and a longer source is cut, the source is read for n - 1 characters at most. For the values
@@ -162,6 +163,9 @@ private:
     HDC m_halo; HBITMAP m_haloBmp, m_haloOld;
 };
 // ---- the watermark (capture.cpp): a text or a picture (settings wm*), made once for a picture size and laid over every picture of that size
+// The icon of the tray for a state of the recording: the icon of the program with a badge in its lower right corner. state: 0 rest (the icon itself), 1 a recording is ready (amber),
+// 2 the countdown (orange), 3 recording (red), 4 paused (two bars). A new icon (DestroyIcon it), the base one for 0 or when it cannot be made.
+HICON MakeStateIcon(HICON base, int state);
 struct Watermark;
 Watermark* WatermarkCreate(const Settings& s, int picW, int picH);       // nullptr when there is nothing to draw (an empty text, a picture that cannot be read)
 void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h);   // bits: the rows of a bottom-up 32-bit picture (a screenshot, a frame), w x h

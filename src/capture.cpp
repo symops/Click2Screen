@@ -247,6 +247,81 @@ bool ImageFormatAvailable(int fmt)
     return ok;
 }
 
+// ---- the icon of the tray for a state of the recording -----------------------------------------------------------------------------------------------------
+// The pixels of the icon of the program are read (with their alpha), a badge with a white rim is laid in the lower right corner (smooth: 4 x 4 samples a pixel).
+static void Badge(uint32_t* px, int W, int H, double cx, double cy, double r, int cr, int cg, int cb)
+{
+    for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
+        int in = 0;
+        for (int sy = 0; sy < 4; ++sy) for (int sx = 0; sx < 4; ++sx) {
+            const double dx = x + (sx + 0.5) / 4.0 - cx, dy = y + (sy + 0.5) / 4.0 - cy;
+            if (dx * dx + dy * dy <= r * r) ++in;
+        }
+        if (!in) continue;
+        const double a = in / 16.0;
+        uint32_t& q = px[(size_t)y * W + x];
+        const double da = ((q >> 24) & 255) / 255.0, oa = a + da * (1.0 - a);
+        const double dr = (double)((q >> 16) & 255), dg = (double)((q >> 8) & 255), db = (double)(q & 255);
+        const int nr = (int)((cr * a + dr * da * (1.0 - a)) / oa + 0.5), ng = (int)((cg * a + dg * da * (1.0 - a)) / oa + 0.5), nb = (int)((cb * a + db * da * (1.0 - a)) / oa + 0.5);
+        q = ((uint32_t)(oa * 255.0 + 0.5) << 24) | ((uint32_t)nr << 16) | ((uint32_t)ng << 8) | (uint32_t)nb;
+    }
+}
+
+HICON MakeStateIcon(HICON base, int state)
+{
+    if (!base || state <= 0) return base;
+    ICONINFO ii; memset(&ii, 0, sizeof(ii));
+    if (!GetIconInfo(base, &ii)) return base;
+    BITMAP bm; memset(&bm, 0, sizeof(bm));
+    HBITMAP ref = ii.hbmColor ? ii.hbmColor : ii.hbmMask;
+    HICON out = base;
+    if (ref && GetObject(ref, sizeof(bm), &bm) && bm.bmWidth >= 8) {
+        const int W = bm.bmWidth, H = ii.hbmColor ? bm.bmHeight : bm.bmHeight / 2;
+        uint32_t* px = (uint32_t*)calloc((size_t)W * H, 4);
+        uint32_t* mk = (uint32_t*)calloc((size_t)W * H, 4);
+        HDC dc = GetDC(nullptr);
+        BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+        if (px && mk && ii.hbmColor && GetDIBits(dc, ii.hbmColor, 0, H, px, &bi, DIB_RGB_COLORS)) {
+            bool anyAlpha = false;
+            for (size_t i = 0; i < (size_t)W * H; ++i) if (px[i] >> 24) { anyAlpha = true; break; }
+            if (!anyAlpha && ii.hbmMask && GetDIBits(dc, ii.hbmMask, 0, H, mk, &bi, DIB_RGB_COLORS))      // an icon without alpha: the mask says what is see-through
+                for (size_t i = 0; i < (size_t)W * H; ++i) px[i] = (px[i] & 0x00FFFFFFu) | ((mk[i] & 0x00FFFFFFu) ? 0u : 0xFF000000u);
+            const double r = W * 0.30, cx = W - r - 0.5, cy = H - r - 0.5;
+            Badge(px, W, H, cx, cy, r + (W >= 24 ? 1.5 : 1.0), 255, 255, 255);                          // the white rim
+            switch (state) {
+            case 1: Badge(px, W, H, cx, cy, r, 255, 190, 0); break;                                    // ready: amber
+            case 2: Badge(px, W, H, cx, cy, r, 255, 110, 0); break;                                    // countdown: orange
+            case 3: Badge(px, W, H, cx, cy, r, 220, 30, 30); break;                                    // recording: red
+            default: {                                                                                  // paused: a dark disc, two white bars
+                Badge(px, W, H, cx, cy, r, 60, 70, 90);
+                const int bw = (int)(r * 0.38 + 0.5) > 1 ? (int)(r * 0.38 + 0.5) : 1, bh = (int)(r * 1.1 + 0.5);
+                for (int k = 0; k < 2; ++k) {
+                    const int x0 = (int)(cx + (k ? 0.18 : -0.18 - 0.38) * r + 0.5), y0 = (int)(cy - bh / 2.0 + 0.5);
+                    for (int y = y0; y < y0 + bh; ++y) for (int x = x0; x < x0 + bw; ++x) if (x >= 0 && y >= 0 && x < W && y < H) px[(size_t)y * W + x] = 0xFFFFFFFFu;
+                }
+                break; }
+            }
+            uint32_t* dib = nullptr;
+            HBITMAP color = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&dib, nullptr, 0);
+            HBITMAP mask = CreateBitmap(W, H, 1, 1, nullptr);
+            if (color && dib && mask) {
+                memcpy(dib, px, (size_t)W * H * 4);
+                ICONINFO n; memset(&n, 0, sizeof(n)); n.fIcon = TRUE; n.hbmColor = color; n.hbmMask = mask;
+                HICON ic = CreateIconIndirect(&n);
+                if (ic) out = ic;
+            }
+            if (color) DeleteObject(color);
+            if (mask) DeleteObject(mask);
+        }
+        ReleaseDC(nullptr, dc);
+        free(px); free(mk);
+    }
+    if (ii.hbmColor) DeleteObject(ii.hbmColor);
+    if (ii.hbmMask) DeleteObject(ii.hbmMask);
+    return out;
+}
+
 // ---- the watermark -------------------------------------------------------------------------------------------------------------------------------------------
 // The mark is kept as premultiplied BGRA (top-down); laying it over a picture is one multiply-add per pixel of the mark.
 struct Watermark { int w, h, x, y; uint32_t* px; };

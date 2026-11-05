@@ -176,3 +176,4 @@ Konum:
 Opaklık, %:
 Metin yüksekliği, px:
 Resim boyutu, %:
+Paneli bildirim alanına gizle

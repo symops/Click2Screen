@@ -176,3 +176,4 @@ Położenie:
 Krycie, %:
 Wysokość tekstu, px:
 Rozmiar obrazu, %:
+Ukryj panel w zasobniku
