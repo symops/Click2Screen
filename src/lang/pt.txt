@@ -145,3 +145,34 @@ O arquivo se chamará:
 Acima de outras janelas
 Salvar arquivos separados para cada tela
 Opções
+Painel
+Marca d'água
+Ao gravar o ecrã inteiro, o painel fica:
+num lugar do ecrã
+na bandeja (oculto)
+em coordenadas exatas
+Horizontal:
+Vertical:
+Esquerda
+Centro
+Direita
+Topo
+Meio
+Fundo
+Mostrar o painel na gravação
+O painel mostra:
+Tempo
+Tamanho do ficheiro
+Tecla de atalho
+Adicionar a marca d'água às capturas
+Adicionar a marca d'água aos vídeos
+Marca d'água:
+texto
+imagem
+Texto:
+Ficheiro de imagem:
+Imagens
+Posição:
+Opacidade, %:
+Altura do texto, px:
+Tamanho da imagem, %:

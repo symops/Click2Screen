@@ -145,3 +145,34 @@ Tên tệp sẽ là:
 Luôn ở trên các cửa sổ khác
 Lưu tệp riêng cho từng màn hình
 Tùy chọn
+Bảng
+Hình mờ
+Khi quay toàn màn hình, bảng nằm:
+ở một vị trí trên màn hình
+trong khay hệ thống (ẩn)
+ở tọa độ chính xác
+Chiều ngang:
+Chiều dọc:
+Trái
+Giữa
+Phải
+Trên
+Giữa
+Dưới
+Hiện bảng trong bản quay
+Bảng hiển thị:
+Thời gian
+Kích thước tệp
+Phím tắt
+Thêm hình mờ vào ảnh chụp màn hình
+Thêm hình mờ vào video
+Hình mờ:
+văn bản
+hình ảnh
+Văn bản:
+Tệp hình ảnh:
+Hình ảnh
+Vị trí:
+Độ đục, %:
+Chiều cao chữ, px:
+Kích thước hình, %:

@@ -145,3 +145,34 @@ Nama file akan menjadi:
 Di atas jendela lain
 Simpan file terpisah untuk setiap layar
 Opsi
+Panel
+Watermark
+Saat seluruh layar direkam, panel berada:
+di suatu tempat di layar
+di baki sistem (tersembunyi)
+di koordinat tepat
+Horizontal:
+Vertikal:
+Kiri
+Tengah
+Kanan
+Atas
+Tengah
+Bawah
+Tampilkan panel dalam rekaman
+Panel menampilkan:
+Waktu
+Ukuran berkas
+Tombol pintas
+Tambahkan watermark ke tangkapan layar
+Tambahkan watermark ke video
+Watermark:
+teks
+gambar
+Teks:
+Berkas gambar:
+Gambar
+Posisi:
+Opasitas, %:
+Tinggi teks, px:
+Ukuran gambar, %:

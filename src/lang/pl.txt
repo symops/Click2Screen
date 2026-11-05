@@ -145,3 +145,34 @@ Plik będzie się nazywał:
 Nad innymi oknami
 Zapisuj osobne pliki dla różnych ekranów
 Opcje
+Panel
+Znak wodny
+Przy nagrywaniu całego ekranu panel znajduje się:
+w miejscu ekranu
+w zasobniku (ukryty)
+w dokładnych współrzędnych
+Poziomo:
+Pionowo:
+Lewo
+Środek
+Prawo
+Góra
+Środek
+Dół
+Pokazuj panel w nagraniu
+Panel pokazuje:
+Czas
+Rozmiar pliku
+Skrót klawiszowy
+Dodawaj znak wodny do zrzutów ekranu
+Dodawaj znak wodny do filmów
+Znak wodny:
+tekst
+obraz
+Tekst:
+Plik obrazu:
+Obrazy
+Położenie:
+Krycie, %:
+Wysokość tekstu, px:
+Rozmiar obrazu, %:

@@ -145,3 +145,34 @@ Dosya adı şöyle olacak:
 Diğer pencerelerin üstünde
 Farklı ekranlar için ayrı dosyalar kaydet
 Seçenekler
+Panel
+Filigran
+Tüm ekran kaydedilirken panel şurada durur:
+ekranın bir yerinde
+bildirim alanında (gizli)
+tam koordinatlarda
+Yatay:
+Dikey:
+Sol
+Orta
+Sağ
+Üst
+Orta
+Alt
+Paneli kayıtta göster
+Panel şunu gösterir:
+Süre
+Dosya boyutu
+Kısayol
+Filigranı ekran görüntülerine ekle
+Filigranı videolara ekle
+Filigran:
+metin
+resim
+Metin:
+Resim dosyası:
+Resimler
+Konum:
+Opaklık, %:
+Metin yüksekliği, px:
+Resim boyutu, %:

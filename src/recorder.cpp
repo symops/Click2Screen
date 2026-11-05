@@ -64,6 +64,7 @@ struct Recorder::Impl {
     bool nullSink = false;               // self-test only (C2S_NULLSINK): frames are counted, nothing is encoded
     bool wantSpk = false;                // the sound of the speakers goes into the file too
     FrameSink* alt = nullptr;            // AVI / GIF: written by our own sink instead of the Media Foundation sink writer
+    Watermark* wm = nullptr;             // the watermark laid over every frame (settings wmVideo)
     int fmt = VC_H264_BEST;
     volatile LONG vFrames = 0;
     bool writeFailLogged = false;
@@ -72,7 +73,7 @@ struct Recorder::Impl {
     LONGLONG grabTime = 0, writeTime = 0, loadT0 = 0; ULONGLONG loadCpu0 = 0; unsigned long loadFrames = 0;   // where the time of the video thread goes   // consecutive failed screen reads        // frames the encoder has not taken yet (now / worst), from the sink writer statistics
 
     Impl() { InitializeCriticalSection(&cs); QueryPerformanceFrequency(&freq); memset(hdr, 0, sizeof(hdr)); memset(abuf, 0, sizeof(abuf)); }
-    ~Impl() { DeleteCriticalSection(&cs); }
+    ~Impl() { WatermarkFree(wm); DeleteCriticalSection(&cs); }
 
     LONGLONG MediaTime()                 // wall clock without the paused spans
     {
@@ -164,6 +165,7 @@ struct Recorder::Impl {
             }
             if (!again && grabFails) { Log(L"capture: the screen is readable again after %.1f s (%lu failed attempts)", (mt - grabFailStart) / 1e7, grabFails); grabFails = 0; }
             if (!again) haveFrame = true;
+            if (!again && wm) WatermarkApply(wm, grab.Bits(), w, h);        // a frame that is only repeated has its watermark already
             LONGLONG tg1 = Qpc100ns(freq);
             LONGLONG ts = mt;
             if (ts <= lastVideoTs) ts = lastVideoTs + 1;
@@ -405,6 +407,7 @@ bool Recorder::Start(const RecParams& p, wchar_t* err, int errLen)
     FitSizeForVideo(fmt, sw0, sh0, d.w, d.h, p.cfg.videoQuality);
     d.fps = p.cfg.fps < 5 ? 5 : p.cfg.fps > 60 ? 60 : p.cfg.fps;
     if (!d.grab.Init(d.w, d.h)) { if (err) wcsncpy(err, T(S_ERR_CAPTURE), errLen - 1); return false; }
+    if (p.cfg.wmVideo) d.wm = WatermarkCreate(p.cfg, d.w, d.h);
 
     if (GetEnvironmentVariableW(L"C2S_NULLSINK", nullptr, 0) > 0) {
         d.nullSink = true;

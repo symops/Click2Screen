@@ -145,3 +145,34 @@ El archivo se llamará:
 Encima de otras ventanas
 Guardar archivos separados para cada pantalla
 Opciones
+Panel
+Marca de agua
+Al grabar toda la pantalla, el panel está:
+en un lugar de la pantalla
+en la bandeja (oculto)
+en coordenadas exactas
+Horizontal:
+Vertical:
+Izquierda
+Centro
+Derecha
+Arriba
+Medio
+Abajo
+Mostrar el panel en la grabación
+El panel muestra:
+Tiempo
+Tamaño del archivo
+Tecla rápida
+Añadir la marca de agua a las capturas
+Añadir la marca de agua a los vídeos
+Marca de agua:
+texto
+imagen
+Texto:
+Archivo de imagen:
+Imágenes
+Posición:
+Opacidad, %:
+Altura del texto, px:
+Tamaño de la imagen, %:

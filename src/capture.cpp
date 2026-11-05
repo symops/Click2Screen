@@ -247,6 +247,136 @@ bool ImageFormatAvailable(int fmt)
     return ok;
 }
 
+// ---- the watermark -------------------------------------------------------------------------------------------------------------------------------------------
+// The mark is kept as premultiplied BGRA (top-down); laying it over a picture is one multiply-add per pixel of the mark.
+struct Watermark { int w, h, x, y; uint32_t* px; };
+
+static uint32_t* MarkFromText(const Settings& s, int* mw, int* mh)
+{
+    HDC scr = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(scr);
+    ReleaseDC(nullptr, scr);
+    LOGFONTW lf; memset(&lf, 0, sizeof(lf));
+    lf.lfHeight = -s.wmSize; lf.lfWeight = FW_BOLD; lf.lfQuality = ANTIALIASED_QUALITY; lf.lfCharSet = DEFAULT_CHARSET;
+    wcscpy(lf.lfFaceName, L"Segoe UI");
+    HFONT f = CreateFontIndirectW(&lf);
+    HGDIOBJ of = SelectObject(dc, f);
+    SIZE sz = { 0, 0 };
+    GetTextExtentPoint32W(dc, s.wmText, (int)wcslen(s.wmText), &sz);
+    const int W = sz.cx + 6, H = sz.cy + 6;
+    uint32_t* out = nullptr;
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = W; bi.bmiHeader.biHeight = -H; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+    uint32_t* bits = nullptr;
+    HBITMAP bm = sz.cx > 0 && sz.cy > 0 ? CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, nullptr, 0) : nullptr;
+    if (bm && bits) {
+        HGDIOBJ ob = SelectObject(dc, bm);
+        SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(255, 255, 255));
+        TextOutW(dc, 3, 3, s.wmText, (int)wcslen(s.wmText));
+        GdiFlush();
+        out = (uint32_t*)malloc((size_t)W * H * 4);
+        if (out) {
+            const int o = s.wmOpacity;                                            // 10..100
+            for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
+                const int cov = (int)(bits[(size_t)y * W + x] & 0xFF);            // the coverage of the text (white on black, smoothed)
+                const int sh = x > 0 && y > 0 ? (int)(bits[(size_t)(y - 1) * W + (x - 1)] & 0xFF) : 0;       // the shadow: the same, a pixel to the lower right
+                const int at = cov * o / 100;                                     // the text: white
+                const int as = sh * o * 6 / 1000;                                 // the shadow: black, a little weaker
+                const int a = at + as * (255 - at) / 255;
+                out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)at << 16) | ((uint32_t)at << 8) | (uint32_t)at;
+            }
+            *mw = W; *mh = H;
+        }
+        SelectObject(dc, ob); DeleteObject(bm);
+    }
+    SelectObject(dc, of); DeleteObject(f); DeleteDC(dc);
+    return out;
+}
+
+static uint32_t* MarkFromFile(const Settings& s, int picW, int picH, int* mw, int* mh)
+{
+    if (!s.wmImage[0]) return nullptr;
+    HRESULT hrInit = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    uint32_t* out = nullptr;
+    IWICImagingFactory* f = nullptr; IWICBitmapDecoder* dec = nullptr; IWICBitmapFrameDecode* fr = nullptr; IWICFormatConverter* cv = nullptr; IWICBitmapScaler* sc = nullptr;
+    if (SUCCEEDED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_IWICImagingFactory, (void**)&f)) &&
+        SUCCEEDED(f->CreateDecoderFromFilename(s.wmImage, nullptr, GENERIC_READ, WICDecodeMetadataCacheOnDemand, &dec)) &&
+        SUCCEEDED(dec->GetFrame(0, &fr)) && SUCCEEDED(f->CreateFormatConverter(&cv)) &&
+        SUCCEEDED(cv->Initialize(fr, GUID_WICPixelFormat32bppPBGRA, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom))) {
+        UINT w0 = 0, h0 = 0; cv->GetSize(&w0, &h0);
+        long long W = (long long)w0 * s.wmScale / 100, H = (long long)h0 * s.wmScale / 100;
+        if (W > picW) { H = H * picW / W; W = picW; }                          // not bigger than the picture it goes on
+        if (H > picH) { W = W * picH / H; H = picH; }
+        if (W < 1) W = 1;
+        if (H < 1) H = 1;
+        IWICBitmapSource* src = cv;
+        if (SUCCEEDED(f->CreateBitmapScaler(&sc)) && SUCCEEDED(sc->Initialize(cv, (UINT)W, (UINT)H, WICBitmapInterpolationModeFant))) src = sc;
+        else { W = w0; H = h0; }
+        out = (uint32_t*)malloc((size_t)W * H * 4);
+        if (out && SUCCEEDED(src->CopyPixels(nullptr, (UINT)W * 4, (UINT)((size_t)W * H * 4), (BYTE*)out))) {
+            const int o = s.wmOpacity;
+            for (size_t i = 0; i < (size_t)W * H; ++i) {                       // the opacity: every channel of a premultiplied pixel
+                uint32_t p = out[i];
+                out[i] = ((((p >> 24) & 255) * o / 100) << 24) | ((((p >> 16) & 255) * o / 100) << 16) | ((((p >> 8) & 255) * o / 100) << 8) | ((p & 255) * o / 100);
+            }
+            *mw = (int)W; *mh = (int)H;
+        } else { free(out); out = nullptr; }
+    }
+    if (sc) sc->Release();
+    if (cv) cv->Release();
+    if (fr) fr->Release();
+    if (dec) dec->Release();
+    if (f) f->Release();
+    if (SUCCEEDED(hrInit)) CoUninitialize();
+    return out;
+}
+
+Watermark* WatermarkCreate(const Settings& s, int picW, int picH)
+{
+    if (picW < 8 || picH < 8) return nullptr;
+    int mw = 0, mh = 0;
+    uint32_t* px = s.wmKind == 0 ? (s.wmText[0] ? MarkFromText(s, &mw, &mh) : nullptr) : MarkFromFile(s, picW, picH, &mw, &mh);
+    if (!px) return nullptr;
+    Watermark* wm = new Watermark;
+    wm->w = mw; wm->h = mh; wm->px = px;
+    const int margin = (picW < picH ? picW : picH) / 60 > 8 ? (picW < picH ? picW : picH) / 60 : 8;
+    wm->x = s.wmH == 0 ? margin : s.wmH == 2 ? picW - mw - margin : (picW - mw) / 2;
+    wm->y = s.wmV == 0 ? margin : s.wmV == 2 ? picH - mh - margin : (picH - mh) / 2;
+    if (wm->x < 0) wm->x = 0;
+    if (wm->y < 0) wm->y = 0;
+    return wm;
+}
+
+void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h)
+{
+    if (!wm || !bits) return;
+    for (int r = 0; r < wm->h; ++r) {
+        const int dy = wm->y + r;
+        if (dy >= h) break;
+        uint8_t* row = bits + (size_t)(h - 1 - dy) * w * 4;                    // the picture is bottom-up
+        const uint32_t* mp = wm->px + (size_t)r * wm->w;
+        for (int c = 0; c < wm->w; ++c) {
+            const int dx = wm->x + c;
+            if (dx >= w) break;
+            const uint32_t p = mp[c];
+            const unsigned a = p >> 24;
+            if (!a) continue;
+            uint8_t* d = row + (size_t)dx * 4;
+            const unsigned ia = 255 - a;
+            d[0] = (uint8_t)((p & 255) + d[0] * ia / 255);
+            d[1] = (uint8_t)(((p >> 8) & 255) + d[1] * ia / 255);
+            d[2] = (uint8_t)(((p >> 16) & 255) + d[2] * ia / 255);
+        }
+    }
+}
+
+void WatermarkFree(Watermark* wm)
+{
+    if (!wm) return;
+    free(wm->px);
+    delete wm;
+}
+
 // ---- saving ----------------------------------------------------------------------------------------------------
 // One attempt; `step` names where it failed and `hr` says why.
 static bool SaveBitmapOnce(HBITMAP bmp, const wchar_t* path, int format, const wchar_t** step, HRESULT* hr)

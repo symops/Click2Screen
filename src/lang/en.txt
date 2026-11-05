@@ -145,3 +145,34 @@ The file will be named:
 On top of other windows
 Save separate files for different screens
 Options
+Panel
+Watermark
+When the whole screen is recorded, the panel is:
+at a place of the screen
+in the tray (hidden)
+at exact coordinates
+Horizontally:
+Vertically:
+Left
+Centre
+Right
+Top
+Middle
+Bottom
+Show the panel in the recording
+The panel shows:
+Time
+File size
+Hotkey
+Add the watermark to screenshots
+Add the watermark to videos
+Watermark:
+text
+picture
+Text:
+Picture file:
+Pictures
+Place:
+Opacity, %:
+Text height, px:
+Picture size, %:

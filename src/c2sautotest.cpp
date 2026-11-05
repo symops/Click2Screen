@@ -224,6 +224,11 @@ static void RandomSettings(Settings& s)
     s.fps = f[R(0, 7)];
     s.language = R(0, LangCount());
     RandomHotkeys(s.hotkey, false);
+    s.panelMode = R(0, 2); s.panelH = R(0, 2); s.panelV = R(0, 2); s.panelX = R(-300, 3000); s.panelY = R(-200, 2000); s.panelInVideo = Chance(30);
+    s.panelTime = Chance(70); s.panelSize = Chance(70); s.panelKey = Chance(70);
+    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmKind = R(0, 1);
+    RandomText(t, 20); _snwprintf(s.wmText, 64, L"%s", t); _snwprintf(s.wmImage, MAX_PATH, L"%s\\wm %s.png", g_dir, t);
+    s.wmH = R(0, 2); s.wmV = R(0, 2); s.wmOpacity = R(10, 100); s.wmSize = R(8, 200); s.wmScale = R(10, 300);
 }
 
 static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguage, wchar_t* why)
@@ -233,6 +238,8 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
     CMPS(folder) CMPS(fileName) CMPI(imageFormat) CMPI(capMouse) CMPI(highlight) CMPI(sounds) CMPI(notify) CMPI(loopback) CMPI(mic)
     CMPI(openFolder) CMPI(topmost) CMPI(separateMonitors) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
+    CMPI(panelMode) CMPI(panelH) CMPI(panelV) CMPI(panelX) CMPI(panelY) CMPI(panelInVideo) CMPI(panelTime) CMPI(panelSize) CMPI(panelKey)
+    CMPI(wmShot) CMPI(wmVideo) CMPI(wmKind) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
     return true;
@@ -1118,7 +1125,7 @@ static unsigned g_aviReal = 0;                    // the pictures of the last AV
 static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc)
 {
     uint8_t* d = nullptr;
-    AviInfo a = ReadAvi(path, 0, &d);          // the first real picture: the pictures that do not change are not stored, a later one may already be the noise
+    AviInfo a = ReadAvi(path, 1, &d);          // the first real picture: the pictures that do not change are not stored, a later one may already be the noise
     wchar_t dd[260];
     _snwprintf(dd, 260, L"%dx%d, avih frames %u, %u video chunks (%u empty), %u audio chunks (%.2f s), idx1 %u, fps %u, recorded %.2f s", a.w, a.h, a.total, a.vChunks, a.emptyV, a.aChunks, (double)a.aBytes / 88200.0, a.idxCount, a.fps, el);
     Check(a.ok && a.riffOk && a.w == ew && a.h == eh, L"recorder: AVI header is well formed and has the expected size", dd);
@@ -1846,6 +1853,9 @@ static void AppSettings(Settings& s, int language)
     s.sounds = false; s.openFolder = false; s.runAtStartup = false; s.topmost = false;     // not over the fixtures of the tests
     s.delaySec = R(0, 2);
     s.mic = false;
+    if (s.panelMode == 1) s.panelMode = 0;                  // the strip hidden in the tray would not be found by the tests (a test of its own looks at that)
+    s.panelInVideo = false;                                  // the strip is kept out of the recordings the tests look at
+    s.wmShot = s.wmVideo = false;                            // no watermark over the pictures the tests look at (the tests of the watermark switch it on)
 }
 
 static int HkIndexOf(int id) { return id == IDC_SHOT_DESKTOP ? 0 : id == IDC_SHOT_REGION ? 1 : id == IDC_SHOT_WINDOW ? 2 : id == IDC_REC_DESKTOP ? 4 : id == IDC_REC_REGION ? 5 : id == IDC_REC_WINDOW ? 6 : -1; }
@@ -2155,6 +2165,17 @@ static void T_App()
             SendMessageW(GetDlgItem(o, O_FPS), CB_SETCURSEL, fi, 0);
             SelData(GetDlgItem(o, O_IMGFMT), w.imageFormat);
             SendMessageW(GetDlgItem(o, O_LANG), CB_SETCURSEL, w.language, 0);
+            {   // the pages of the panel and of the watermark
+                wchar_t n[16];
+                SendMessageW(GetDlgItem(o, O_PMODE), CB_SETCURSEL, w.panelMode, 0); SendMessageW(GetDlgItem(o, O_PH), CB_SETCURSEL, w.panelH, 0); SendMessageW(GetDlgItem(o, O_PV), CB_SETCURSEL, w.panelV, 0);
+                _snwprintf(n, 16, L"%d", w.panelX); SetText(GetDlgItem(o, O_PX), n); _snwprintf(n, 16, L"%d", w.panelY); SetText(GetDlgItem(o, O_PY), n);
+                chk(O_PVIDEO, w.panelInVideo); chk(O_PTIME, w.panelTime); chk(O_PSIZE, w.panelSize); chk(O_PKEY, w.panelKey);
+                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); SendMessageW(GetDlgItem(o, O_WKIND), CB_SETCURSEL, w.wmKind, 0);
+                SetText(GetDlgItem(o, O_WTEXT), w.wmText); SetText(GetDlgItem(o, O_WIMAGE), w.wmImage);
+                SendMessageW(GetDlgItem(o, O_WH), CB_SETCURSEL, w.wmH, 0); SendMessageW(GetDlgItem(o, O_WV), CB_SETCURSEL, w.wmV, 0);
+                _snwprintf(n, 16, L"%d", w.wmOpacity); SetText(GetDlgItem(o, O_WOPACITY), n); _snwprintf(n, 16, L"%d", w.wmSize); SetText(GetDlgItem(o, O_WSIZE), n);
+                _snwprintf(n, 16, L"%d", w.wmScale); SetText(GetDlgItem(o, O_WSCALE), n);
+            }
             bool bad = Chance(30) || dupKeys;
             SetText(GetDlgItem(o, O_TPL), bad && !dupKeys ? L"a#b#" : w.fileName);
             {   // under the template field the window shows the name a file would get now
@@ -2869,7 +2890,7 @@ static void T_Effects()
     int ty = h * 3 / 4, oy = ty - 30;                    // both in the lower half
     Grabber gbase; gbase.Init(w, h);
     gbase.Grab(rc, true, false, false);                          // the frame without any line
-    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 12000);                  // a stroke older than the lifetime (10 s): the oldest goes first
+    for (int i = 0; i < 10; ++i) FxTestTrail(fr.left + 30 + i * 20, fr.top + oy, i == 0, 24000);                  // a stroke older than the lifetime (20 s): the oldest goes first
     for (int i = 0; i < 10; ++i) FxTestTrailShade(fr.left + 30 + i * 20, fr.top + ty, i == 0, 0);
     Grabber g2; g2.Init(w, h);
     g2.Grab(rc, true, false, true);
@@ -2880,7 +2901,7 @@ static void T_Effects()
     }
     wchar_t d2[160]; _snwprintf(d2, 160, L"%d of %d sampled points drawn on the fresh line, %d of %d on the old one", red, tested, oldRed, oldTested);
     Check(tested > 5 && red * 10 >= tested * 9, L"effects: a drawn line is in the frame", d2);
-    Check(oldTested > 5 && oldRed == 0, L"effects: a line point that has lived its time has faded out (the lifetime is 10 seconds in the program)", d2);
+    Check(oldTested > 5 && oldRed == 0, L"effects: a line point that has lived its time has faded out (the lifetime is 20 seconds in the program)", d2);
     FxStop();
     // the lines of the drawing window (the left button draws, the right one wipes) are in the frame, and the wipe takes them all
     {
@@ -3890,6 +3911,281 @@ static void T_PickerLive()
     Check(job.before[0] > 60 && job.before[0] < 180 && job.before[1] < 60, L"picker live: the desktop is dimmed, not hidden (the red quarter is a dark red)", d);
     Check(abs(job.after[0] - job.before[0]) + abs(job.after[1] - job.before[1]) + abs(job.after[2] - job.before[2]) > 60, L"picker live: a change under the veil is seen at once (the picture is not a frozen snapshot)", d);
     InvalidateRect(g_fx.hw, nullptr, TRUE); Pump(200);
+}
+
+// ---- Esc in the countdown cancels the screenshot and the recording (nothing is saved, the program is back to rest) ---------------------------------------------
+static void T_CountdownEsc()
+{
+    MakeFixture(R(300, 500), R(220, 360));
+    Settings st; PrepareApp(st); st.delaySec = 4; st.notify = false; st.imageFormat = IMG_PNG; st.sounds = false;
+    App a;
+    if (!StartApp(a, st)) { FAIL(L"countdown Esc: the program did not start"); StopApp(a, false); return; }
+    {   // a screenshot of the desktop with a countdown of 4 s: Esc after a second and a half
+        int before = CountFiles(st.folder);
+        PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
+        Pump(1500);
+        PostMessageW(a.main, WM_HOTKEY, HK_ESC, 0);
+        Pump(6000);                                                    // longer than the countdown: a picture would be there by now
+        int after = CountFiles(st.folder);
+        Check(after == before && AppAlive(a), L"countdown Esc: Esc in the countdown of a screenshot saves no picture", after == before ? L"" : L"(a file appeared)");
+        PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);                // and the next screenshot goes as usual (the cancel is not remembered)
+        DWORD end = GetTickCount() + WMS(12000);
+        while (CountFiles(st.folder) <= before && (int)(end - GetTickCount()) > 0) Sleep(100);
+        Check(CountFiles(st.folder) > before, L"countdown Esc: the next screenshot is made as usual");
+    }
+    {   // a recording: Start, the countdown, Esc
+        int before = CountFiles(st.folder);
+        PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+        HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+        Check(panel != nullptr, L"countdown Esc: Record desktop opens the panel");
+        if (panel) {
+            PostMessageW(panel, WM_COMMAND, MAKEWPARAM(IDC_P_START, BN_CLICKED), 0);
+            Pump(1500);
+            PostMessageW(a.main, WM_HOTKEY, HK_ESC, 0);
+            DWORD end = GetTickCount() + WMS(5000);
+            while (FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) && (int)(end - GetTickCount()) > 0) Sleep(100);
+            Check(FindWin(a.pi.dwProcessId, C2S_CLASS_PANEL, 0) == nullptr, L"countdown Esc: Esc in the countdown of a recording closes the panel");
+            Pump(5000);
+            Check(CountFiles(st.folder) == before && AppAlive(a), L"countdown Esc: nothing is recorded");
+        }
+    }
+    StopApp(a);
+}
+
+// ---- the strip: its cells and its place ---------------------------------------------------------------------------------------------------------------------
+static void T_PanelLayout()
+{
+    Settings st; SettingsDefaults(st);
+    int l[6];
+    int w = PanelLayout(st, l);
+    Check(w == 230 && l[0] == 0 && l[1] == 40 && l[2] == 80 && l[3] == 178 && l[4] == 204 && l[5] == 230, L"strip: with everything shown the cells are the original ones (230 units)");
+    st.panelTime = false; st.panelSize = false; st.panelKey = false;
+    w = PanelLayout(st, l);
+    Check(w == 52 && l[3] == 0 && l[4] == 26 && l[5] == 52, L"strip: with the time, the size and the key left out only the two buttons remain (52 units)");
+    st.panelTime = true; st.panelKey = true;
+    w = PanelLayout(st, l);
+    Check(w == 190 && l[1] == 40 && l[2] == 40 && l[3] == 138 && l[4] == 164 && l[5] == 190, L"strip: without the size the others close up");
+    SettingsDefaults(st);
+    RECT work = { 0, 0, 1920, 1040 }, screen = { 0, 0, 1920, 1080 };
+    int x, y;
+    PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 845 && y == 991, L"strip: the default place is the bottom centre of the work area");
+    st.panelH = 0; st.panelV = 0; PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 20 && y == 20, L"strip: top left");
+    st.panelH = 2; st.panelV = 1; PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 1670 && y == 505, L"strip: right, middle");
+    st.panelH = 1; st.panelV = 0; PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 845 && y == 20, L"strip: top centre");
+    st.panelMode = 2; st.panelX = 300; st.panelY = 400; PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 300 && y == 400, L"strip: exact coordinates are taken as they are");
+    st.panelX = 5000; st.panelY = 5000; PanelPosition(st, work, screen, 230, 29, 20, &x, &y);
+    Check(x == 1690 && y == 1051, L"strip: exact coordinates off the desktop are brought back to it");
+    RECT two = { -1920, 0, 1920, 1080 };
+    st.panelX = -1900; st.panelY = 10; PanelPosition(st, work, two, 230, 29, 20, &x, &y);
+    Check(x == -1900 && y == 10, L"strip: exact coordinates on a monitor to the left (negative) are kept");
+    st.panelX = -5000; st.panelY = -5000; PanelPosition(st, work, two, 230, 29, 20, &x, &y);
+    Check(x == -1920 && y == 0, L"strip: coordinates beyond the top left corner of the desktop are brought back");
+}
+
+// ---- the watermark: laid over a picture (a text, a picture file), where it is put, how strong, how big; in a recording; in a screenshot ---------------------------------
+// Counts the pixels of a bottom-up 32-bit picture that differ from the grey it was made of, in a box (top-down coordinates).
+static int WmChanged(const uint8_t* bits, int w, int h, int x0, int y0, int x1, int y1, int grey)
+{
+    int n = 0;
+    for (int y = y0; y < y1 && y < h; ++y)
+        for (int x = x0; x < x1 && x < w; ++x) {
+            const uint8_t* q = bits + ((size_t)(h - 1 - y) * w + x) * 4;
+            if (abs(q[0] - grey) + abs(q[1] - grey) + abs(q[2] - grey) > 30) ++n;
+        }
+    return n;
+}
+
+static void T_WatermarkApply()
+{
+    const int W = 400, H = 300, G = 200;
+    uint8_t* pic = new uint8_t[(size_t)W * H * 4];
+    auto grey = [&]() { for (size_t i = 0; i < (size_t)W * H; ++i) { pic[i * 4] = pic[i * 4 + 1] = pic[i * 4 + 2] = (uint8_t)G; pic[i * 4 + 3] = 255; } };
+    Settings st; SettingsDefaults(st);
+    st.wmKind = 0; _snwprintf(st.wmText, 64, L"Watermark"); st.wmSize = 40; st.wmOpacity = 100;
+    struct Where { int h, v; int x0, y0, x1, y1, ox0, oy0, ox1, oy1; } where[] = {
+        { 2, 2, 200, 200, 400, 300, 0, 0, 200, 100 },          // bottom right: the mark is there, the top left is not touched
+        { 0, 0, 0, 0, 200, 100, 200, 200, 400, 300 },          // top left
+        { 1, 1, 100, 100, 300, 200, 0, 0, 100, 60 },           // centre
+    };
+    for (const Where& wh : where) {
+        st.wmH = wh.h; st.wmV = wh.v;
+        Watermark* wm = WatermarkCreate(st, W, H);
+        Check(wm != nullptr, L"watermark: a text makes a mark");
+        grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+        int in = WmChanged(pic, W, H, wh.x0, wh.y0, wh.x1, wh.y1, G), out = WmChanged(pic, W, H, wh.ox0, wh.oy0, wh.ox1, wh.oy1, G);
+        wchar_t d[160]; _snwprintf(d, 160, L"place %d,%d: %d changed pixels in the box, %d in the far corner", wh.h, wh.v, in, out);
+        Check(in > 150 && out == 0, L"watermark: the text is where it was asked for and nowhere else", d);
+    }
+    {   // the opacity: half of it makes a text that is half way between the picture and white
+        st.wmH = 1; st.wmV = 1;
+        int bright[2] = { 0, 0 };
+        for (int k = 0; k < 2; ++k) {
+            st.wmOpacity = k ? 40 : 100;
+            Watermark* wm = WatermarkCreate(st, W, H); grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+            for (int y = 100; y < 200; ++y) for (int x = 100; x < 300; ++x) { const uint8_t* q = pic + ((size_t)(H - 1 - y) * W + x) * 4; if (q[0] > 250 && q[1] > 250 && q[2] > 250) ++bright[k]; }
+        }
+        wchar_t d[100]; _snwprintf(d, 100, L"%d white pixels at 100 %%, %d at 40 %%", bright[0], bright[1]);
+        Check(bright[0] > 50 && bright[1] == 0, L"watermark: a weaker mark never gets as white as a full one", d);
+    }
+    {   // an empty text draws nothing
+        st.wmText[0] = 0;
+        Check(WatermarkCreate(st, W, H) == nullptr, L"watermark: an empty text makes no mark");
+    }
+    if (ImageFormatAvailable(IMG_PNG)) {   // a picture file: a 20 x 10 red one, in the centre, at the size of its own and at twice that, half see-through
+        const int pw = 20, ph = 10;
+        BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+        bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = pw; bi.bmiHeader.biHeight = ph; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+        uint32_t* bits = nullptr; HDC dc = GetDC(nullptr);
+        HBITMAP bm = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, nullptr, 0); ReleaseDC(nullptr, dc);
+        if (bm && bits) {
+            for (int i = 0; i < pw * ph; ++i) bits[i] = 0xFFFF0000u;
+            wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\wm-red.png", g_dir);
+            bool saved = SaveBitmap(bm, path, IMG_PNG); DeleteObject(bm);
+            Settings im; SettingsDefaults(im);
+            im.wmKind = 1; StrCopy(im.wmImage, MAX_PATH, path); im.wmH = 1; im.wmV = 1; im.wmOpacity = 100;
+            int counts[2] = { 0, 0 }, mid[3] = { 0, 0, 0 };
+            for (int k = 0; k < 2; ++k) {
+                im.wmScale = k ? 200 : 100; im.wmOpacity = k ? 50 : 100;
+                Watermark* wm = WatermarkCreate(im, W, H);
+                grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+                counts[k] = WmChanged(pic, W, H, 0, 0, W, H, G);
+                if (k) { const uint8_t* q = pic + ((size_t)(H - 1 - H / 2) * W + W / 2) * 4; mid[0] = q[2]; mid[1] = q[1]; mid[2] = q[0]; }
+            }
+            wchar_t d[160]; _snwprintf(d, 160, L"saved %d, a 20x10 picture changes %d pixels, at 200 %% and half see-through %d; its centre %d,%d,%d", (int)saved, counts[0], counts[1], mid[0], mid[1], mid[2]);
+            Check(saved && counts[0] >= 190 && counts[0] <= 210, L"watermark: a picture is laid over as it is (20 x 10 pixels)", d);
+            Check(counts[1] >= 700 && counts[1] <= 900 && mid[0] > 200 && mid[0] < 250 && mid[1] > 80 && mid[1] < 140, L"watermark: the scale makes it four times the area, the opacity mixes it with the picture", d);
+            im.wmImage[0] = 0; Check(WatermarkCreate(im, W, H) == nullptr, L"watermark: no picture file, no mark");
+            StrCopy(im.wmImage, MAX_PATH, L"C:\\no\\such\\file.png"); Check(WatermarkCreate(im, W, H) == nullptr, L"watermark: a picture file that is not there makes no mark");
+        }
+    }
+    delete[] pic;
+}
+
+// In a recording (AVI: our own sink, runs under Wine too): the white text over the coloured fixture is there when the setting is on, not when it is off.
+static int WmRecordWhite(bool on)
+{
+    RecParams p; memset(&p, 0, sizeof(p));
+    SettingsDefaults(p.cfg);
+    p.cfg.videoCodec = VC_AVI; p.cfg.videoQuality = 0; p.cfg.fps = 15; p.cfg.mic = false; p.cfg.loopback = false; p.cfg.capMouse = false; p.cfg.highlight = false;
+    p.cfg.wmVideo = on; p.cfg.wmKind = 0; _snwprintf(p.cfg.wmText, 64, L"Watermark"); p.cfg.wmSize = 36; p.cfg.wmOpacity = 100; p.cfg.wmH = 1; p.cfg.wmV = 1;
+    p.rc = FxScreenRect();
+    wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\wm-video-%d.avi", g_dir, on ? 1 : 0);
+    DeleteFileW(path); wcscpy(p.path, path);
+    EnsureFixtureShown();
+    Recorder rec; wchar_t err[300] = L"";
+    if (!rec.Start(p, err, 300)) { FAIL(L"watermark: the recording did not start: %s", err); return -1; }
+    Pump(2500);
+    bool stopped = rec.Stop();
+    if (!stopped) { FAIL(L"watermark: the recording did not finish"); return -1; }
+    uint8_t* keep = nullptr; AviInfo a = ReadAvi(path, 1, &keep);
+    int white = -1;
+    if (a.ok && a.pickSize > 0 && keep) {
+        wchar_t jp[MAX_PATH]; _snwprintf(jp, MAX_PATH, L"%s\\wm-frame%d.jpg", g_dir, on ? 1 : 0);
+        HANDLE h = CreateFileW(jp, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
+        if (h != INVALID_HANDLE_VALUE) { DWORD wr; WriteFile(h, keep + a.pickOff, a.pickSize, &wr, nullptr); CloseHandle(h); }
+        int dw = 0, dh = 0; uint8_t* px = nullptr;
+        if (DecodePixels(jp, &dw, &dh, &px) && px) {
+            white = 0;
+            for (int y = dh / 2 - 40; y < dh / 2 + 40; ++y) for (int x = dw / 2 - 150; x < dw / 2 + 150; ++x) {
+                if (x < 0 || y < 0 || x >= dw || y >= dh) continue;
+                const uint8_t* q = px + ((size_t)y * dw + x) * 4;
+                if (q[0] > 225 && q[1] > 225 && q[2] > 225) ++white;
+            }
+            delete[] px;
+        }
+        DeleteFileW(jp);
+    }
+    delete[] keep;
+    DeleteFileW(path);
+    return white;
+}
+
+static void T_WatermarkVideo()
+{
+    if (!ImageFormatAvailable(IMG_JPG)) { SKIP(L"watermark in a recording: no JPEG encoder here"); return; }
+    MakeFixture(R(500, 700), R(300, 420));
+    int with = WmRecordWhite(true), without = WmRecordWhite(false);
+    wchar_t d[100]; _snwprintf(d, 100, L"%d white pixels in the middle of the frame with the watermark, %d without", with, without);
+    Check(with > 60 && without >= 0 && without < 20, L"watermark: a recording has the text when the setting is on and has none when it is off", d);
+}
+
+// In a screenshot of the program: the same desktop with the watermark on (top left) and off; the box differs.
+static int WmShotCount(bool on, uint8_t** out, int* ow, int* oh)
+{
+    Settings st; PrepareApp(st); st.imageFormat = IMG_PNG; st.notify = false; st.capMouse = false; st.highlight = false;
+    st.wmShot = on; st.wmKind = 0; _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
+    App a;
+    if (!StartApp(a, st)) { FAIL(L"watermark: the program did not start"); StopApp(a, false); return -1; }
+    int before = CountFiles(st.folder);
+    PostMessageW(a.main, WM_HOTKEY, HK_DESKTOP, 0);
+    DWORD end = GetTickCount() + WMS(20000);
+    while (CountFiles(st.folder) <= before && (int)(end - GetTickCount()) > 0) Sleep(100);
+    wchar_t pat[MAX_PATH]; _snwprintf(pat, MAX_PATH, L"%s\\*.png", st.folder);
+    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW(pat, &fd);
+    wchar_t file[MAX_PATH] = L"";
+    if (h != INVALID_HANDLE_VALUE) { do { _snwprintf(file, MAX_PATH, L"%s\\%s", st.folder, fd.cFileName); } while (FindNextFileW(h, &fd)); FindClose(h); }
+    unsigned long long last = 0; int stable = 0;
+    for (int i = 0; i < 100 && stable < 4 && file[0]; ++i) { unsigned long long z = FileSz(file); if (z == last && z > 0) ++stable; else stable = 0; last = z; Sleep(150); }
+    int dw = 0, dh = 0; uint8_t* px = nullptr;
+    bool ok = file[0] && DecodePixels(file, &dw, &dh, &px);
+    StopApp(a);
+    if (!ok) { FAIL(L"watermark: the screenshot could not be read (watermark %d)", (int)on); return -1; }
+    *out = px; *ow = dw; *oh = dh;
+    return 0;
+}
+
+static void T_WatermarkShot()
+{
+    if (g_fx.hw) ShowWindow(g_fx.hw, SW_HIDE);                          // the window of an earlier test moves its strip: it must not be in either picture
+    Pump(300);
+    uint8_t* a = nullptr; uint8_t* b = nullptr; int aw = 0, ah = 0, bw = 0, bh = 0;
+    if (WmShotCount(true, &a, &aw, &ah) < 0 || WmShotCount(false, &b, &bw, &bh) < 0) { delete[] a; delete[] b; return; }
+    int diff = 0, farCount = 0;
+    if (aw == bw && ah == bh)
+        for (int y = 0; y < ah; ++y) for (int x = 0; x < aw; ++x) {
+            const uint8_t* p = a + ((size_t)y * aw + x) * 4; const uint8_t* q = b + ((size_t)y * bw + x) * 4;
+            const int d = abs(p[0] - q[0]) + abs(p[1] - q[1]) + abs(p[2] - q[2]);
+            if (d > 60) { if (x < 420 && y < 100) ++diff; else if (x > aw / 2 && y > ah / 2) ++farCount; }
+        }
+    wchar_t d[160]; _snwprintf(d, 160, L"%dx%d and %dx%d; %d pixels differ in the top left box, %d in the lower right quarter", aw, ah, bw, bh, diff, farCount);
+    Check(aw == bw && ah == bh && diff > 300 && farCount < 200, L"watermark: a screenshot has the text where the settings put it, the rest is the same desktop", d);
+    delete[] a; delete[] b;
+}
+
+// A look at the strip with the eyes (only with C2S_PANEL_LOOK set): the program arms a recording, the strip is photographed into the logs folder
+// (panel-look-N.png). Where the system keeps the strip out of the capture (Windows 10 2004 and later) it is not in the picture.
+static void T_PanelLook()
+{
+    wchar_t e[8];
+    if (!GetEnvironmentVariableW(L"C2S_PANEL_LOOK", e, 8)) { SKIP(L"panel look: only when C2S_PANEL_LOOK is set"); return; }
+    wchar_t pd[MAX_PATH] = L"";
+    GetEnvironmentVariableW(L"ProgramData", pd, MAX_PATH);
+    for (int variant = 0; variant < 3; ++variant) {
+        Settings st; PrepareApp(st); st.notify = false; st.delaySec = 0; st.panelMode = 0; st.panelH = 0; st.panelV = 0; st.panelInVideo = true;
+        st.panelTime = st.panelSize = st.panelKey = true;
+        if (variant == 1) { st.panelSize = false; st.panelKey = false; st.panelH = 2; st.panelV = 1; }
+        if (variant == 2) { st.panelMode = 2; st.panelX = 300; st.panelY = 200; st.panelTime = false; }
+        App a;
+        if (!StartApp(a, st)) { FAIL(L"panel look: the program did not start"); StopApp(a, false); continue; }
+        PostMessageW(a.main, WM_COMMAND, IDC_REC_DESKTOP, 0);
+        HWND panel = FindReady(a.pi.dwProcessId, C2S_CLASS_PANEL, 10000);
+        Pump(1200);
+        if (panel) {
+            RECT r; GetWindowRect(panel, &r);
+            RECT vsr = VirtualScreen();
+            RECT big = { r.left - 30 < vsr.left ? vsr.left : r.left - 30, r.top - 30 < vsr.top ? vsr.top : r.top - 30, r.right + 30 > vsr.right ? vsr.right : r.right + 30, r.bottom + 30 > vsr.bottom ? vsr.bottom : r.bottom + 30 };
+            HBITMAP bm = CaptureRect(big, false, false);
+            wchar_t path[MAX_PATH + 40]; _snwprintf(path, MAX_PATH + 40, L"%s\\Click2Screen\\logs\\panel-look-%d.png", pd, variant);
+            if (bm) { SaveBitmap(bm, path, IMG_PNG); DeleteObject(bm); }
+            Rep(L"INFO", L"panel look %d: the strip at %d,%d %dx%d", variant, (int)r.left, (int)r.top, (int)(r.right - r.left), (int)(r.bottom - r.top));
+        } else Rep(L"INFO", L"panel look %d: no strip", variant);
+        StopApp(a);
+    }
 }
 
 struct MonInfo { RECT rc; wchar_t dev[40]; bool primary; };
@@ -5556,7 +5852,7 @@ int wmain(int argc, wchar_t** argv)
         { L"lifecycle", T_RecorderLifecycle, 2 }, { L"hotkeys", T_Hotkeys, 1 }, { L"installer", T_Installer, 1 },
         { L"fuzz-registry", T_FuzzSettings, 2 }, { L"fuzz-ini", T_FuzzIni, 2 }, { L"long-paths", T_LongPaths, 2 }, { L"threads", T_Threads, 2 },
         { L"leaks", T_Leaks, 2 }, { L"effects", T_Effects, 2 }, { L"program-frame", T_AppFrame, 3 }, { L"audio", T_Audio, 2 }, { L"hotkey-keys", T_HotkeyKeys, 2 }, { L"program-effects", T_AppEffects, 3 }, { L"long-recording", T_LongRecord, 1 }, { L"program", T_App, 5 },
-        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"picker-live", T_PickerLive, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
+        { L"no-network", T_NoNetwork, 1 }, { L"save-locked", T_SaveLocked, 1 }, { L"program-locale", T_AppLocale, 2 }, { L"program-crash", T_AppCrashRestart, 2 }, { L"program-flood", T_AppFlood, 2 }, { L"program-hotkey-move", T_AppHotkeyMove, 2 }, { L"keyframes", T_KeyInterval, 1 }, { L"audio-codecs", T_AudioCodecs, 1 }, { L"quality-sizes", T_QualitySizes, 1 }, { L"quality-matrix", T_QualityMatrix, 1 }, { L"gif-quality", T_GifQuality, 1 }, { L"ink-stress", T_InkStress, 3 }, { L"first-start", T_FirstStart, 2 }, { L"build-time", T_BuildTime, 1 }, { L"main-icons", T_MainIcons, 2 }, { L"monitors", T_Monitors, 3 }, { L"avi-still", T_AviStill, 1 }, { L"countdown-esc", T_CountdownEsc, 2 }, { L"panel-look", T_PanelLook, 2 }, { L"watermark-apply", T_WatermarkApply, 1 }, { L"watermark-video", T_WatermarkVideo, 1 }, { L"watermark-shot", T_WatermarkShot, 2 }, { L"panel-layout", T_PanelLayout, 1 }, { L"picker-live", T_PickerLive, 1 }, { L"avi-small-changes", T_AviSmallChanges, 1 }, { L"install-while-running", T_InstallWhileRunning, 1 }, { L"setup-window", T_SetupGui, 2 }, { L"setup-install-window", T_SetupGuiInstall, 1 }, { L"program-picks", T_AppPicks, 3 }, { L"program-oddities", T_AppOddities, 3 }, { L"monkey", T_Monkey, 4 },
     };
     const int nt = (int)(sizeof(tests) / sizeof(tests[0]));
     DWORD t0 = GetTickCount();

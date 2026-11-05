@@ -145,3 +145,34 @@ Der Dateiname wird:
 Über anderen Fenstern
 Separate Dateien für verschiedene Bildschirme speichern
 Optionen
+Leiste
+Wasserzeichen
+Bei der Aufnahme des ganzen Bildschirms steht die Leiste:
+an einer Stelle des Bildschirms
+im Infobereich (verborgen)
+an genauen Koordinaten
+Horizontal:
+Vertikal:
+Links
+Mitte
+Rechts
+Oben
+Mitte
+Unten
+Leiste in der Aufnahme zeigen
+Die Leiste zeigt:
+Zeit
+Dateigröße
+Tastenkürzel
+Wasserzeichen in Screenshots einfügen
+Wasserzeichen in Videos einfügen
+Wasserzeichen:
+Text
+Bild
+Text:
+Bilddatei:
+Bilder
+Position:
+Deckkraft, %:
+Texthöhe, px:
+Bildgröße, %:

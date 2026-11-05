@@ -145,3 +145,34 @@ Het bestand heet:
 Boven andere vensters
 Aparte bestanden opslaan voor verschillende schermen
 Opties
+Balk
+Watermerk
+Bij opname van het hele scherm staat de balk:
+op een plek op het scherm
+in het systeemvak (verborgen)
+op exacte coördinaten
+Horizontaal:
+Verticaal:
+Links
+Midden
+Rechts
+Boven
+Midden
+Onder
+Balk tonen in de opname
+De balk toont:
+Tijd
+Bestandsgrootte
+Sneltoets
+Watermerk toevoegen aan schermafbeeldingen
+Watermerk toevoegen aan video's
+Watermerk:
+tekst
+afbeelding
+Tekst:
+Afbeeldingsbestand:
+Afbeeldingen
+Positie:
+Dekking, %:
+Teksthoogte, px:
+Afbeeldingsgrootte, %:

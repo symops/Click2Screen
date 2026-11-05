@@ -64,6 +64,39 @@ void SettingsDefaults(Settings& s)
     s.delaySec = 0;
     s.videoCodec = 0; s.audioCodec = 0; s.videoQuality = 1; s.audioQuality = 1;
     s.fps = 25; s.language = 0;
+    s.panelMode = 0; s.panelH = 1; s.panelV = 2; s.panelX = 100; s.panelY = 100; s.panelInVideo = false;
+    s.panelTime = s.panelSize = s.panelKey = true;
+    s.wmShot = s.wmVideo = false; s.wmKind = 0; s.wmText[0] = 0; s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
+}
+
+int PanelLayout(const Settings& s, int left[6])
+{
+    static const int width[5] = { 40, 40, 98, 26, 26 };
+    const bool vis[5] = { s.panelTime, s.panelSize, s.panelKey, true, true };
+    int x = 0;
+    for (int i = 0; i < 5; ++i) { left[i] = x; if (vis[i]) x += width[i]; }
+    left[5] = x;
+    return x;
+}
+
+void PanelPosition(const Settings& s, const RECT& work, const RECT& screen, int w, int h, int margin, int* x, int* y)
+{
+    int px, py;
+    if (s.panelMode == 2) {
+        px = s.panelX; py = s.panelY;
+        if (px + w > screen.right) px = screen.right - w;           // exact, but not off the desktop
+        if (py + h > screen.bottom) py = screen.bottom - h;
+        if (px < screen.left) px = screen.left;
+        if (py < screen.top) py = screen.top;
+    } else {
+        px = s.panelH == 0 ? work.left + margin : s.panelH == 2 ? work.right - w - margin : (work.left + work.right - w) / 2;
+        py = s.panelV == 0 ? work.top + margin : s.panelV == 1 ? (work.top + work.bottom - h) / 2 : work.bottom - h - margin;
+        if (px + w > work.right) px = work.right - w;
+        if (px < work.left) px = work.left;
+        if (py + h > work.bottom) py = work.bottom - h;
+        if (py < work.top) py = work.top;
+    }
+    *x = px; *y = py;
 }
 
 int HotkeyDefault(int i)
@@ -157,6 +190,25 @@ void SettingsLoad(Settings& s)
     s.audioQuality = Clamp((int)GetDw(k, L"AudioQuality", d.audioQuality), 0, 2);
     s.fps          = Clamp((int)GetDw(k, L"Fps", d.fps), 5, 60);
     s.language     = Clamp((int)GetDw(k, L"Language", d.language), 0, LangCount());
+    s.panelMode    = Clamp((int)GetDw(k, L"PanelMode", d.panelMode), 0, 2);
+    s.panelH       = Clamp((int)GetDw(k, L"PanelH", d.panelH), 0, 2);
+    s.panelV       = Clamp((int)GetDw(k, L"PanelV", d.panelV), 0, 2);
+    s.panelX       = Clamp((int)GetDw(k, L"PanelX", d.panelX), -32000, 32000);
+    s.panelY       = Clamp((int)GetDw(k, L"PanelY", d.panelY), -32000, 32000);
+    s.panelInVideo = GetDw(k, L"PanelInVideo", d.panelInVideo) != 0;
+    s.panelTime    = GetDw(k, L"PanelTime", d.panelTime) != 0;
+    s.panelSize    = GetDw(k, L"PanelSize", d.panelSize) != 0;
+    s.panelKey     = GetDw(k, L"PanelKey", d.panelKey) != 0;
+    s.wmShot       = GetDw(k, L"WmShot", d.wmShot) != 0;
+    s.wmVideo      = GetDw(k, L"WmVideo", d.wmVideo) != 0;
+    s.wmKind       = Clamp((int)GetDw(k, L"WmKind", d.wmKind), 0, 1);
+    GetStr(k, L"WmText", s.wmText, 64, d.wmText);
+    GetStr(k, L"WmImage", s.wmImage, MAX_PATH, d.wmImage);
+    s.wmH          = Clamp((int)GetDw(k, L"WmH", d.wmH), 0, 2);
+    s.wmV          = Clamp((int)GetDw(k, L"WmV", d.wmV), 0, 2);
+    s.wmOpacity    = Clamp((int)GetDw(k, L"WmOpacity", d.wmOpacity), 10, 100);
+    s.wmSize       = Clamp((int)GetDw(k, L"WmSize", d.wmSize), 8, 200);
+    s.wmScale      = Clamp((int)GetDw(k, L"WmScale", d.wmScale), 10, 300);
     for (int i = 0; i < HKI_COUNT; ++i) {                              // 0 = switched off; anything else must be a key that can be registered
         int c = (int)GetDw(k, kHotkeyNames[i], d.hotkey[i]);
         s.hotkey[i] = c == 0 || HotkeyUsable(c) ? c : d.hotkey[i];
@@ -199,6 +251,12 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"AudioQuality", s.audioQuality);
     PutDw(k, L"Fps", s.fps);
     PutDw(k, L"Language", s.language);
+    PutDw(k, L"PanelMode", s.panelMode); PutDw(k, L"PanelH", s.panelH); PutDw(k, L"PanelV", s.panelV);
+    PutDw(k, L"PanelX", (DWORD)s.panelX); PutDw(k, L"PanelY", (DWORD)s.panelY);
+    PutDw(k, L"PanelInVideo", s.panelInVideo); PutDw(k, L"PanelTime", s.panelTime); PutDw(k, L"PanelSize", s.panelSize); PutDw(k, L"PanelKey", s.panelKey);
+    PutDw(k, L"WmShot", s.wmShot); PutDw(k, L"WmVideo", s.wmVideo); PutDw(k, L"WmKind", s.wmKind);
+    PutStr(k, L"WmText", s.wmText); PutStr(k, L"WmImage", s.wmImage);
+    PutDw(k, L"WmH", s.wmH); PutDw(k, L"WmV", s.wmV); PutDw(k, L"WmOpacity", s.wmOpacity); PutDw(k, L"WmSize", s.wmSize); PutDw(k, L"WmScale", s.wmScale);
     for (int i = 0; i < HKI_COUNT; ++i) PutDw(k, kHotkeyNames[i], s.hotkey[i]);
     RegCloseKey(k);
 }
@@ -426,6 +484,12 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"AudioCodec", s.audioCodec);
     IniInt(path, L"VideoQuality", s.videoQuality);
     IniInt(path, L"AudioQuality", s.audioQuality);
+    IniInt(path, L"PanelMode", s.panelMode); IniInt(path, L"PanelH", s.panelH); IniInt(path, L"PanelV", s.panelV);
+    IniInt(path, L"PanelX", s.panelX); IniInt(path, L"PanelY", s.panelY);
+    IniInt(path, L"PanelInVideo", s.panelInVideo); IniInt(path, L"PanelTime", s.panelTime); IniInt(path, L"PanelSize", s.panelSize); IniInt(path, L"PanelKey", s.panelKey);
+    IniInt(path, L"WmShot", s.wmShot); IniInt(path, L"WmVideo", s.wmVideo); IniInt(path, L"WmKind", s.wmKind);
+    IniStr(path, L"WmText", s.wmText); IniStr(path, L"WmImage", s.wmImage);
+    IniInt(path, L"WmH", s.wmH); IniInt(path, L"WmV", s.wmV); IniInt(path, L"WmOpacity", s.wmOpacity); IniInt(path, L"WmSize", s.wmSize); IniInt(path, L"WmScale", s.wmScale);
     IniInt(path, L"Fps", s.fps);
     wchar_t back[MAX_PATH];
     return GetPrivateProfileStringW(kSec, L"Fps", L"", back, MAX_PATH, path) > 0;
@@ -475,5 +539,24 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"VideoQuality", 0, 2, &v)) s.videoQuality = v;
     if (IniGetInt(path, L"AudioQuality", 0, 2, &v)) s.audioQuality = v;
     if (IniGetInt(path, L"Fps", 5, 60, &v)) s.fps = v;
+    if (IniGetInt(path, L"PanelMode", 0, 2, &v)) s.panelMode = v;
+    if (IniGetInt(path, L"PanelH", 0, 2, &v)) s.panelH = v;
+    if (IniGetInt(path, L"PanelV", 0, 2, &v)) s.panelV = v;
+    if (IniGetInt(path, L"PanelX", -32000, 32000, &v)) s.panelX = v;
+    if (IniGetInt(path, L"PanelY", -32000, 32000, &v)) s.panelY = v;
+    if (IniGetInt(path, L"PanelInVideo", 0, 1, &v)) s.panelInVideo = v != 0;
+    if (IniGetInt(path, L"PanelTime", 0, 1, &v)) s.panelTime = v != 0;
+    if (IniGetInt(path, L"PanelSize", 0, 1, &v)) s.panelSize = v != 0;
+    if (IniGetInt(path, L"PanelKey", 0, 1, &v)) s.panelKey = v != 0;
+    if (IniGetInt(path, L"WmShot", 0, 1, &v)) s.wmShot = v != 0;
+    if (IniGetInt(path, L"WmVideo", 0, 1, &v)) s.wmVideo = v != 0;
+    if (IniGetInt(path, L"WmKind", 0, 1, &v)) s.wmKind = v;
+    if (GetPrivateProfileStringW(kSec, L"WmText", L"\x01", str, 64, path) > 0 && str[0] != 1) StrCopy(s.wmText, 64, str);
+    if (GetPrivateProfileStringW(kSec, L"WmImage", L"\x01", str, MAX_PATH, path) > 0 && str[0] != 1) StrCopy(s.wmImage, MAX_PATH, str);
+    if (IniGetInt(path, L"WmH", 0, 2, &v)) s.wmH = v;
+    if (IniGetInt(path, L"WmV", 0, 2, &v)) s.wmV = v;
+    if (IniGetInt(path, L"WmOpacity", 10, 100, &v)) s.wmOpacity = v;
+    if (IniGetInt(path, L"WmSize", 8, 200, &v)) s.wmSize = v;
+    if (IniGetInt(path, L"WmScale", 10, 300, &v)) s.wmScale = v;
     return true;
 }

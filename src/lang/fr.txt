@@ -145,3 +145,34 @@ Le fichier s'appellera :
 Au-dessus des autres fenêtres
 Enregistrer des fichiers séparés pour chaque écran
 Options
+Barre
+Filigrane
+Lors de l'enregistrement de tout l'écran, la barre est :
+à un endroit de l'écran
+dans la zone de notification (masquée)
+à des coordonnées exactes
+Horizontalement :
+Verticalement :
+Gauche
+Centre
+Droite
+Haut
+Milieu
+Bas
+Afficher la barre dans l'enregistrement
+La barre affiche :
+Durée
+Taille du fichier
+Raccourci
+Ajouter le filigrane aux captures d'écran
+Ajouter le filigrane aux vidéos
+Filigrane :
+texte
+image
+Texte :
+Fichier image :
+Images
+Position :
+Opacité, % :
+Hauteur du texte, px :
+Taille de l'image, % :

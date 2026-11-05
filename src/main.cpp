@@ -205,7 +205,9 @@ void ShowMain(bool show)
 const COLORREF kCapTop = RGB(70, 80, 101), kCapBot = RGB(39, 45, 56), kBody = RGB(238, 250, 255), kBlue = RGB(8, 115, 197),
                kGlyph = RGB(54, 62, 78), kStripTop = RGB(40, 45, 57), kStripBot = RGB(71, 80, 101), kStripSep = RGB(82, 91, 108),
                kStripInk = RGB(177, 180, 187), kRecRed = RGB(203, 62, 58);
-const int kMainW = 206, kMainH = 62, kCapH = 28, kStripW = 230, kStripH = 29, kFrameW = 3;
+const int kMainW = 206, kMainH = 62, kCapH = 28, kStripH = 29, kFrameW = 3;
+int  g_panelLeft[6] = { 0, 40, 80, 178, 204, 230 };            // the left edges of the cells of the strip, in units (PanelLayout of the settings the strip was made with)
+bool g_panelVis[5] = { true, true, true, true, true };         // time, size, key, start, stop: which cells are there
 
 void Box(HDC dc, int x, int y, int w, int h, COLORREF c)       // a rectangle in 96-dpi units at the pixel origin (ox, oy) set by the caller
 {
@@ -310,6 +312,38 @@ void FillStrip(HDC dc, int x, int w)                            // the vertical 
     }
 }
 
+// A disc with a smooth edge (GDI's Ellipse has a stair edge): the background under it is copied, every pixel gets the share of it that the disc covers
+// (4 x 4 samples), the result goes back. Same bounds as Ellipse(cx - r, cy - r, cx + r + 1, cy + r + 1).
+void DrawSmoothDisc(HDC dc, int cx, int cy, int r, COLORREF col)
+{
+    const int N = 2 * r + 5, x0 = cx - r - 2, y0 = cy - r - 2;
+    BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader); bi.bmiHeader.biWidth = N; bi.bmiHeader.biHeight = -N; bi.bmiHeader.biPlanes = 1; bi.bmiHeader.biBitCount = 32;
+    uint32_t* px = nullptr;
+    HDC mem = CreateCompatibleDC(dc);
+    HBITMAP bm = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&px, nullptr, 0);
+    if (!mem || !bm || !px) { if (bm) DeleteObject(bm); if (mem) DeleteDC(mem); return; }
+    HGDIOBJ old = SelectObject(mem, bm);
+    BitBlt(mem, 0, 0, N, N, dc, x0, y0, SRCCOPY);
+    GdiFlush();
+    const double ccx = cx + 0.5 - x0, ccy = cy + 0.5 - y0, rr = r + 0.5;
+    const int cr = GetRValue(col), cg = GetGValue(col), cb = GetBValue(col);
+    for (int y = 0; y < N; ++y) for (int x = 0; x < N; ++x) {
+        int in = 0;
+        for (int sy = 0; sy < 4; ++sy) for (int sx = 0; sx < 4; ++sx) {
+            const double dx = x + (sx + 0.5) / 4.0 - ccx, dy = y + (sy + 0.5) / 4.0 - ccy;
+            if (dx * dx + dy * dy <= rr * rr) ++in;
+        }
+        if (!in) continue;
+        uint32_t& q = px[(size_t)y * N + x];
+        const int br = (int)((q >> 16) & 255), bg = (int)((q >> 8) & 255), bb = (int)(q & 255);
+        const int nr = br + (cr - br) * in / 16, ng = bg + (cg - bg) * in / 16, nb = bb + (cb - bb) * in / 16;
+        q = ((uint32_t)nr << 16) | ((uint32_t)ng << 8) | (uint32_t)nb;
+    }
+    BitBlt(dc, x0, y0, N, N, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, old); DeleteObject(bm); DeleteDC(mem);
+}
+
 void DrawPanelItem(const DRAWITEMSTRUCT* d)
 {
     HDC dc = d->hDC;
@@ -324,10 +358,7 @@ void DrawPanelItem(const DRAWITEMSTRUCT* d)
         if (id == IDC_P_STOP) Box(dc, cx - r, cy - r, 2 * r, 2 * r, ink);
         else if (g_state == ST_RECORDING) { Box(dc, cx - r, cy - r, Sc(3), 2 * r, ink); Box(dc, cx + r - Sc(3), cy - r, Sc(3), 2 * r, ink); }
         else {
-            HBRUSH b = CreateSolidBrush(enabled ? kRecRed : RGB(110, 115, 125)); HPEN pn = CreatePen(PS_SOLID, 1, enabled ? kRecRed : RGB(110, 115, 125));
-            HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, pn);
-            Ellipse(dc, cx - r, cy - r, cx + r + 1, cy + r + 1);
-            SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(b); DeleteObject(pn);
+            DrawSmoothDisc(dc, cx, cy, r, enabled ? kRecRed : RGB(110, 115, 125));         // the red circle: a smooth edge
         }
         return;
     }
@@ -393,6 +424,17 @@ void FinishRecording(bool ok, bool userStop);
 void RegisterStopHotkey();
 void RegisterHotkeys();
 
+// Esc cancels a screenshot or a recording while its countdown runs. The key is taken from the other programs for that time only.
+bool g_escArmed, g_cancelShot;
+void EscArm()
+{
+    if (!g_escArmed && g_main && RegisterHotKey(g_main, HK_ESC, MOD_NOREPEAT, VK_ESCAPE)) g_escArmed = true;
+}
+void EscDisarm()
+{
+    if (g_escArmed) { UnregisterHotKey(g_main, HK_ESC); g_escArmed = false; }
+}
+
 void DeleteRecs()
 {
     for (int i = 0; i < g_nrecs; ++i) { delete g_recs[i]; g_recs[i] = nullptr; }
@@ -401,6 +443,7 @@ void DeleteRecs()
 
 void BeginRecord()
 {
+    EscDisarm();                                                 // the countdown is over
     Log(L"record: starting");
     wchar_t err[300] = L"";
     g_target.cfg = g_cfg;
@@ -460,6 +503,7 @@ void ClosePanel()
     }
     FrameHide();
     CountdownHide();
+    EscDisarm();
     TrailOverlayHide();
     FxStop();
     UnregisterHotKey(g_main, HK_STOP);
@@ -518,6 +562,7 @@ void StartPressed()
     case ST_ARMED:
         if (g_cfg.delaySec > 0) {
             g_state = ST_COUNTDOWN; g_countdown = g_cfg.delaySec;
+            EscArm();
             SetTimer(g_panel, TIMER_COUNTDOWN, 1000, nullptr);
             Beep(true);
             { RECT ar[16]; int an = RecordAreas(ar); CountdownShow(g_countdown, ar, an); }
@@ -576,7 +621,7 @@ void PlaceOverlay()
     RECT rc = TargetRect();
     int fw = Sc(kFrameW);
     if (g_frame) FramePlace(rc);
-    int w = Sc(kStripW), h = Sc(kStripH);
+    int w = Sc(g_panelLeft[5]), h = Sc(kStripH);
     HMONITOR mon = MonitorFromRect(&rc, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi; mi.cbSize = sizeof(mi); GetMonitorInfoW(mon, &mi);
     RECT wa = mi.rcWork;
@@ -585,7 +630,8 @@ void PlaceOverlay()
         POINT origin = { 0, 0 };
         MONITORINFO pm; pm.cbSize = sizeof(pm); GetMonitorInfoW(MonitorFromPoint(origin, MONITOR_DEFAULTTOPRIMARY), &pm);
         wa = pm.rcWork;
-        x = (wa.left + wa.right - w) / 2; y = wa.bottom - h - Sc(20);
+        RECT vs = VirtualScreen();
+        PanelPosition(g_cfg, wa, vs, w, h, Sc(20), &x, &y);       // the place the settings say (the bottom centre by default)
     } else {
         x = (rc.left + rc.right - w) / 2 - 1; y = rc.bottom + fw;
         if (y + h > wa.bottom) y = rc.top - fw - h;                 // no room below: above the frame
@@ -631,8 +677,12 @@ LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         PAINTSTRUCT ps; HDC dc = BeginPaint(hw, &ps);
         RECT r; GetClientRect(hw, &r);
         FillStrip(dc, 0, r.right);
-        static const int seps[4] = { 40, 80, 178, 204 };
-        for (int x : seps) { Box(dc, Sc(x), Sc(6), 1, Sc(kStripH) - Sc(12), kStripSep); }
+        bool first = true;
+        for (int i = 0; i < 5; ++i) {                                   // a line between two cells that are there
+            if (!g_panelVis[i]) continue;
+            if (!first) Box(dc, Sc(g_panelLeft[i]), Sc(6), 1, Sc(kStripH) - Sc(12), kStripSep);
+            first = false;
+        }
         EndPaint(hw, &ps);
         return 0; }
     case WM_DRAWITEM: DrawPanelItem((const DRAWITEMSTRUCT*)lp); return TRUE;
@@ -672,24 +722,27 @@ void ShowPanel()
     if (g_state == ST_IDLE) return;                 // no panel without a recording to control
     if (g_panel) { ShowWindow(g_panel, SW_SHOWNA); return; }
     RegisterOverlayClasses();
-    int w = Sc(kStripW), h = Sc(kStripH);
+    PanelLayout(g_cfg, g_panelLeft);
+    g_panelVis[0] = g_cfg.panelTime; g_panelVis[1] = g_cfg.panelSize; g_panelVis[2] = g_cfg.panelKey; g_panelVis[3] = g_panelVis[4] = true;
+    int w = Sc(g_panelLeft[5]), h = Sc(kStripH);
     g_panel = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE, L"Click2ScreenPanel", T(S_PANEL_TITLE), WS_POPUP | WS_CLIPCHILDREN,
                               0, 0, w, h, nullptr, nullptr, g_inst, nullptr);
-    ExcludeFromCapture(g_panel);
+    if (!g_cfg.panelInVideo) ExcludeFromCapture(g_panel);                                  // the strip is out of the recording unless the settings put it in
     SquareWindow(g_panel);
     if (g_ink) SetWindowPos(g_panel, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-    // time | size | F11: Stop | start / pause | stop  (cells split at 40, 80, 178, 204 of 230 units)
-    static const int cell[6] = { 0, 40, 80, 178, 204, 230 };
+    // time | size | F11: Stop | start / pause | stop  (the cells that the settings leave out are made too, hidden: their texts are what the strip is told)
+    const int* cell = g_panelLeft;
     static const int ids[5] = { IDC_P_TIME, IDC_P_SIZE, IDC_P_HINT, IDC_P_START, IDC_P_STOP };
     for (int i = 0; i < 5; ++i) {
         bool button = i >= 3;
-        HWND c = CreateWindowExW(0, button ? L"BUTTON" : L"STATIC", L"", WS_CHILD | WS_VISIBLE | (button ? (BS_OWNERDRAW | WS_TABSTOP) : SS_OWNERDRAW),
-                                 Sc(cell[i]) + 1, 0, Sc(cell[i + 1]) - Sc(cell[i]) - 1, h, g_panel, (HMENU)(INT_PTR)ids[i], g_inst, nullptr);
+        HWND c = CreateWindowExW(0, button ? L"BUTTON" : L"STATIC", L"", WS_CHILD | (g_panelVis[i] ? WS_VISIBLE : 0) | (button ? (BS_OWNERDRAW | WS_TABSTOP) : SS_OWNERDRAW),
+                                 Sc(cell[i]) + 1, 0, g_panelVis[i] ? Sc(cell[i + 1]) - Sc(cell[i]) - 1 : 0, h, g_panel, (HMENU)(INT_PTR)ids[i], g_inst, nullptr);
         SendMessageW(c, WM_SETFONT, (WPARAM)g_fontBold, TRUE);
     }
     if (!g_modeDesktop) FrameShow(TargetRect());
     UpdatePanel();
     PlaceOverlay();
+    if (g_modeDesktop && g_cfg.panelMode == 1) return;               // "in the tray": the strip stays hidden (the tray menu shows it, the tray icon and the keys control the recording)
     ShowWindow(g_panel, SW_SHOWNA);
 }
 
@@ -733,6 +786,19 @@ void PumpFor(int ms)
         MSG msg;
         while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
             if (msg.message == WM_QUIT) { PostQuitMessage((int)msg.wParam); return; }   // not ours to swallow: the main loop must see it
+            TranslateMessage(&msg); DispatchMessageW(&msg);
+        }
+        Sleep(10);
+    }
+}
+
+void PumpForCancel(int ms)                       // PumpFor that ends at once when the screenshot is cancelled (Esc in the countdown)
+{
+    DWORD end = GetTickCount() + ms;
+    while ((int)(end - GetTickCount()) > 0 && !g_cancelShot) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+            if (msg.message == WM_QUIT) { PostQuitMessage((int)msg.wParam); return; }
             TranslateMessage(&msg); DispatchMessageW(&msg);
         }
         Sleep(10);
@@ -1049,14 +1115,36 @@ void Shot(Mode mode)
     else if (!ChooseTarget(mode, &rects[0], &hw)) { if (wasVisible) ShowMain(true); g_busyShot = false; return; }
     else if (wasVisible) ShowMain(false);
     if (mode != M_DESKTOP) { FrameShow(rects[0]); g_frameBlink = true; }     // the red frame round the chosen area; it blinks while the screenshot is made
-    for (int i = g_cfg.delaySec; i > 0; --i) { Beep(true); CountdownShow(i, rects, count); PumpFor(1000); }
+    g_cancelShot = false;
+    if (g_cfg.delaySec > 0) EscArm();
+    for (int i = g_cfg.delaySec; i > 0 && !g_cancelShot; --i) { Beep(true); CountdownShow(i, rects, count); PumpForCancel(1000); }
+    EscDisarm();
     CountdownHide();
+    if (g_cancelShot) {                                                  // Esc in the countdown: no picture
+        g_cancelShot = false;
+        Log(L"shot: cancelled in the countdown");
+        FrameHide();
+        if (wasVisible) ShowMain(true);
+        g_busyShot = false;
+        return;
+    }
     if (hw) { if (!IsWindow(hw) || !WindowVisibleRect(hw, &rects[0])) { if (wasVisible) ShowMain(true); g_busyShot = false; return; } }
     if (mode != M_DESKTOP) { PumpFor(60); DwmFlush(); PumpFor(40); }          // let the screen show the desktop again, not the dimmed picker (one compositor frame)
     HBITMAP bmps[16];                             // all the monitors are captured at the same moment, then saved one by one
     int got = 0;
     Log(L"shot: capturing %d area(s)", count);
-    for (int i = 0; i < count; ++i) { bmps[i] = CaptureRect(rects[i], g_cfg.capMouse, g_cfg.highlight); if (bmps[i]) ++got; }
+    for (int i = 0; i < count; ++i) {
+        bmps[i] = CaptureRect(rects[i], g_cfg.capMouse, g_cfg.highlight);
+        if (bmps[i]) ++got;
+        if (bmps[i] && g_cfg.wmShot) {                                   // the watermark goes onto the picture itself
+            BITMAP bm; memset(&bm, 0, sizeof(bm));
+            if (GetObjectW(bmps[i], sizeof(bm), &bm) && bm.bmBits && bm.bmBitsPixel == 32) {
+                Watermark* wm = WatermarkCreate(g_cfg, bm.bmWidth, bm.bmHeight);
+                WatermarkApply(wm, (uint8_t*)bm.bmBits, bm.bmWidth, bm.bmHeight);
+                WatermarkFree(wm);
+            }
+        }
+    }
     Log(L"shot: captured %d of %d", got, count);
     FrameHide();
     if (wasVisible) ShowMain(true);
@@ -1089,7 +1177,8 @@ void Shot(Mode mode)
 }
 
 // ---- options -----------------------------------------------------------------------------------------------------
-const int kPages = 5;
+const int kPages = 7;
+const Str kPageNames[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS, S_OPT_PANEL, S_OPT_WATERMARK };
 struct OptState { Settings s; bool ok, done; HWND dlg; HWND pg[kPages][32]; int np[kPages]; int sel; RECT tabRc[kPages]; int hk[HKI_COUNT]; };
 
 // A hotkey field: read-only, it shows the combination and takes the next one pressed (Backspace / Delete clear it).
@@ -1172,6 +1261,17 @@ void TplPreview(HWND d)
     SetDlgItemTextW(d, O_TPLPREVIEW, line);
 }
 
+// The panel page: the place only for a place, the coordinates only for exact coordinates; the watermark page: the text or the picture.
+void OptEnable(OptState* o)
+{
+    HWND d = o->dlg;
+    const int mode = (int)SendDlgItemMessageW(d, O_PMODE, CB_GETCURSEL, 0, 0), kind = (int)SendDlgItemMessageW(d, O_WKIND, CB_GETCURSEL, 0, 0);
+    EnableWindow(GetDlgItem(d, O_PH), mode == 0); EnableWindow(GetDlgItem(d, O_PV), mode == 0);
+    EnableWindow(GetDlgItem(d, O_PX), mode == 2); EnableWindow(GetDlgItem(d, O_PY), mode == 2);
+    EnableWindow(GetDlgItem(d, O_WTEXT), kind == 0); EnableWindow(GetDlgItem(d, O_WSIZE), kind == 0);
+    EnableWindow(GetDlgItem(d, O_WIMAGE), kind == 1); EnableWindow(GetDlgItem(d, O_WBROWSE), kind == 1); EnableWindow(GetDlgItem(d, O_WSCALE), kind == 1);
+}
+
 void OptLoad(OptState* o)
 {
     HWND d = o->dlg; Settings& s = o->s;
@@ -1193,6 +1293,15 @@ void OptLoad(OptState* o)
     TplPreview(d);
     SendDlgItemMessageW(d, O_LANG, CB_SETCURSEL, s.language, 0);
     for (int i = 0; i < HKI_COUNT; ++i) { o->hk[i] = s.hotkey[i]; HkShow(o, i); }
+    SendDlgItemMessageW(d, O_PMODE, CB_SETCURSEL, s.panelMode, 0); SendDlgItemMessageW(d, O_PH, CB_SETCURSEL, s.panelH, 0); SendDlgItemMessageW(d, O_PV, CB_SETCURSEL, s.panelV, 0);
+    SetDlgItemInt(d, O_PX, (UINT)s.panelX, TRUE); SetDlgItemInt(d, O_PY, (UINT)s.panelY, TRUE);
+    chk(O_PVIDEO, s.panelInVideo); chk(O_PTIME, s.panelTime); chk(O_PSIZE, s.panelSize); chk(O_PKEY, s.panelKey);
+    chk(O_WSHOT, s.wmShot); chk(O_WVIDEO, s.wmVideo);
+    SendDlgItemMessageW(d, O_WKIND, CB_SETCURSEL, s.wmKind, 0);
+    SetDlgItemTextW(d, O_WTEXT, s.wmText); SetDlgItemTextW(d, O_WIMAGE, s.wmImage);
+    SendDlgItemMessageW(d, O_WH, CB_SETCURSEL, s.wmH, 0); SendDlgItemMessageW(d, O_WV, CB_SETCURSEL, s.wmV, 0);
+    SetDlgItemInt(d, O_WOPACITY, (UINT)s.wmOpacity, FALSE); SetDlgItemInt(d, O_WSIZE, (UINT)s.wmSize, FALSE); SetDlgItemInt(d, O_WSCALE, (UINT)s.wmScale, FALSE);
+    OptEnable(o);
 }
 
 // The dialog's controls -> s (no checks).
@@ -1215,6 +1324,15 @@ void OptCollect(OptState* o, Settings& s)
     GetDlgItemTextW(d, O_TPL, s.fileName, 128);
     s.language = (int)SendDlgItemMessageW(d, O_LANG, CB_GETCURSEL, 0, 0); if (s.language < 0) s.language = 0;
     for (int i = 0; i < HKI_COUNT; ++i) s.hotkey[i] = o->hk[i];
+    auto sel = [&](int id, int hi, int cur) { int i = (int)SendDlgItemMessageW(d, id, CB_GETCURSEL, 0, 0); return i < 0 || i > hi ? cur : i; };
+    auto num = [&](int id, int lo, int hi, int cur, bool sign) { BOOL ok = FALSE; int v = (int)GetDlgItemInt(d, id, &ok, sign ? TRUE : FALSE); return !ok ? cur : v < lo ? lo : v > hi ? hi : v; };
+    s.panelMode = sel(O_PMODE, 2, s.panelMode); s.panelH = sel(O_PH, 2, s.panelH); s.panelV = sel(O_PV, 2, s.panelV);
+    s.panelX = num(O_PX, -32000, 32000, s.panelX, true); s.panelY = num(O_PY, -32000, 32000, s.panelY, true);
+    s.panelInVideo = chk(O_PVIDEO); s.panelTime = chk(O_PTIME); s.panelSize = chk(O_PSIZE); s.panelKey = chk(O_PKEY);
+    s.wmShot = chk(O_WSHOT); s.wmVideo = chk(O_WVIDEO); s.wmKind = sel(O_WKIND, 1, s.wmKind);
+    GetDlgItemTextW(d, O_WTEXT, s.wmText, 64); GetDlgItemTextW(d, O_WIMAGE, s.wmImage, MAX_PATH);
+    s.wmH = sel(O_WH, 2, s.wmH); s.wmV = sel(O_WV, 2, s.wmV);
+    s.wmOpacity = num(O_WOPACITY, 10, 100, s.wmOpacity, false); s.wmSize = num(O_WSIZE, 8, 200, s.wmSize, false); s.wmScale = num(O_WSCALE, 10, 300, s.wmScale, false);
 }
 
 void ShowPage(OptState* o, int page);
@@ -1232,6 +1350,10 @@ void OptRestorePage(OptState* o)
     case 2: wcscpy(cur.folder, d.folder); wcscpy(cur.fileName, d.fileName); break;
     case 3: cur.language = d.language; break;
     case 4: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
+    case 5: cur.panelMode = d.panelMode; cur.panelH = d.panelH; cur.panelV = d.panelV; cur.panelX = d.panelX; cur.panelY = d.panelY; cur.panelInVideo = d.panelInVideo;
+            cur.panelTime = d.panelTime; cur.panelSize = d.panelSize; cur.panelKey = d.panelKey; break;
+    case 6: cur.wmShot = d.wmShot; cur.wmVideo = d.wmVideo; cur.wmKind = d.wmKind; StrCopy(cur.wmText, 64, d.wmText); StrCopy(cur.wmImage, MAX_PATH, d.wmImage);
+            cur.wmH = d.wmH; cur.wmV = d.wmV; cur.wmOpacity = d.wmOpacity; cur.wmSize = d.wmSize; cur.wmScale = d.wmScale; break;
     }
     o->s = cur; OptLoad(o);
 }
@@ -1309,6 +1431,21 @@ void BrowseFolder(HWND d, int editId)
     }
 }
 
+void BrowseImage(HWND d, int editId)
+{
+    wchar_t file[MAX_PATH]; GetDlgItemTextW(d, editId, file, MAX_PATH);
+    wchar_t filter[200];
+    const wchar_t* name = T(S_WM_FILTER);
+    size_t l = wcslen(name) + 1;
+    memcpy(filter, name, l * sizeof(wchar_t));
+    wcscpy(filter + l, L"*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff");
+    filter[l + wcslen(L"*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff") + 1] = 0;
+    OPENFILENAMEW ofn; memset(&ofn, 0, sizeof(ofn));
+    ofn.lStructSize = sizeof(ofn); ofn.hwndOwner = d; ofn.lpstrFilter = filter; ofn.lpstrFile = file; ofn.nMaxFile = MAX_PATH;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR; ofn.lpstrTitle = T(S_WM_IMAGE);
+    if (GetOpenFileNameW(&ofn)) SetDlgItemTextW(d, editId, file);
+}
+
 void ShowPage(OptState* o, int page)
 {
     o->sel = page;
@@ -1327,7 +1464,7 @@ void PaintOptions(OptState* o, HDC dc)
     if (o->sel == 1) Box(dc, Sc(34), Sc(198), Sc(459), 1, RGB(214, 214, 214));          // the faint line between the video settings and the picture format
     Box(dc, pg.left, pg.top, pg.right - pg.left, 1, line); Box(dc, pg.left, pg.bottom - 1, pg.right - pg.left, 1, line);
     Box(dc, pg.left, pg.top, 1, pg.bottom - pg.top, line); Box(dc, pg.right - 1, pg.top, 1, pg.bottom - pg.top, line);
-    const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
+    const Str* names = kPageNames;
     SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(0, 0, 0));
     HGDIOBJ of = SelectObject(dc, g_font);
     for (int i = 0; i < kPages; ++i) {
@@ -1364,6 +1501,8 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case IDCANCEL: o->done = true; break;
         case O_MOUSE: EnableWindow(GetDlgItem(hw, O_HILITE), IsDlgButtonChecked(hw, O_MOUSE) == BST_CHECKED); break;
         case O_BRFOLDER: BrowseFolder(hw, O_FOLDER); break;
+        case O_WBROWSE: BrowseImage(hw, O_WIMAGE); break;
+        case O_PMODE: case O_WKIND: if (HIWORD(wp) == CBN_SELCHANGE) OptEnable(o); break;
         case O_TPL: if (HIWORD(wp) == EN_CHANGE) TplPreview(hw); break;
         case O_EXPORT: OptExport(o); break;
         case O_IMPORT: OptImport(o); break;
@@ -1402,7 +1541,7 @@ bool OptionsDialog()
     Log(L"options: window created, %lu ms", (unsigned long)(GetTickCount64() - t0));
     {   // the tab rectangles: the text width + 16 units, 21 units high
         HDC dc = GetDC(d); HGDIOBJ of = SelectObject(dc, g_font);
-        const Str names[kPages] = { S_OPT_GENERAL, S_OPT_FORMATS, S_OPT_SAVE, S_OPT_LANG, S_OPT_HOTKEYS };
+        const Str* names = kPageNames;
         int w[kPages], sum = 0;
         for (int i = 0; i < kPages; ++i) { SIZE sz; GetTextExtentPoint32W(dc, T(names[i]), (int)wcslen(T(names[i])), &sz); w[i] = sz.cx; sum += sz.cx; }
         int pad = Sc(16);                                                  // a long translation squeezes the padding so that all the tabs stay over the page
@@ -1479,6 +1618,53 @@ bool OptionsDialog()
             SetPropW(e, L"c2s.hkprev", (HANDLE)SetWindowLongPtrW(e, GWLP_WNDPROC, (LONG_PTR)HkProc));
         }
         add(4, L"STATIC", T(S_HK_HINT), SS_LEFT | SS_NOPREFIX, 33, 244, 460, 38, 0);
+    }
+
+    // page 5: the panel with the time (where it stands when the whole screen is recorded, whether it is in the recording, what it shows)
+    {
+        label(5, S_PNL_WHERE, 33, 52, 459);
+        HWND pm = combo(5, O_PMODE, 33, 70, 250);
+        ComboAdd(pm, T(S_PNL_M_PLACE)); ComboAdd(pm, T(S_PNL_M_TRAY)); ComboAdd(pm, T(S_PNL_M_EXACT));
+        label(5, S_PNL_HORZ, 33, 106, 120);
+        HWND ph = combo(5, O_PH, 160, 102, 123);
+        ComboAdd(ph, T(S_PNL_LEFT)); ComboAdd(ph, T(S_PNL_CENTRE)); ComboAdd(ph, T(S_PNL_RIGHT));
+        label(5, S_PNL_VERT, 33, 134, 120);
+        HWND pv = combo(5, O_PV, 160, 130, 123);
+        ComboAdd(pv, T(S_PNL_TOP)); ComboAdd(pv, T(S_PNL_MIDDLE)); ComboAdd(pv, T(S_PNL_BOTTOM));
+        add(5, L"STATIC", L"X:", SS_LEFT | SS_NOPREFIX, 310, 106, 20, 16, 0);
+        edit(5, O_PX, 334, 102, 80);
+        add(5, L"STATIC", L"Y:", SS_LEFT | SS_NOPREFIX, 310, 134, 20, 16, 0);
+        edit(5, O_PY, 334, 130, 80);
+        add(5, L"BUTTON", T(S_PNL_INVIDEO), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 170, 460, 18, O_PVIDEO);
+        label(5, S_PNL_SHOWS, 33, 204, 459);
+        add(5, L"BUTTON", T(S_PNL_TIME), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 224, 150, 18, O_PTIME);
+        add(5, L"BUTTON", T(S_PNL_SIZE), WS_TABSTOP | BS_AUTOCHECKBOX, 190, 224, 150, 18, O_PSIZE);
+        add(5, L"BUTTON", T(S_PNL_KEY), WS_TABSTOP | BS_AUTOCHECKBOX, 347, 224, 146, 18, O_PKEY);
+    }
+
+    // page 6: the watermark (screenshots, videos; a text or a picture; where; how strong and how big)
+    {
+        add(6, L"BUTTON", T(S_WM_SHOT), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 52, 460, 18, O_WSHOT);
+        add(6, L"BUTTON", T(S_WM_VIDEO), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 72, 460, 18, O_WVIDEO);
+        label(6, S_WM_KIND, 33, 106, 120);
+        HWND wk = combo(6, O_WKIND, 160, 102, 150);
+        ComboAdd(wk, T(S_WM_TEXTK)); ComboAdd(wk, T(S_WM_IMAGEK));
+        label(6, S_WM_TEXT, 33, 134, 120);
+        edit(6, O_WTEXT, 160, 130, 333);
+        SendDlgItemMessageW(d, O_WTEXT, EM_LIMITTEXT, 63, 0);
+        label(6, S_WM_IMAGE, 33, 162, 120);
+        edit(6, O_WIMAGE, 160, 158, 291);
+        add(6, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 157, 33, 22, O_WBROWSE);
+        label(6, S_WM_PLACE, 33, 192, 120);
+        HWND wh = combo(6, O_WH, 160, 188, 110), wv = combo(6, O_WV, 280, 188, 110);
+        ComboAdd(wh, T(S_PNL_LEFT)); ComboAdd(wh, T(S_PNL_CENTRE)); ComboAdd(wh, T(S_PNL_RIGHT));
+        ComboAdd(wv, T(S_PNL_TOP)); ComboAdd(wv, T(S_PNL_MIDDLE)); ComboAdd(wv, T(S_PNL_BOTTOM));
+        label(6, S_WM_OPACITY, 33, 220, 120);
+        edit(6, O_WOPACITY, 160, 216, 70, ES_NUMBER);
+        label(6, S_WM_SIZET, 33, 246, 120);
+        edit(6, O_WSIZE, 160, 242, 70, ES_NUMBER);
+        label(6, S_WM_SCALE, 250, 246, 150);
+        edit(6, O_WSCALE, 405, 242, 70, ES_NUMBER);
     }
 
     // the buttons below the page: Restore default 170 wide on the left, Ok and Cancel 75 wide on the right
@@ -1766,6 +1952,11 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case HK_REC_REGION: if (g_state == ST_IDLE) Arm(M_REGION); break;
         case HK_REC_WINDOW: if (g_state == ST_IDLE) Arm(M_WINDOW); break;
         case HK_DRAW: DrawSwitch(); break;
+        case HK_ESC:                                                           // Esc is ours only while a countdown runs
+            if (g_busyShot) g_cancelShot = true;
+            else if (g_state == ST_COUNTDOWN) { Log(L"record: cancelled in the countdown"); StopRecording(true); }
+            else EscDisarm();
+            break;
         }
         return 0;
     case WM_C2S_TRAY:
@@ -1805,6 +1996,7 @@ LRESULT CALLBACK MainProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         Log(L"exit: tray icon removed");
         InkHide();
         for (int i = 1; i <= HKI_COUNT; ++i) UnregisterHotKey(hw, i);
+        EscDisarm();
         Log(L"exit: leaving the message loop");
         PostQuitMessage(0);
         return 0;

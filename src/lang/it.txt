@@ -145,3 +145,34 @@ Il file si chiamerà:
 Sopra le altre finestre
 Salva file separati per i diversi schermi
 Opzioni
+Barra
+Filigrana
+Registrando tutto lo schermo, la barra è:
+in un punto dello schermo
+nell'area di notifica (nascosta)
+a coordinate precise
+Orizzontale:
+Verticale:
+Sinistra
+Centro
+Destra
+Alto
+Metà
+Basso
+Mostra la barra nella registrazione
+La barra mostra:
+Tempo
+Dimensione file
+Scorciatoia
+Aggiungi la filigrana agli screenshot
+Aggiungi la filigrana ai video
+Filigrana:
+testo
+immagine
+Testo:
+File immagine:
+Immagini
+Posizione:
+Opacità, %:
+Altezza testo, px:
+Dimensione immagine, %:

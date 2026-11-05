@@ -11,14 +11,14 @@ namespace {
 struct Click { ULONGLONG t; int x, y, button; };       // button: 0 left, 1 right, 2 middle
 const int kMaxClicks = 32;
 const ULONGLONG kWaveMs = 650;
-const ULONGLONG kTrailDefaultMs = 10ULL * 1000;          // a point of the trail lives 10 seconds
+const ULONGLONG kTrailDefaultMs = 20ULL * 1000;          // a point of the trail lives 20 seconds
 ULONGLONG g_trailMs = kTrailDefaultMs;                  // (the autotest shortens it: a fresh machine has not been up for five minutes)
 
 struct Pt { int x, y; ULONGLONG t; bool brk; unsigned char shade; };   // brk: this point starts a new stroke; shade: 0..31 of the gradient
 
-// The gradient of the lines: all the colours of the rainbow, a full turn in 8 seconds of drawing, so a stroke goes through the
+// The gradient of the lines: all the colours of the rainbow, a full turn in 16 seconds of drawing, so a stroke goes through the
 // colours slowly as it is drawn (the shade, 0..255 round the colour wheel, is kept with each point: nothing changes afterwards).
-const ULONGLONG kShadePeriodMs = 8000;
+const ULONGLONG kShadePeriodMs = 16000;
 unsigned char ShadeAt(ULONGLONG t)
 {
     return (unsigned char)((int)((double)(t % kShadePeriodMs) / (double)kShadePeriodMs * 256.0) & 255);

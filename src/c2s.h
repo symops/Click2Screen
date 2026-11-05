@@ -36,6 +36,9 @@ enum Str {
     S_SU_VERSION, S_SU_STATUS, S_SU_RUNAFTER, S_OPT_NOTIFY, S_OPT_LOOPBACK,
     S_OPT_HOTKEYS, S_HK_STOP, S_HK_HINT, S_HK_DUP, S_HK_NONE, S_HK_DRAW, S_DRAW_ON, S_DRAW_OFF, S_OPT_NAMEPREVIEW,
     S_OPT_TOPMOST, S_OPT_SEPARATE, S_OPT_WINDOW,
+    S_OPT_PANEL, S_OPT_WATERMARK, S_PNL_WHERE, S_PNL_M_PLACE, S_PNL_M_TRAY, S_PNL_M_EXACT, S_PNL_HORZ, S_PNL_VERT, S_PNL_LEFT, S_PNL_CENTRE,
+    S_PNL_RIGHT, S_PNL_TOP, S_PNL_MIDDLE, S_PNL_BOTTOM, S_PNL_INVIDEO, S_PNL_SHOWS, S_PNL_TIME, S_PNL_SIZE, S_PNL_KEY, S_WM_SHOT, S_WM_VIDEO,
+    S_WM_KIND, S_WM_TEXTK, S_WM_IMAGEK, S_WM_TEXT, S_WM_IMAGE, S_WM_FILTER, S_WM_PLACE, S_WM_OPACITY, S_WM_SIZET, S_WM_SCALE,
     S__COUNT
 };
 // Bounded copies: the destination (n characters) is always terminated and a longer source is cut, the source is read for n - 1 characters at most. For the values
@@ -95,6 +98,21 @@ struct Settings {
     int  audioQuality;              // 0 high, 1 medium, 2 low
     int  fps;                       // 5..60
     int  language;                  // 0 auto, 1 en, 2 ru
+    // the recording strip (the panel with the time)
+    int  panelMode;                 // a recording of the whole screen: 0 the strip stands at a place of the screen (panelH, panelV), 1 in the tray (the strip stays hidden), 2 at exact coordinates
+    int  panelH, panelV;            // the place: 0 left / top, 1 centre / middle, 2 right / bottom
+    int  panelX, panelY;            // exact coordinates of its top left corner (pixels of the screen)
+    bool panelInVideo;              // the strip is part of the recording (off by default: it is kept out of it)
+    bool panelTime, panelSize, panelKey;   // what it shows: the time, the size of the file, the key that starts / stops
+    // the watermark (off by default)
+    bool wmShot, wmVideo;           // in the screenshots / in the videos
+    int  wmKind;                    // 0 a text, 1 a picture from a file
+    wchar_t wmText[64];
+    wchar_t wmImage[MAX_PATH];
+    int  wmH, wmV;                  // the place: 0 left / top, 1 centre / middle, 2 right / bottom
+    int  wmOpacity;                 // 10..100 %
+    int  wmSize;                    // height of the text, pixels (8..200)
+    int  wmScale;                   // size of the picture, % of its own (10..300)
 };
 void SettingsDefaults(Settings& s);
 void SettingsLoad(Settings& s);
@@ -102,6 +120,10 @@ bool SettingsStored();          // the settings were saved before (false on the 
 void SettingsSave(const Settings& s);
 bool SettingsSetAutostart(bool on);
 void SettingsUseKey(const wchar_t* key);                       // another registry key under HKCU (the autotest)
+// The strip: the cells (time, size, key, start, stop) in units of 96 dpi; left[0..5] are the left edges, an empty cell is 0 wide; returns the width of all of them.
+int  PanelLayout(const Settings& s, int left[6]);
+// Where the strip (w x h pixels) goes when the whole screen is recorded: `work` is the work area of the main monitor, `screen` the whole desktop (exact coordinates are kept inside it).
+void PanelPosition(const Settings& s, const RECT& work, const RECT& screen, int w, int h, int margin, int* x, int* y);
 bool SettingsExport(const Settings& s, const wchar_t* path);   // .ini, UTF-16; the language is not exported
 bool SettingsImport(Settings& s, const wchar_t* path);         // false: no such file / no Click2Screen section
 bool TemplateValid(const wchar_t* tpl);
@@ -139,6 +161,11 @@ private:
     HDC m_dc; HBITMAP m_bmp, m_old; uint8_t* m_bits; int m_w, m_h;
     HDC m_halo; HBITMAP m_haloBmp, m_haloOld;
 };
+// ---- the watermark (capture.cpp): a text or a picture (settings wm*), made once for a picture size and laid over every picture of that size
+struct Watermark;
+Watermark* WatermarkCreate(const Settings& s, int picW, int picH);       // nullptr when there is nothing to draw (an empty text, a picture that cannot be read)
+void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h);   // bits: the rows of a bottom-up 32-bit picture (a screenshot, a frame), w x h
+void WatermarkFree(Watermark* wm);
 // ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), the red lines of the drawing window
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages
 void FxStop();
