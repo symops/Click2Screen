@@ -3031,7 +3031,7 @@ static void T_AviSmallChanges()
     auto base = [&]() { for (size_t i = 0; i < (size_t)W * H; ++i) ((uint32_t*)dib)[i] = (i / W) % 2 ? 0x00FF8000u : 0x000080FFu; };
     auto block = [&](int size, int frame) { for (int y = 20; y < 20 + size; ++y) for (int x = 20; x < 20 + size; ++x) ((uint32_t*)dib)[(size_t)y * W + x] = (frame & 1) ? 0x00FFFFFFu : 0x00000000u; };
     struct Res { bool ok; unsigned real, chunks; };
-    auto run = [&](const wchar_t* name, int frames, int size /* 0: everything changes, -1: one tiny change at the end */) -> Res {
+    auto run = [&](const wchar_t* name, int frames, int size /* 0: everything changes, -1: one tiny change at the end */, int period = 1 /* frames between two flips of the block */) -> Res {
         wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\small-%s.avi", g_dir, name);
         wchar_t why[160] = L"";
         FrameSink* sink = CreateAviSink(path, W, H, FPS, 1, false, why, 160);
@@ -3039,7 +3039,7 @@ static void T_AviSmallChanges()
         bool ok = true;
         for (int i = 0; i < frames && ok; ++i) {
             base();
-            if (size > 0) block(size, i);
+            if (size > 0) block(size, i / period);
             else if (size == 0) for (size_t k = 0; k < (size_t)W * H; ++k) ((uint32_t*)dib)[k] ^= (uint32_t)(i * 0x010203 + k * 7) & 0x00FFFFFFu;     // a picture that is another one each time
             else if (i == frames - 1) block(8, 1);                         // the very last frame: a tiny change, too soon after the first picture to be encoded at once
             ok = sink->Video(dib, (LONGLONG)i * 10000000LL / FPS);
@@ -3050,10 +3050,12 @@ static void T_AviSmallChanges()
         DeleteFileW(path);
         return { ok && a.ok, a.vChunks - a.emptyV, a.vChunks };
     };
-    Res tiny = run(L"tiny", 50, 8), medium = run(L"medium", 50, 40), big = run(L"big", 50, 0), tail = run(L"tail", 4, -1);
-    wchar_t d[300]; _snwprintf(d, 300, L"2 s at 25 fps: a 8x8 block flips every frame -> %u real frames of 50 (%.2f%% of the picture), a 40x40 block -> %u, the whole picture -> %u", tiny.real, 100.0 * 64 / (W * H), medium.real, big.real);
-    Check(tiny.ok && tiny.real >= 5 && tiny.real <= 12, L"avi small changes: a change of a few pixels is put on the picture about 5 times a second, not every frame", d);
-    Check(medium.ok && medium.real >= 18 && medium.real <= 27, L"avi small changes: a change of a small part of the picture is put on it about 12 times a second", d);
+    // single changes (a figure that ticks, a caret): a flip every 4 or 3 frames; an animation: a flip on every frame (the wave of a click, a trail)
+    Res tiny = run(L"tiny", 50, 8, 4), medium = run(L"medium", 50, 40, 3), anim = run(L"anim", 50, 8, 1), big = run(L"big", 50, 0), tail = run(L"tail", 4, -1);
+    wchar_t d[300]; _snwprintf(d, 300, L"2 s at 25 fps: a 8x8 block flips every 4th frame -> %u real frames of 50 (%.2f%% of the picture), a 40x40 block every 3rd -> %u, a 8x8 block on every frame -> %u, the whole picture -> %u", tiny.real, 100.0 * 64 / (W * H), medium.real, anim.real, big.real);
+    Check(tiny.ok && tiny.real >= 7 && tiny.real <= 12, L"avi small changes: a single change of a few pixels is put on the picture about 5 times a second at most", d);
+    Check(medium.ok && medium.real >= 14 && medium.real <= 21, L"avi small changes: a single change of a small part of the picture is put on it as it comes (12 times a second at most)", d);
+    Check(anim.ok && anim.real >= 45, L"avi small changes: an animation (a change on frame after frame) is written at the full rate", d);
     Check(big.ok && big.real >= 49, L"avi small changes: a picture that changes all over is written every frame", d);
     wchar_t d2[160]; _snwprintf(d2, 160, L"%u chunks (4 frames and the waiting change), %u real", tail.chunks, tail.real);
     Check(tail.ok && tail.real == 2 && tail.chunks == 5, L"avi small changes: a small change that was still waiting when the recording ended is written at the end", d2);

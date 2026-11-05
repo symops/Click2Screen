@@ -37,7 +37,7 @@ public:
     ~AviSink() override
     {
         if (m_file != INVALID_HANDLE_VALUE) CloseHandle(m_file);
-        free(m_idx); free(m_flip); free(m_prev); free(m_last);
+        free(m_idx); free(m_flip); free(m_prev); free(m_last); free(m_in);
         if (m_wic) m_wic->Release();
     }
 
@@ -65,6 +65,13 @@ public:
         // A picture that is the same as the last one is not encoded again: empty chunks repeat the last picture (a still screen then costs
         // nothing, not a full JPEG of 100-400 KB 25 times a second).
         const size_t bytes = (size_t)m_w * m_h * 4;
+        // An animation (the wave of a click, a trail, a pointer on the move) changes the picture on frame after frame: it is written at the full rate, or a
+        // short effect would reach the file in two or three pictures or none. The throttle below is for the single small changes only.
+        if (!m_in) m_in = (u8*)malloc(bytes);
+        if (m_in) {
+            m_run = m_haveIn && memcmp(dib, m_in, bytes) != 0 ? m_run + 1 : 0;
+            memcpy(m_in, dib, bytes); m_haveIn = true;
+        }
         if (m_prev && m_havePrev) {
             // How much of the picture differs from the last one that was encoded. Every change costs a whole JPEG (100-400 KB at 1920 x 1040), and
             // most changes of a screen are small (a pointer, a figure that ticks, a blinking caret): they are put on the picture less often, a
@@ -76,7 +83,7 @@ public:
             if (!wait) {
                 const double frac = (double)changed / (double)px;
                 const LONGLONG need = frac < 0.001 ? 2000000 : frac < 0.005 ? 1200000 : frac < 0.02 ? 800000 : 0;      // 200 / 120 / 80 ms, 100 ns units
-                if (need && ts - m_lastReal < need) {
+                if (need && m_run < 3 && ts - m_lastReal < need) {
                     if (!m_last) m_last = (u8*)malloc(bytes);
                     if (m_last) { memcpy(m_last, dib, bytes); m_pending = true; }
                     wait = true;
@@ -258,6 +265,7 @@ private:
     HANDLE m_file = INVALID_HANDLE_VALUE;
     u8* m_flip = nullptr;
     u8* m_prev = nullptr; bool m_havePrev = false;         // the last picture as it came, to tell an unchanged one
+    u8* m_in = nullptr; bool m_haveIn = false; int m_run = 0;                  // the last picture that came and how many pictures in a row differed from their predecessor
     u8* m_last = nullptr; bool m_pending = false; LONGLONG m_lastReal = 0;       // the newest picture that waits for its turn (a small change), the time of the last encoded one
     uint64_t m_pos = 0;
     LONGLONG m_interval = 400000;
