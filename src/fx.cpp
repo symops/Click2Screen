@@ -48,7 +48,7 @@ void AddClick(int x, int y, int button, ULONGLONG t)
     Unlock();
 }
 
-void AddPoint(int x, int y, ULONGLONG t, bool brk)
+void AddPoint(int x, int y, ULONGLONG t, bool brk, int forceShade = -1)
 {
     Lock();
     if (g_nTrail == g_capTrail) {
@@ -62,7 +62,7 @@ void AddPoint(int x, int y, ULONGLONG t, bool brk)
             g_trail = p; g_capTrail = cap;
         }
     }
-    g_trail[g_nTrail].x = x; g_trail[g_nTrail].y = y; g_trail[g_nTrail].t = t; g_trail[g_nTrail].brk = brk; g_trail[g_nTrail].shade = ShadeAt(t);
+    g_trail[g_nTrail].x = x; g_trail[g_nTrail].y = y; g_trail[g_nTrail].t = t; g_trail[g_nTrail].brk = brk; g_trail[g_nTrail].shade = forceShade >= 0 ? (unsigned char)forceShade : ShadeAt(t);
     ++g_nTrail; ++g_version;
     Unlock();
 }
@@ -298,10 +298,7 @@ int FxTrailSnapshot(POINT* pts, unsigned char* brk, int cap, unsigned* version, 
 
 void FxTestTrailShade(int x, int y, bool newStroke, int shade)
 {
-    ULONGLONG now = GetTickCount64(), cur = now % kShadePeriodMs;
-    ULONGLONG target = (ULONGLONG)(shade & 255) * kShadePeriodMs / 256 + kShadePeriodMs / 512;          // the middle of the slot of that shade
-    ULONGLONG back = (cur + kShadePeriodMs - target) % kShadePeriodMs;
-    AddPoint(x, y, now - back, newStroke);
+    AddPoint(x, y, GetTickCount64(), newStroke, shade & 255);       // a point of this moment with the shade the test wants (the time is not moved: with a period longer than the lifetime the point would be dead at once)
 }
 
 void FxTestTrailLifetime(unsigned ms) { g_trailMs = ms ? ms : kTrailDefaultMs; }

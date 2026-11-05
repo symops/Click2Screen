@@ -4161,6 +4161,7 @@ static void T_WatermarkVideo()
 static int WmShotCount(bool on, uint8_t** out, int* ow, int* oh)
 {
     Settings st; PrepareApp(st); st.imageFormat = IMG_PNG; st.notify = false; st.capMouse = false; st.highlight = false;
+    st.separateMonitors = false;                                        // one file for the whole desktop (with virtual monitors the files of the monitors differ in size)
     st.wmShot = on; st.wmParts = WMP_TEXT; _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
     App a;
     if (!StartApp(a, st)) { FAIL(L"watermark: the program did not start"); StopApp(a, false); return -1; }
@@ -4184,20 +4185,22 @@ static int WmShotCount(bool on, uint8_t** out, int* ow, int* oh)
 
 static void T_WatermarkShot()
 {
-    if (g_fx.hw) ShowWindow(g_fx.hw, SW_HIDE);                          // the window of an earlier test moves its strip: it must not be in either picture
+    const bool fxWasShown = g_fx.hw && IsWindowVisible(g_fx.hw);
+    if (g_fx.hw) ShowWindow(g_fx.hw, SW_HIDE);                          // the window of an earlier test moves its strip: it must not be in either picture (it is shown again at the end: the next test draws in it)
     Pump(300);
     uint8_t* a = nullptr; uint8_t* b = nullptr; int aw = 0, ah = 0, bw = 0, bh = 0;
-    if (WmShotCount(true, &a, &aw, &ah) < 0 || WmShotCount(false, &b, &bw, &bh) < 0) { delete[] a; delete[] b; return; }
+    if (WmShotCount(true, &a, &aw, &ah) < 0 || WmShotCount(false, &b, &bw, &bh) < 0) { delete[] a; delete[] b; if (fxWasShown) ShowWindow(g_fx.hw, SW_SHOWNA); return; }
     int diff = 0, farCount = 0;
     if (aw == bw && ah == bh)
         for (int y = 0; y < ah; ++y) for (int x = 0; x < aw; ++x) {
             const uint8_t* p = a + ((size_t)y * aw + x) * 4; const uint8_t* q = b + ((size_t)y * bw + x) * 4;
             const int d = abs(p[0] - q[0]) + abs(p[1] - q[1]) + abs(p[2] - q[2]);
-            if (d > 60) { if (x < 420 && y < 100) ++diff; else if (x > aw / 2 && y > ah / 2) ++farCount; }
+            if (d > 60) { if (x < 420 && y < 100) ++diff; else if (x > aw / 2 && y < ah - 260) ++farCount; }       // the right half above the corner where a Windows toast or the clock of the taskbar may change between the two pictures
         }
-    wchar_t d[160]; _snwprintf(d, 160, L"%dx%d and %dx%d; %d pixels differ in the top left box, %d in the lower right quarter", aw, ah, bw, bh, diff, farCount);
+    wchar_t d[160]; _snwprintf(d, 160, L"%dx%d and %dx%d; %d pixels differ in the top left box, %d in the right half (without the lower corner)", aw, ah, bw, bh, diff, farCount);
     Check(aw == bw && ah == bh && diff > 300 && farCount < 200, L"watermark: a screenshot has the text where the settings put it, the rest is the same desktop", d);
     delete[] a; delete[] b;
+    if (fxWasShown) ShowWindow(g_fx.hw, SW_SHOWNA);
 }
 
 // A look at the strip with the eyes (only with C2S_PANEL_LOOK set): the program arms a recording, the strip is photographed into the logs folder
