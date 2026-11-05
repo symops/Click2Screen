@@ -177,3 +177,4 @@ Opacité, % :
 Hauteur du texte, px :
 Taille de l'image, % :
 Masquer la barre dans la zone de notification
+Couleur du texte :

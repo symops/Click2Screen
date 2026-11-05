@@ -226,7 +226,7 @@ static void RandomSettings(Settings& s)
     RandomHotkeys(s.hotkey, false);
     s.panelMode = R(0, 2); s.panelH = R(0, 2); s.panelV = R(0, 2); s.panelX = R(-300, 3000); s.panelY = R(-200, 2000); s.panelInVideo = Chance(30);
     s.panelTime = Chance(70); s.panelSize = Chance(70); s.panelKey = Chance(70);
-    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmParts = R(0, 7); StrCopy(s.wmDate, 64, Chance(50) ? L"$D.$M.$Y $H-$N-$S" : L"$Y/$M/$D at $H:$N");
+    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmParts = R(0, 7); s.wmColor = (unsigned)R(0, 0xFFFFFF); StrCopy(s.wmDate, 64, Chance(50) ? L"$D.$M.$Y $H-$N-$S" : L"$Y/$M/$D at $H:$N");
     RandomText(t, 20); _snwprintf(s.wmText, 64, L"%s", t); _snwprintf(s.wmImage, MAX_PATH, L"%s\\wm %s.png", g_dir, t);
     s.wmH = R(0, 2); s.wmV = R(0, 2); s.wmOpacity = R(10, 100); s.wmSize = R(8, 200); s.wmScale = R(10, 300);
 }
@@ -239,7 +239,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
     CMPI(openFolder) CMPI(topmost) CMPI(separateMonitors) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     CMPI(panelMode) CMPI(panelH) CMPI(panelV) CMPI(panelX) CMPI(panelY) CMPI(panelInVideo) CMPI(panelTime) CMPI(panelSize) CMPI(panelKey)
-    CMPI(wmShot) CMPI(wmVideo) CMPI(wmParts) CMPS(wmDate) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
+    CMPI(wmShot) CMPI(wmVideo) CMPI(wmParts) CMPI(wmColor) CMPS(wmDate) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
     return true;
@@ -2170,7 +2170,7 @@ static void T_App()
                 SendMessageW(GetDlgItem(o, O_PMODE), CB_SETCURSEL, w.panelMode, 0); SendMessageW(GetDlgItem(o, O_PH), CB_SETCURSEL, w.panelH, 0); SendMessageW(GetDlgItem(o, O_PV), CB_SETCURSEL, w.panelV, 0);
                 _snwprintf(n, 16, L"%d", w.panelX); SetText(GetDlgItem(o, O_PX), n); _snwprintf(n, 16, L"%d", w.panelY); SetText(GetDlgItem(o, O_PY), n);
                 chk(O_PVIDEO, w.panelInVideo); chk(O_PTIME, w.panelTime); chk(O_PSIZE, w.panelSize); chk(O_PKEY, w.panelKey);
-                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); chk(O_WTEXTC, (w.wmParts & WMP_TEXT) != 0); chk(O_WDATEC, (w.wmParts & WMP_DATE) != 0); chk(O_WIMGC, (w.wmParts & WMP_IMAGE) != 0); SetText(GetDlgItem(o, O_WDATE), w.wmDate);
+                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); SetWindowLongPtrW(GetDlgItem(o, O_WCOLOR), GWLP_USERDATA, (LONG_PTR)w.wmColor); chk(O_WTEXTC, (w.wmParts & WMP_TEXT) != 0); chk(O_WDATEC, (w.wmParts & WMP_DATE) != 0); chk(O_WIMGC, (w.wmParts & WMP_IMAGE) != 0); SetText(GetDlgItem(o, O_WDATE), w.wmDate);
                 SetText(GetDlgItem(o, O_WTEXT), w.wmText); SetText(GetDlgItem(o, O_WIMAGE), w.wmImage);
                 SendMessageW(GetDlgItem(o, O_WH), CB_SETCURSEL, w.wmH, 0); SendMessageW(GetDlgItem(o, O_WV), CB_SETCURSEL, w.wmV, 0);
                 _snwprintf(n, 16, L"%d", w.wmOpacity); SetText(GetDlgItem(o, O_WOPACITY), n); _snwprintf(n, 16, L"%d", w.wmSize); SetText(GetDlgItem(o, O_WSIZE), n);
@@ -4061,6 +4061,19 @@ static void T_WatermarkApply()
         st.wmParts = WMP_DATE; st.wmDate[0] = 0;
         Check(WatermarkCreate(st, W, H) == nullptr, L"watermark: an empty date template makes no mark");
         st.wmParts = WMP_TEXT; StrCopy(st.wmDate, 64, L"$D.$M.$Y $H-$N-$S");
+    }
+    {   // the colour of the text: a red one is red, with the same weight for the date
+        st.wmH = 1; st.wmV = 1; st.wmOpacity = 100; st.wmParts = WMP_TEXT | WMP_DATE; st.wmColor = RGB(220, 30, 30);
+        Watermark* wm = WatermarkCreate(st, W, H); grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+        int red = 0, other = 0;
+        for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
+            const uint8_t* q = pic + ((size_t)(H - 1 - y) * W + x) * 4;                // B, G, R
+            if (q[2] > 190 && q[1] < 90 && q[0] < 90) ++red;
+            else if (q[2] > 250 || (q[2] < 100 && q[1] < 100 && q[0] < 100)) ++other;
+        }
+        wchar_t d[100]; _snwprintf(d, 100, L"%d red pixels, %d white or black ones", red, other);
+        Check(red > 150, L"watermark: the text takes the colour chosen in the palette", d);
+        st.wmParts = WMP_TEXT; st.wmColor = RGB(120, 120, 120);
     }
     {   // an empty text draws nothing
         st.wmText[0] = 0;

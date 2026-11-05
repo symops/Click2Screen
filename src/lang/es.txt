@@ -177,3 +177,4 @@ Opacidad, %:
 Altura del texto, px:
 Tamaño de la imagen, %:
 Ocultar el panel en la bandeja
+Color del texto:

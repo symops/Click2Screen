@@ -353,15 +353,18 @@ static uint32_t* MarkFromText(const Settings& s, const wchar_t* text, int* mw, i
         out = (uint32_t*)malloc((size_t)W * H * 4);
         if (out) {
             const int o = s.wmOpacity;                                            // 10..100
+            const int tr = GetRValue(s.wmColor), tg = GetGValue(s.wmColor), tb = GetBValue(s.wmColor);
+            const bool haloWhite = (tr * 30 + tg * 59 + tb * 11) / 100 < 128;
             for (int y = 0; y < H; ++y) for (int x = 0; x < W; ++x) {
                 const int cov = (int)(bits[(size_t)y * W + x] & 0xFF);            // the coverage of the text (white on black, smoothed)
                 const int sh = x > 0 && y > 0 ? (int)(bits[(size_t)(y - 1) * W + (x - 1)] & 0xFF) : 0;       // the shadow: the same, a pixel to the lower right
-                const int at = cov * o / 100;                                     // the text: dark grey (at any opacity)
-                const int as = sh * o * 6 / 1000;                                 // the halo: white, a little weaker, so the text can be read on a dark picture too
+                const int at = cov * o / 100;                                     // the text: the chosen colour
+                const int as = sh * o * 6 / 1000;                                 // the halo: opposite to the text (white for a dark text, black for a light one), a little weaker
                 const int under = as * (255 - at) / 255;                          // the part of the halo that is not covered by the text
                 const int a = at + under;
-                const int c = at * 120 / 255 + under;                             // premultiplied: the mid-dark grey 120 of the text + the white of the halo
-                out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)c << 16) | ((uint32_t)c << 8) | (uint32_t)c;
+                const int hw = haloWhite ? under : 0;
+                const int cr = at * tr / 255 + hw, cg = at * tg / 255 + hw, cb = at * tb / 255 + hw;
+                out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)cr << 16) | ((uint32_t)cg << 8) | (uint32_t)cb;
             }
             *mw = W; *mh = H;
         }

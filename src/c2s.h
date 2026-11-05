@@ -39,7 +39,7 @@ enum Str {
     S_OPT_PANEL, S_OPT_WATERMARK, S_PNL_WHERE, S_PNL_M_PLACE, S_PNL_M_TRAY, S_PNL_M_EXACT, S_PNL_HORZ, S_PNL_VERT, S_PNL_LEFT, S_PNL_CENTRE,
     S_PNL_RIGHT, S_PNL_TOP, S_PNL_MIDDLE, S_PNL_BOTTOM, S_PNL_INVIDEO, S_PNL_SHOWS, S_PNL_TIME, S_PNL_SIZE, S_PNL_KEY, S_WM_SHOT, S_WM_VIDEO,
     S_WM_KIND, S_WM_TEXTK, S_WM_IMAGEK, S_WM_TEXT, S_WM_IMAGE, S_WM_FILTER, S_WM_PLACE, S_WM_OPACITY, S_WM_SIZET, S_WM_SCALE,
-    S_TRAY_HIDEPANEL,
+    S_TRAY_HIDEPANEL, S_WM_COLOR,
     S__COUNT
 };
 // Bounded copies: the destination (n characters) is always terminated and a longer source is cut, the source is read for n - 1 characters at most. For the values
@@ -112,6 +112,7 @@ struct Settings {
     wchar_t wmText[64];
     wchar_t wmImage[MAX_PATH];
     int  wmH, wmV;                  // the place: 0 left / top, 1 centre / middle, 2 right / bottom
+    unsigned wmColor;               // the colour of the text and of the date, 0x00BBGGRR (a COLORREF)
     int  wmOpacity;                 // 10..100 %
     int  wmSize;                    // height of the text, pixels (8..200)
     int  wmScale;                   // size of the picture, % of its own (10..300)

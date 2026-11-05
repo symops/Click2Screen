@@ -177,3 +177,4 @@ Dekking, %:
 Teksthoogte, px:
 Afbeeldingsgrootte, %:
 Balk verbergen in het systeemvak
+Tekstkleur:

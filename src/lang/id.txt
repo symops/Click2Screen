@@ -177,3 +177,4 @@ Opasitas, %:
 Tinggi teks, px:
 Ukuran gambar, %:
 Sembunyikan panel ke baki sistem
+Warna teks:

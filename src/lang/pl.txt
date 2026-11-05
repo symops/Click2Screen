@@ -177,3 +177,4 @@ Krycie, %:
 Wysokość tekstu, px:
 Rozmiar obrazu, %:
 Ukryj panel w zasobniku
+Kolor tekstu:

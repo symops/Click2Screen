@@ -1299,7 +1299,7 @@ void OptEnable(OptState* o)
     const int mode = (int)SendDlgItemMessageW(d, O_PMODE, CB_GETCURSEL, 0, 0), wt = IsDlgButtonChecked(d, O_WTEXTC) == BST_CHECKED, wd = IsDlgButtonChecked(d, O_WDATEC) == BST_CHECKED, wi = IsDlgButtonChecked(d, O_WIMGC) == BST_CHECKED;
     EnableWindow(GetDlgItem(d, O_PH), mode == 0); EnableWindow(GetDlgItem(d, O_PV), mode == 0);
     EnableWindow(GetDlgItem(d, O_PX), mode == 2); EnableWindow(GetDlgItem(d, O_PY), mode == 2);
-    EnableWindow(GetDlgItem(d, O_WTEXT), wt); EnableWindow(GetDlgItem(d, O_WDATE), wd); EnableWindow(GetDlgItem(d, O_WSIZE), wt || wd);
+    EnableWindow(GetDlgItem(d, O_WTEXT), wt); EnableWindow(GetDlgItem(d, O_WDATE), wd); EnableWindow(GetDlgItem(d, O_WSIZE), wt || wd); EnableWindow(GetDlgItem(d, O_WCOLOR), wt || wd);
     EnableWindow(GetDlgItem(d, O_WIMAGE), wi); EnableWindow(GetDlgItem(d, O_WBROWSE), wi); EnableWindow(GetDlgItem(d, O_WSCALE), wi);
 }
 
@@ -1329,6 +1329,7 @@ void OptLoad(OptState* o)
     chk(O_PVIDEO, s.panelInVideo); chk(O_PTIME, s.panelTime); chk(O_PSIZE, s.panelSize); chk(O_PKEY, s.panelKey);
     chk(O_WSHOT, s.wmShot); chk(O_WVIDEO, s.wmVideo);
     CheckDlgButton(d, O_WTEXTC, (s.wmParts & WMP_TEXT) ? BST_CHECKED : BST_UNCHECKED); CheckDlgButton(d, O_WDATEC, (s.wmParts & WMP_DATE) ? BST_CHECKED : BST_UNCHECKED); CheckDlgButton(d, O_WIMGC, (s.wmParts & WMP_IMAGE) ? BST_CHECKED : BST_UNCHECKED);
+    SetWindowLongPtrW(GetDlgItem(d, O_WCOLOR), GWLP_USERDATA, (LONG_PTR)s.wmColor); InvalidateRect(GetDlgItem(d, O_WCOLOR), nullptr, TRUE);
     SetDlgItemTextW(d, O_WDATE, s.wmDate);
     SetDlgItemTextW(d, O_WTEXT, s.wmText); SetDlgItemTextW(d, O_WIMAGE, s.wmImage);
     SendDlgItemMessageW(d, O_WH, CB_SETCURSEL, s.wmH, 0); SendDlgItemMessageW(d, O_WV, CB_SETCURSEL, s.wmV, 0);
@@ -1363,6 +1364,7 @@ void OptCollect(OptState* o, Settings& s)
     s.panelInVideo = chk(O_PVIDEO); s.panelTime = chk(O_PTIME); s.panelSize = chk(O_PSIZE); s.panelKey = chk(O_PKEY);
     s.wmShot = chk(O_WSHOT); s.wmVideo = chk(O_WVIDEO); s.wmParts = (chk(O_WTEXTC) ? WMP_TEXT : 0) | (chk(O_WDATEC) ? WMP_DATE : 0) | (chk(O_WIMGC) ? WMP_IMAGE : 0);
     GetDlgItemTextW(d, O_WDATE, s.wmDate, 64); GetDlgItemTextW(d, O_WTEXT, s.wmText, 64); GetDlgItemTextW(d, O_WIMAGE, s.wmImage, MAX_PATH);
+    s.wmColor = (unsigned)GetWindowLongPtrW(GetDlgItem(d, O_WCOLOR), GWLP_USERDATA) & 0xFFFFFFu;
     s.wmH = sel(O_WH, 2, s.wmH); s.wmV = sel(O_WV, 2, s.wmV);
     s.wmOpacity = num(O_WOPACITY, 10, 100, s.wmOpacity, false); s.wmSize = num(O_WSIZE, 8, 200, s.wmSize, false); s.wmScale = num(O_WSCALE, 10, 300, s.wmScale, false);
 }
@@ -1384,7 +1386,7 @@ void OptRestorePage(OptState* o)
     case 4: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
     case 5: cur.panelMode = d.panelMode; cur.panelH = d.panelH; cur.panelV = d.panelV; cur.panelX = d.panelX; cur.panelY = d.panelY; cur.panelInVideo = d.panelInVideo;
             cur.panelTime = d.panelTime; cur.panelSize = d.panelSize; cur.panelKey = d.panelKey; break;
-    case 6: cur.wmShot = d.wmShot; cur.wmVideo = d.wmVideo; cur.wmParts = d.wmParts; StrCopy(cur.wmDate, 64, d.wmDate); StrCopy(cur.wmText, 64, d.wmText); StrCopy(cur.wmImage, MAX_PATH, d.wmImage);
+    case 6: cur.wmShot = d.wmShot; cur.wmVideo = d.wmVideo; cur.wmParts = d.wmParts; cur.wmColor = d.wmColor; StrCopy(cur.wmDate, 64, d.wmDate); StrCopy(cur.wmText, 64, d.wmText); StrCopy(cur.wmImage, MAX_PATH, d.wmImage);
             cur.wmH = d.wmH; cur.wmV = d.wmV; cur.wmOpacity = d.wmOpacity; cur.wmSize = d.wmSize; cur.wmScale = d.wmScale; break;
     }
     o->s = cur; OptLoad(o);
@@ -1534,6 +1536,14 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case O_MOUSE: EnableWindow(GetDlgItem(hw, O_HILITE), IsDlgButtonChecked(hw, O_MOUSE) == BST_CHECKED); break;
         case O_BRFOLDER: BrowseFolder(hw, O_FOLDER); break;
         case O_WBROWSE: BrowseImage(hw, O_WIMAGE); break;
+        case O_WCOLOR: {                                            // the palette
+            static COLORREF custom[16];
+            HWND b = GetDlgItem(hw, O_WCOLOR);
+            CHOOSECOLORW cc; memset(&cc, 0, sizeof(cc));
+            cc.lStructSize = sizeof(cc); cc.hwndOwner = hw; cc.rgbResult = (COLORREF)GetWindowLongPtrW(b, GWLP_USERDATA) & 0xFFFFFFu;
+            cc.lpCustColors = custom; cc.Flags = CC_RGBINIT | CC_FULLOPEN;
+            if (ChooseColorW(&cc)) { SetWindowLongPtrW(b, GWLP_USERDATA, (LONG_PTR)(cc.rgbResult & 0xFFFFFFu)); InvalidateRect(b, nullptr, TRUE); }
+            break; }
         case O_PMODE: if (HIWORD(wp) == CBN_SELCHANGE) OptEnable(o); break;
         case O_WTEXTC: case O_WDATEC: case O_WIMGC: OptEnable(o); break;
         case O_TPL: if (HIWORD(wp) == EN_CHANGE) TplPreview(hw); break;
@@ -1542,6 +1552,18 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case O_DEFAULTS: OptRestorePage(o); break;
         }
         return 0;
+    case WM_DRAWITEM: {
+        const DRAWITEMSTRUCT* di = (const DRAWITEMSTRUCT*)lp;
+        if (di && di->CtlID == O_WCOLOR) {                          // a swatch of the colour in a frame
+            const COLORREF c = (COLORREF)GetWindowLongPtrW(di->hwndItem, GWLP_USERDATA) & 0xFFFFFFu;
+            const bool off = (di->itemState & ODS_DISABLED) != 0;
+            RECT r = di->rcItem;
+            HBRUSH fr = CreateSolidBrush(GetSysColor(off ? COLOR_GRAYTEXT : (di->itemState & ODS_FOCUS) ? COLOR_HIGHLIGHT : COLOR_WINDOWFRAME)); FillRect(di->hDC, &r, fr); DeleteObject(fr);
+            InflateRect(&r, -1, -1);
+            HBRUSH sw = CreateSolidBrush(off ? GetSysColor(COLOR_BTNFACE) : c); FillRect(di->hDC, &r, sw); DeleteObject(sw);
+            return TRUE;
+        }
+        break; }
     case WM_CLOSE: o->done = true; return 0;
     }
     return DefWindowProcW(hw, m, wp, lp);
@@ -1696,6 +1718,8 @@ bool OptionsDialog()
         ComboAdd(wv, T(S_PNL_TOP)); ComboAdd(wv, T(S_PNL_MIDDLE)); ComboAdd(wv, T(S_PNL_BOTTOM));
         label(6, S_WM_OPACITY, 33, 220, 120);
         edit(6, O_WOPACITY, 160, 216, 70, ES_NUMBER);
+        label(6, S_WM_COLOR, 250, 220, 150);
+        add(6, L"BUTTON", L"", WS_TABSTOP | BS_OWNERDRAW, 405, 216, 70, 22, O_WCOLOR);
         label(6, S_WM_SIZET, 33, 246, 120);
         edit(6, O_WSIZE, 160, 242, 70, ES_NUMBER);
         label(6, S_WM_SCALE, 250, 246, 150);

@@ -177,3 +177,4 @@ Opacity, %:
 Text height, px:
 Picture size, %:
 Hide the panel to the tray
+Text colour:
