@@ -1296,11 +1296,11 @@ void TplPreview(HWND d)
 void OptEnable(OptState* o)
 {
     HWND d = o->dlg;
-    const int mode = (int)SendDlgItemMessageW(d, O_PMODE, CB_GETCURSEL, 0, 0), kind = (int)SendDlgItemMessageW(d, O_WKIND, CB_GETCURSEL, 0, 0);
+    const int mode = (int)SendDlgItemMessageW(d, O_PMODE, CB_GETCURSEL, 0, 0), wt = IsDlgButtonChecked(d, O_WTEXTC) == BST_CHECKED, wd = IsDlgButtonChecked(d, O_WDATEC) == BST_CHECKED, wi = IsDlgButtonChecked(d, O_WIMGC) == BST_CHECKED;
     EnableWindow(GetDlgItem(d, O_PH), mode == 0); EnableWindow(GetDlgItem(d, O_PV), mode == 0);
     EnableWindow(GetDlgItem(d, O_PX), mode == 2); EnableWindow(GetDlgItem(d, O_PY), mode == 2);
-    EnableWindow(GetDlgItem(d, O_WTEXT), kind == 0); EnableWindow(GetDlgItem(d, O_WSIZE), kind == 0);
-    EnableWindow(GetDlgItem(d, O_WIMAGE), kind == 1); EnableWindow(GetDlgItem(d, O_WBROWSE), kind == 1); EnableWindow(GetDlgItem(d, O_WSCALE), kind == 1);
+    EnableWindow(GetDlgItem(d, O_WTEXT), wt); EnableWindow(GetDlgItem(d, O_WDATE), wd); EnableWindow(GetDlgItem(d, O_WSIZE), wt || wd);
+    EnableWindow(GetDlgItem(d, O_WIMAGE), wi); EnableWindow(GetDlgItem(d, O_WBROWSE), wi); EnableWindow(GetDlgItem(d, O_WSCALE), wi);
 }
 
 void OptLoad(OptState* o)
@@ -1328,7 +1328,8 @@ void OptLoad(OptState* o)
     SetDlgItemInt(d, O_PX, (UINT)s.panelX, TRUE); SetDlgItemInt(d, O_PY, (UINT)s.panelY, TRUE);
     chk(O_PVIDEO, s.panelInVideo); chk(O_PTIME, s.panelTime); chk(O_PSIZE, s.panelSize); chk(O_PKEY, s.panelKey);
     chk(O_WSHOT, s.wmShot); chk(O_WVIDEO, s.wmVideo);
-    SendDlgItemMessageW(d, O_WKIND, CB_SETCURSEL, s.wmKind, 0);
+    CheckDlgButton(d, O_WTEXTC, (s.wmParts & WMP_TEXT) ? BST_CHECKED : BST_UNCHECKED); CheckDlgButton(d, O_WDATEC, (s.wmParts & WMP_DATE) ? BST_CHECKED : BST_UNCHECKED); CheckDlgButton(d, O_WIMGC, (s.wmParts & WMP_IMAGE) ? BST_CHECKED : BST_UNCHECKED);
+    SetDlgItemTextW(d, O_WDATE, s.wmDate);
     SetDlgItemTextW(d, O_WTEXT, s.wmText); SetDlgItemTextW(d, O_WIMAGE, s.wmImage);
     SendDlgItemMessageW(d, O_WH, CB_SETCURSEL, s.wmH, 0); SendDlgItemMessageW(d, O_WV, CB_SETCURSEL, s.wmV, 0);
     SetDlgItemInt(d, O_WOPACITY, (UINT)s.wmOpacity, FALSE); SetDlgItemInt(d, O_WSIZE, (UINT)s.wmSize, FALSE); SetDlgItemInt(d, O_WSCALE, (UINT)s.wmScale, FALSE);
@@ -1360,8 +1361,8 @@ void OptCollect(OptState* o, Settings& s)
     s.panelMode = sel(O_PMODE, 2, s.panelMode); s.panelH = sel(O_PH, 2, s.panelH); s.panelV = sel(O_PV, 2, s.panelV);
     s.panelX = num(O_PX, -32000, 32000, s.panelX, true); s.panelY = num(O_PY, -32000, 32000, s.panelY, true);
     s.panelInVideo = chk(O_PVIDEO); s.panelTime = chk(O_PTIME); s.panelSize = chk(O_PSIZE); s.panelKey = chk(O_PKEY);
-    s.wmShot = chk(O_WSHOT); s.wmVideo = chk(O_WVIDEO); s.wmKind = sel(O_WKIND, 1, s.wmKind);
-    GetDlgItemTextW(d, O_WTEXT, s.wmText, 64); GetDlgItemTextW(d, O_WIMAGE, s.wmImage, MAX_PATH);
+    s.wmShot = chk(O_WSHOT); s.wmVideo = chk(O_WVIDEO); s.wmParts = (chk(O_WTEXTC) ? WMP_TEXT : 0) | (chk(O_WDATEC) ? WMP_DATE : 0) | (chk(O_WIMGC) ? WMP_IMAGE : 0);
+    GetDlgItemTextW(d, O_WDATE, s.wmDate, 64); GetDlgItemTextW(d, O_WTEXT, s.wmText, 64); GetDlgItemTextW(d, O_WIMAGE, s.wmImage, MAX_PATH);
     s.wmH = sel(O_WH, 2, s.wmH); s.wmV = sel(O_WV, 2, s.wmV);
     s.wmOpacity = num(O_WOPACITY, 10, 100, s.wmOpacity, false); s.wmSize = num(O_WSIZE, 8, 200, s.wmSize, false); s.wmScale = num(O_WSCALE, 10, 300, s.wmScale, false);
 }
@@ -1383,7 +1384,7 @@ void OptRestorePage(OptState* o)
     case 4: for (int i = 0; i < HKI_COUNT; ++i) cur.hotkey[i] = d.hotkey[i]; break;
     case 5: cur.panelMode = d.panelMode; cur.panelH = d.panelH; cur.panelV = d.panelV; cur.panelX = d.panelX; cur.panelY = d.panelY; cur.panelInVideo = d.panelInVideo;
             cur.panelTime = d.panelTime; cur.panelSize = d.panelSize; cur.panelKey = d.panelKey; break;
-    case 6: cur.wmShot = d.wmShot; cur.wmVideo = d.wmVideo; cur.wmKind = d.wmKind; StrCopy(cur.wmText, 64, d.wmText); StrCopy(cur.wmImage, MAX_PATH, d.wmImage);
+    case 6: cur.wmShot = d.wmShot; cur.wmVideo = d.wmVideo; cur.wmParts = d.wmParts; StrCopy(cur.wmDate, 64, d.wmDate); StrCopy(cur.wmText, 64, d.wmText); StrCopy(cur.wmImage, MAX_PATH, d.wmImage);
             cur.wmH = d.wmH; cur.wmV = d.wmV; cur.wmOpacity = d.wmOpacity; cur.wmSize = d.wmSize; cur.wmScale = d.wmScale; break;
     }
     o->s = cur; OptLoad(o);
@@ -1533,7 +1534,8 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
         case O_MOUSE: EnableWindow(GetDlgItem(hw, O_HILITE), IsDlgButtonChecked(hw, O_MOUSE) == BST_CHECKED); break;
         case O_BRFOLDER: BrowseFolder(hw, O_FOLDER); break;
         case O_WBROWSE: BrowseImage(hw, O_WIMAGE); break;
-        case O_PMODE: case O_WKIND: if (HIWORD(wp) == CBN_SELCHANGE) OptEnable(o); break;
+        case O_PMODE: if (HIWORD(wp) == CBN_SELCHANGE) OptEnable(o); break;
+        case O_WTEXTC: case O_WDATEC: case O_WIMGC: OptEnable(o); break;
         case O_TPL: if (HIWORD(wp) == EN_CHANGE) TplPreview(hw); break;
         case O_EXPORT: OptExport(o); break;
         case O_IMPORT: OptImport(o); break;
@@ -1677,15 +1679,16 @@ bool OptionsDialog()
     {
         add(6, L"BUTTON", T(S_WM_SHOT), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 52, 460, 18, O_WSHOT);
         add(6, L"BUTTON", T(S_WM_VIDEO), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 72, 460, 18, O_WVIDEO);
-        label(6, S_WM_KIND, 33, 106, 120);
-        HWND wk = combo(6, O_WKIND, 160, 102, 150);
-        ComboAdd(wk, T(S_WM_TEXTK)); ComboAdd(wk, T(S_WM_IMAGEK));
-        label(6, S_WM_TEXT, 33, 134, 120);
-        edit(6, O_WTEXT, 160, 130, 333);
+        // the parts of the mark (all that are ticked, one under another): the text, the date and time, the picture
+        add(6, L"BUTTON", T(S_WM_TEXT), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 102, 125, 18, O_WTEXTC);
+        edit(6, O_WTEXT, 160, 100, 333);
         SendDlgItemMessageW(d, O_WTEXT, EM_LIMITTEXT, 63, 0);
-        label(6, S_WM_IMAGE, 33, 162, 120);
-        edit(6, O_WIMAGE, 160, 158, 291);
-        add(6, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 157, 33, 22, O_WBROWSE);
+        add(6, L"BUTTON", T(S_WM_KIND), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 130, 125, 18, O_WDATEC);
+        edit(6, O_WDATE, 160, 128, 333);
+        SendDlgItemMessageW(d, O_WDATE, EM_LIMITTEXT, 63, 0);
+        add(6, L"BUTTON", T(S_WM_IMAGE), WS_TABSTOP | BS_AUTOCHECKBOX, 33, 158, 125, 18, O_WIMGC);
+        edit(6, O_WIMAGE, 160, 156, 291);
+        add(6, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 155, 33, 22, O_WBROWSE);
         label(6, S_WM_PLACE, 33, 192, 120);
         HWND wh = combo(6, O_WH, 160, 188, 110), wv = combo(6, O_WV, 280, 188, 110);
         ComboAdd(wh, T(S_PNL_LEFT)); ComboAdd(wh, T(S_PNL_CENTRE)); ComboAdd(wh, T(S_PNL_RIGHT));

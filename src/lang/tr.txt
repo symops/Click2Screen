@@ -166,7 +166,7 @@ Dosya boyutu
 Kısayol
 Filigranı ekran görüntülerine ekle
 Filigranı videolara ekle
-Filigran:
+Tarih ve saat:
 metin
 resim
 Metin:

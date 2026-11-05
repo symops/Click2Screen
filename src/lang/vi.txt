@@ -166,7 +166,7 @@ Kích thước tệp
 Phím tắt
 Thêm hình mờ vào ảnh chụp màn hình
 Thêm hình mờ vào video
-Hình mờ:
+Ngày và giờ:
 văn bản
 hình ảnh
 Văn bản:

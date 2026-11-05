@@ -166,7 +166,7 @@ Taille du fichier
 Raccourci
 Ajouter le filigrane aux captures d'écran
 Ajouter le filigrane aux vidéos
-Filigrane :
+Date et heure :
 texte
 image
 Texte :

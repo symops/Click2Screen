@@ -166,7 +166,7 @@ Tamanho do ficheiro
 Tecla de atalho
 Adicionar a marca d'água às capturas
 Adicionar a marca d'água aos vídeos
-Marca d'água:
+Data e hora:
 texto
 imagem
 Texto:

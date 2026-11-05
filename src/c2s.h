@@ -107,7 +107,8 @@ struct Settings {
     bool panelTime, panelSize, panelKey;   // what it shows: the time, the size of the file, the key that starts / stops
     // the watermark (off by default)
     bool wmShot, wmVideo;           // in the screenshots / in the videos
-    int  wmKind;                    // 0 a text, 1 a picture from a file
+    int  wmParts;                   // the parts of the mark, one under another: WMP_TEXT | WMP_DATE | WMP_IMAGE
+    wchar_t wmDate[64];             // the template of the date and time ($Y $M $D $H $N $S)
     wchar_t wmText[64];
     wchar_t wmImage[MAX_PATH];
     int  wmH, wmV;                  // the place: 0 left / top, 1 centre / middle, 2 right / bottom
@@ -167,8 +168,10 @@ private:
 // 2 the countdown (orange), 3 recording (red), 4 paused (two bars). A new icon (DestroyIcon it), the base one for 0 or when it cannot be made.
 HICON MakeStateIcon(HICON base, int state);
 struct Watermark;
+enum { WMP_TEXT = 1, WMP_DATE = 2, WMP_IMAGE = 4 };
+void WatermarkDateString(const wchar_t* tpl, wchar_t* out, int cap);       // the template expanded for this moment ($Y $M $D $H $N $S; anything else stays as it is)
 Watermark* WatermarkCreate(const Settings& s, int picW, int picH);       // nullptr when there is nothing to draw (an empty text, a picture that cannot be read)
-void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h);   // bits: the rows of a bottom-up 32-bit picture (a screenshot, a frame), w x h
+void WatermarkApply(Watermark* wm, uint8_t* bits, int w, int h);   // bits: the rows of a bottom-up 32-bit picture (a screenshot, a frame), w x h
 void WatermarkFree(Watermark* wm);
 // ---- recording effects (fx.cpp): a wave at every click (left blue, right red, middle purple), the red lines of the drawing window
 void FxStart();                                    // low-level mouse hook: the calling thread must pump messages

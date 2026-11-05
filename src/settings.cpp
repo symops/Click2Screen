@@ -66,7 +66,7 @@ void SettingsDefaults(Settings& s)
     s.fps = 25; s.language = 0;
     s.panelMode = 0; s.panelH = 1; s.panelV = 2; s.panelX = 100; s.panelY = 100; s.panelInVideo = false;
     s.panelTime = s.panelSize = s.panelKey = true;
-    s.wmShot = s.wmVideo = false; s.wmKind = 0; s.wmText[0] = 0; s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
+    s.wmShot = s.wmVideo = false; s.wmParts = WMP_TEXT; wcscpy(s.wmDate, L"$D.$M.$Y $H-$N-$S"); s.wmText[0] = 0; s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
 }
 
 int PanelLayout(const Settings& s, int left[6])
@@ -201,7 +201,11 @@ void SettingsLoad(Settings& s)
     s.panelKey     = GetDw(k, L"PanelKey", d.panelKey) != 0;
     s.wmShot       = GetDw(k, L"WmShot", d.wmShot) != 0;
     s.wmVideo      = GetDw(k, L"WmVideo", d.wmVideo) != 0;
-    s.wmKind       = Clamp((int)GetDw(k, L"WmKind", d.wmKind), 0, 1);
+    {   // WmParts; settings of an older build only have WmKind (0 a text, 1 a picture)
+        DWORD old = GetDw(k, L"WmKind", 0xFFFFFFFFu), parts = GetDw(k, L"WmParts", 0xFFFFFFFFu);
+        s.wmParts = parts != 0xFFFFFFFFu ? Clamp((int)parts, 0, 7) : old == 1 ? WMP_IMAGE : old == 0 ? WMP_TEXT : d.wmParts;
+    }
+    GetStr(k, L"WmDate", s.wmDate, 64, d.wmDate);
     GetStr(k, L"WmText", s.wmText, 64, d.wmText);
     GetStr(k, L"WmImage", s.wmImage, MAX_PATH, d.wmImage);
     s.wmH          = Clamp((int)GetDw(k, L"WmH", d.wmH), 0, 2);
@@ -254,7 +258,7 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"PanelMode", s.panelMode); PutDw(k, L"PanelH", s.panelH); PutDw(k, L"PanelV", s.panelV);
     PutDw(k, L"PanelX", (DWORD)s.panelX); PutDw(k, L"PanelY", (DWORD)s.panelY);
     PutDw(k, L"PanelInVideo", s.panelInVideo); PutDw(k, L"PanelTime", s.panelTime); PutDw(k, L"PanelSize", s.panelSize); PutDw(k, L"PanelKey", s.panelKey);
-    PutDw(k, L"WmShot", s.wmShot); PutDw(k, L"WmVideo", s.wmVideo); PutDw(k, L"WmKind", s.wmKind);
+    PutDw(k, L"WmShot", s.wmShot); PutDw(k, L"WmVideo", s.wmVideo); PutDw(k, L"WmParts", s.wmParts); PutStr(k, L"WmDate", s.wmDate);
     PutStr(k, L"WmText", s.wmText); PutStr(k, L"WmImage", s.wmImage);
     PutDw(k, L"WmH", s.wmH); PutDw(k, L"WmV", s.wmV); PutDw(k, L"WmOpacity", s.wmOpacity); PutDw(k, L"WmSize", s.wmSize); PutDw(k, L"WmScale", s.wmScale);
     for (int i = 0; i < HKI_COUNT; ++i) PutDw(k, kHotkeyNames[i], s.hotkey[i]);
@@ -279,6 +283,22 @@ bool SettingsSetAutostart(bool on)
     }
     RegCloseKey(k);
     return ok;
+}
+
+// The date and time for the watermark: the same letters as the file name template, anything else as it is.
+void WatermarkDateString(const wchar_t* tpl, wchar_t* out, int cap)
+{
+    SYSTEMTIME st; GetLocalTime(&st);
+    int n = 0;
+    for (const wchar_t* p = tpl; p && *p && n < cap - 8; ++p) {
+        if (*p == L'$' && p[1] && wcschr(L"YMDHNS", p[1])) {
+            int v = 0, w = 2;
+            switch (p[1]) { case L'Y': v = st.wYear; w = 4; break; case L'M': v = st.wMonth; break; case L'D': v = st.wDay; break; case L'H': v = st.wHour; break; case L'N': v = st.wMinute; break; default: v = st.wSecond; break; }
+            n += _snwprintf(out + n, 8, L"%0*d", w, v); ++p; continue;
+        }
+        out[n++] = *p;
+    }
+    out[n] = 0;
 }
 
 // ---- file name template ------------------------------------------------------------------------------------------
@@ -487,7 +507,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"PanelMode", s.panelMode); IniInt(path, L"PanelH", s.panelH); IniInt(path, L"PanelV", s.panelV);
     IniInt(path, L"PanelX", s.panelX); IniInt(path, L"PanelY", s.panelY);
     IniInt(path, L"PanelInVideo", s.panelInVideo); IniInt(path, L"PanelTime", s.panelTime); IniInt(path, L"PanelSize", s.panelSize); IniInt(path, L"PanelKey", s.panelKey);
-    IniInt(path, L"WmShot", s.wmShot); IniInt(path, L"WmVideo", s.wmVideo); IniInt(path, L"WmKind", s.wmKind);
+    IniInt(path, L"WmShot", s.wmShot); IniInt(path, L"WmVideo", s.wmVideo); IniInt(path, L"WmParts", s.wmParts); IniStr(path, L"WmDate", s.wmDate);
     IniStr(path, L"WmText", s.wmText); IniStr(path, L"WmImage", s.wmImage);
     IniInt(path, L"WmH", s.wmH); IniInt(path, L"WmV", s.wmV); IniInt(path, L"WmOpacity", s.wmOpacity); IniInt(path, L"WmSize", s.wmSize); IniInt(path, L"WmScale", s.wmScale);
     IniInt(path, L"Fps", s.fps);
@@ -550,7 +570,9 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (IniGetInt(path, L"PanelKey", 0, 1, &v)) s.panelKey = v != 0;
     if (IniGetInt(path, L"WmShot", 0, 1, &v)) s.wmShot = v != 0;
     if (IniGetInt(path, L"WmVideo", 0, 1, &v)) s.wmVideo = v != 0;
-    if (IniGetInt(path, L"WmKind", 0, 1, &v)) s.wmKind = v;
+    if (IniGetInt(path, L"WmParts", 0, 7, &v)) s.wmParts = v;
+    else if (IniGetInt(path, L"WmKind", 0, 1, &v)) s.wmParts = v == 1 ? WMP_IMAGE : WMP_TEXT;       // a file of an older build
+    if (GetPrivateProfileStringW(kSec, L"WmDate", L"\x01", str, 64, path) > 0 && str[0] != 1) StrCopy(s.wmDate, 64, str);
     if (GetPrivateProfileStringW(kSec, L"WmText", L"\x01", str, 64, path) > 0 && str[0] != 1) StrCopy(s.wmText, 64, str);
     if (GetPrivateProfileStringW(kSec, L"WmImage", L"\x01", str, MAX_PATH, path) > 0 && str[0] != 1) StrCopy(s.wmImage, MAX_PATH, str);
     if (IniGetInt(path, L"WmH", 0, 2, &v)) s.wmH = v;

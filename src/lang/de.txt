@@ -166,7 +166,7 @@ Dateigröße
 Tastenkürzel
 Wasserzeichen in Screenshots einfügen
 Wasserzeichen in Videos einfügen
-Wasserzeichen:
+Datum und Uhrzeit:
 Text
 Bild
 Text:

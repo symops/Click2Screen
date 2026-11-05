@@ -166,7 +166,7 @@ Bestandsgrootte
 Sneltoets
 Watermerk toevoegen aan schermafbeeldingen
 Watermerk toevoegen aan video's
-Watermerk:
+Datum en tijd:
 tekst
 afbeelding
 Tekst:

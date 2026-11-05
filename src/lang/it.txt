@@ -166,7 +166,7 @@ Dimensione file
 Scorciatoia
 Aggiungi la filigrana agli screenshot
 Aggiungi la filigrana ai video
-Filigrana:
+Data e ora:
 testo
 immagine
 Testo:

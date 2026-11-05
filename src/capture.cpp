@@ -324,9 +324,10 @@ HICON MakeStateIcon(HICON base, int state)
 
 // ---- the watermark -------------------------------------------------------------------------------------------------------------------------------------------
 // The mark is kept as premultiplied BGRA (top-down); laying it over a picture is one multiply-add per pixel of the mark.
-struct Watermark { int w, h, x, y; uint32_t* px; };
+// The mark is up to three parts, one under another: the text, the date and time (a template; the video shows the running clock), the picture.
+struct Watermark { int w, h, x, y; uint32_t* px; Settings cfg; int picW, picH; uint32_t *txt, *dat, *img; int tw, th, dw, dh, iw, ih; int sec; };
 
-static uint32_t* MarkFromText(const Settings& s, int* mw, int* mh)
+static uint32_t* MarkFromText(const Settings& s, const wchar_t* text, int* mw, int* mh)
 {
     HDC scr = GetDC(nullptr);
     HDC dc = CreateCompatibleDC(scr);
@@ -337,7 +338,7 @@ static uint32_t* MarkFromText(const Settings& s, int* mw, int* mh)
     HFONT f = CreateFontIndirectW(&lf);
     HGDIOBJ of = SelectObject(dc, f);
     SIZE sz = { 0, 0 };
-    GetTextExtentPoint32W(dc, s.wmText, (int)wcslen(s.wmText), &sz);
+    GetTextExtentPoint32W(dc, text, (int)wcslen(text), &sz);
     const int W = sz.cx + 6, H = sz.cy + 6;
     uint32_t* out = nullptr;
     BITMAPINFO bi; memset(&bi, 0, sizeof(bi));
@@ -347,7 +348,7 @@ static uint32_t* MarkFromText(const Settings& s, int* mw, int* mh)
     if (bm && bits) {
         HGDIOBJ ob = SelectObject(dc, bm);
         SetBkMode(dc, TRANSPARENT); SetTextColor(dc, RGB(255, 255, 255));
-        TextOutW(dc, 3, 3, s.wmText, (int)wcslen(s.wmText));
+        TextOutW(dc, 3, 3, text, (int)wcslen(text));
         GdiFlush();
         out = (uint32_t*)malloc((size_t)W * H * 4);
         if (out) {
@@ -406,25 +407,60 @@ static uint32_t* MarkFromFile(const Settings& s, int picW, int picH, int* mw, in
     return out;
 }
 
+static int MarkSecond() { SYSTEMTIME t; GetLocalTime(&t); return (int)t.wSecond + 60 * (int)t.wMinute + 3600 * (int)t.wHour + 86400 * (int)t.wDay; }
+
+// The parts one under another (4 pixels between), each at the side the place says; the mark goes to its place in the picture.
+static void MarkCompose(Watermark* wm)
+{
+    free(wm->px); wm->px = nullptr; wm->w = wm->h = 0;
+    struct P { uint32_t* px; int w, h; } parts[3] = { { wm->txt, wm->tw, wm->th }, { wm->dat, wm->dw, wm->dh }, { wm->img, wm->iw, wm->ih } };
+    int W = 0, H = 0, n = 0;
+    for (const P& q : parts) if (q.px) { if (q.w > W) W = q.w; H += q.h + (n ? 4 : 0); ++n; }
+    if (!n) return;
+    uint32_t* out = (uint32_t*)calloc((size_t)W * H, 4);
+    if (!out) return;
+    int y = 0;
+    for (const P& q : parts) {
+        if (!q.px) continue;
+        const int x0 = wm->cfg.wmH == 0 ? 0 : wm->cfg.wmH == 2 ? W - q.w : (W - q.w) / 2;
+        for (int r = 0; r < q.h; ++r) memcpy(out + (size_t)(y + r) * W + x0, q.px + (size_t)r * q.w, (size_t)q.w * 4);
+        y += q.h + 4;
+    }
+    wm->px = out; wm->w = W; wm->h = H;
+    const int picW = wm->picW, picH = wm->picH;
+    const int margin = (picW < picH ? picW : picH) / 60 > 8 ? (picW < picH ? picW : picH) / 60 : 8;
+    wm->x = wm->cfg.wmH == 0 ? margin : wm->cfg.wmH == 2 ? picW - W - margin : (picW - W) / 2;
+    wm->y = wm->cfg.wmV == 0 ? margin : wm->cfg.wmV == 2 ? picH - H - margin : (picH - H) / 2;
+    if (wm->x < 0) wm->x = 0;
+    if (wm->y < 0) wm->y = 0;
+}
+
+static void MarkDate(Watermark* wm)
+{
+    free(wm->dat); wm->dat = nullptr; wm->dw = wm->dh = 0;
+    wchar_t t[160]; WatermarkDateString(wm->cfg.wmDate, t, 160);
+    if (t[0]) wm->dat = MarkFromText(wm->cfg, t, &wm->dw, &wm->dh);
+    wm->sec = MarkSecond();
+}
+
 Watermark* WatermarkCreate(const Settings& s, int picW, int picH)
 {
     if (picW < 8 || picH < 8) return nullptr;
-    int mw = 0, mh = 0;
-    uint32_t* px = s.wmKind == 0 ? (s.wmText[0] ? MarkFromText(s, &mw, &mh) : nullptr) : MarkFromFile(s, picW, picH, &mw, &mh);
-    if (!px) return nullptr;
     Watermark* wm = new Watermark;
-    wm->w = mw; wm->h = mh; wm->px = px;
-    const int margin = (picW < picH ? picW : picH) / 60 > 8 ? (picW < picH ? picW : picH) / 60 : 8;
-    wm->x = s.wmH == 0 ? margin : s.wmH == 2 ? picW - mw - margin : (picW - mw) / 2;
-    wm->y = s.wmV == 0 ? margin : s.wmV == 2 ? picH - mh - margin : (picH - mh) / 2;
-    if (wm->x < 0) wm->x = 0;
-    if (wm->y < 0) wm->y = 0;
+    memset(wm, 0, sizeof(*wm));
+    wm->cfg = s; wm->picW = picW; wm->picH = picH;
+    if ((s.wmParts & WMP_TEXT) && s.wmText[0]) wm->txt = MarkFromText(s, s.wmText, &wm->tw, &wm->th);
+    if (s.wmParts & WMP_DATE) MarkDate(wm);
+    if (s.wmParts & WMP_IMAGE) wm->img = MarkFromFile(s, picW, picH, &wm->iw, &wm->ih);
+    MarkCompose(wm);
+    if (!wm->px) { WatermarkFree(wm); return nullptr; }
     return wm;
 }
 
-void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h)
+void WatermarkApply(Watermark* wm, uint8_t* bits, int w, int h)
 {
     if (!wm || !bits) return;
+    if (wm->dat && MarkSecond() != wm->sec) { MarkDate(wm); MarkCompose(wm); if (!wm->px) return; }      // the clock ticks
     for (int r = 0; r < wm->h; ++r) {
         const int dy = wm->y + r;
         if (dy >= h) break;
@@ -448,7 +484,7 @@ void WatermarkApply(const Watermark* wm, uint8_t* bits, int w, int h)
 void WatermarkFree(Watermark* wm)
 {
     if (!wm) return;
-    free(wm->px);
+    free(wm->px); free(wm->txt); free(wm->dat); free(wm->img);
     delete wm;
 }
 

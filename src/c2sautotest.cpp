@@ -226,7 +226,7 @@ static void RandomSettings(Settings& s)
     RandomHotkeys(s.hotkey, false);
     s.panelMode = R(0, 2); s.panelH = R(0, 2); s.panelV = R(0, 2); s.panelX = R(-300, 3000); s.panelY = R(-200, 2000); s.panelInVideo = Chance(30);
     s.panelTime = Chance(70); s.panelSize = Chance(70); s.panelKey = Chance(70);
-    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmKind = R(0, 1);
+    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmParts = R(0, 7); StrCopy(s.wmDate, 64, Chance(50) ? L"$D.$M.$Y $H-$N-$S" : L"$Y/$M/$D at $H:$N");
     RandomText(t, 20); _snwprintf(s.wmText, 64, L"%s", t); _snwprintf(s.wmImage, MAX_PATH, L"%s\\wm %s.png", g_dir, t);
     s.wmH = R(0, 2); s.wmV = R(0, 2); s.wmOpacity = R(10, 100); s.wmSize = R(8, 200); s.wmScale = R(10, 300);
 }
@@ -239,7 +239,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
     CMPI(openFolder) CMPI(topmost) CMPI(separateMonitors) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     CMPI(panelMode) CMPI(panelH) CMPI(panelV) CMPI(panelX) CMPI(panelY) CMPI(panelInVideo) CMPI(panelTime) CMPI(panelSize) CMPI(panelKey)
-    CMPI(wmShot) CMPI(wmVideo) CMPI(wmKind) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
+    CMPI(wmShot) CMPI(wmVideo) CMPI(wmParts) CMPS(wmDate) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
     return true;
@@ -2170,7 +2170,7 @@ static void T_App()
                 SendMessageW(GetDlgItem(o, O_PMODE), CB_SETCURSEL, w.panelMode, 0); SendMessageW(GetDlgItem(o, O_PH), CB_SETCURSEL, w.panelH, 0); SendMessageW(GetDlgItem(o, O_PV), CB_SETCURSEL, w.panelV, 0);
                 _snwprintf(n, 16, L"%d", w.panelX); SetText(GetDlgItem(o, O_PX), n); _snwprintf(n, 16, L"%d", w.panelY); SetText(GetDlgItem(o, O_PY), n);
                 chk(O_PVIDEO, w.panelInVideo); chk(O_PTIME, w.panelTime); chk(O_PSIZE, w.panelSize); chk(O_PKEY, w.panelKey);
-                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); SendMessageW(GetDlgItem(o, O_WKIND), CB_SETCURSEL, w.wmKind, 0);
+                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); chk(O_WTEXTC, (w.wmParts & WMP_TEXT) != 0); chk(O_WDATEC, (w.wmParts & WMP_DATE) != 0); chk(O_WIMGC, (w.wmParts & WMP_IMAGE) != 0); SetText(GetDlgItem(o, O_WDATE), w.wmDate);
                 SetText(GetDlgItem(o, O_WTEXT), w.wmText); SetText(GetDlgItem(o, O_WIMAGE), w.wmImage);
                 SendMessageW(GetDlgItem(o, O_WH), CB_SETCURSEL, w.wmH, 0); SendMessageW(GetDlgItem(o, O_WV), CB_SETCURSEL, w.wmV, 0);
                 _snwprintf(n, 16, L"%d", w.wmOpacity); SetText(GetDlgItem(o, O_WOPACITY), n); _snwprintf(n, 16, L"%d", w.wmSize); SetText(GetDlgItem(o, O_WSIZE), n);
@@ -4006,7 +4006,7 @@ static void T_WatermarkApply()
     uint8_t* pic = new uint8_t[(size_t)W * H * 4];
     auto grey = [&]() { for (size_t i = 0; i < (size_t)W * H; ++i) { pic[i * 4] = pic[i * 4 + 1] = pic[i * 4 + 2] = (uint8_t)G; pic[i * 4 + 3] = 255; } };
     Settings st; SettingsDefaults(st);
-    st.wmKind = 0; _snwprintf(st.wmText, 64, L"Watermark"); st.wmSize = 40; st.wmOpacity = 100;
+    st.wmParts = WMP_TEXT; _snwprintf(st.wmText, 64, L"Watermark"); st.wmSize = 40; st.wmOpacity = 100;
     struct Where { int h, v; int x0, y0, x1, y1, ox0, oy0, ox1, oy1; } where[] = {
         { 2, 2, 200, 200, 400, 300, 0, 0, 200, 100 },          // bottom right: the mark is there, the top left is not touched
         { 0, 0, 0, 0, 200, 100, 200, 200, 400, 300 },          // top left
@@ -4032,6 +4032,36 @@ static void T_WatermarkApply()
         wchar_t d[100]; _snwprintf(d, 100, L"%d white pixels at 100 %%, %d at 40 %%", bright[0], bright[1]);
         Check(bright[0] > 50 && bright[1] == 0, L"watermark: a weaker mark never gets as white as a full one", d);
     }
+    {   // the date and time: the template is expanded for now; text + date stand one under another
+        wchar_t t[160]; WatermarkDateString(L"$D.$M.$Y $H-$N-$S", t, 160);
+        SYSTEMTIME now; GetLocalTime(&now);
+        bool shape = wcslen(t) == 19 && t[2] == L'.' && t[5] == L'.' && t[10] == L' ' && t[13] == L'-' && t[16] == L'-';
+        for (int i = 0; shape && i < 19; ++i) if (i != 2 && i != 5 && i != 10 && i != 13 && i != 16 && (t[i] < L'0' || t[i] > L'9')) shape = false;
+        wchar_t yr[8]; _snwprintf(yr, 8, L"%04d", now.wYear);
+        Check(shape && wcsncmp(t + 6, yr, 4) == 0, L"watermark: the date template is expanded with the system time", t);
+        WatermarkDateString(L"$Y/$M at $H:$N!", t, 160);
+        Check(wcslen(t) == 17 && t[4] == L'/' && wcsstr(t, L" at ") && t[wcslen(t) - 1] == L'!', L"watermark: other characters of the template stay as they are", t);
+        st.wmH = 0; st.wmV = 0; st.wmOpacity = 100; st.wmSize = 30; StrCopy(st.wmText, 64, L"Watermark");
+        auto rows = [&](int parts, int* firstRow, int* lastRow) {
+            st.wmParts = parts;
+            Watermark* wm = WatermarkCreate(st, W, H);
+            if (!wm) { *firstRow = *lastRow = -1; return false; }
+            grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+            int f = -1, l = -1;
+            for (int y = 0; y < H; ++y) { if (WmChanged(pic, W, H, 0, y, W, y + 1, G) > 0) { if (f < 0) f = y; l = y; } }
+            *firstRow = f; *lastRow = l; return true;
+        };
+        int f1, l1, f2, l2;
+        const bool ok1 = rows(WMP_TEXT, &f1, &l1), ok2 = rows(WMP_TEXT | WMP_DATE, &f2, &l2);
+        wchar_t d[160]; _snwprintf(d, 160, L"the text alone: rows %d..%d, text + date: rows %d..%d", f1, l1, f2, l2);
+        Check(ok1 && ok2 && f1 == f2 && (l2 - f2) > (l1 - f1) * 3 / 2, L"watermark: the date goes under the text (the mark is taller)", d);
+        st.wmParts = WMP_DATE;
+        Watermark* wd = WatermarkCreate(st, W, H);
+        Check(wd != nullptr, L"watermark: the date alone makes a mark"); WatermarkFree(wd);
+        st.wmParts = WMP_DATE; st.wmDate[0] = 0;
+        Check(WatermarkCreate(st, W, H) == nullptr, L"watermark: an empty date template makes no mark");
+        st.wmParts = WMP_TEXT; StrCopy(st.wmDate, 64, L"$D.$M.$Y $H-$N-$S");
+    }
     {   // an empty text draws nothing
         st.wmText[0] = 0;
         Check(WatermarkCreate(st, W, H) == nullptr, L"watermark: an empty text makes no mark");
@@ -4047,7 +4077,7 @@ static void T_WatermarkApply()
             wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\wm-red.png", g_dir);
             bool saved = SaveBitmap(bm, path, IMG_PNG); DeleteObject(bm);
             Settings im; SettingsDefaults(im);
-            im.wmKind = 1; StrCopy(im.wmImage, MAX_PATH, path); im.wmH = 1; im.wmV = 1; im.wmOpacity = 100;
+            im.wmParts = WMP_IMAGE; StrCopy(im.wmImage, MAX_PATH, path); im.wmH = 1; im.wmV = 1; im.wmOpacity = 100;
             int counts[2] = { 0, 0 }, mid[3] = { 0, 0, 0 };
             for (int k = 0; k < 2; ++k) {
                 im.wmScale = k ? 200 : 100; im.wmOpacity = k ? 50 : 100;
@@ -4072,7 +4102,7 @@ static int WmRecordWhite(bool on)
     RecParams p; memset(&p, 0, sizeof(p));
     SettingsDefaults(p.cfg);
     p.cfg.videoCodec = VC_AVI; p.cfg.videoQuality = 0; p.cfg.fps = 15; p.cfg.mic = false; p.cfg.loopback = false; p.cfg.capMouse = false; p.cfg.highlight = false;
-    p.cfg.wmVideo = on; p.cfg.wmKind = 0; _snwprintf(p.cfg.wmText, 64, L"Watermark"); p.cfg.wmSize = 36; p.cfg.wmOpacity = 100; p.cfg.wmH = 1; p.cfg.wmV = 1;
+    p.cfg.wmVideo = on; p.cfg.wmParts = WMP_TEXT; _snwprintf(p.cfg.wmText, 64, L"Watermark"); p.cfg.wmSize = 36; p.cfg.wmOpacity = 100; p.cfg.wmH = 1; p.cfg.wmV = 1;
     p.rc = FxScreenRect();
     wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\wm-video-%d.avi", g_dir, on ? 1 : 0);
     DeleteFileW(path); wcscpy(p.path, path);
@@ -4118,7 +4148,7 @@ static void T_WatermarkVideo()
 static int WmShotCount(bool on, uint8_t** out, int* ow, int* oh)
 {
     Settings st; PrepareApp(st); st.imageFormat = IMG_PNG; st.notify = false; st.capMouse = false; st.highlight = false;
-    st.wmShot = on; st.wmKind = 0; _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
+    st.wmShot = on; st.wmParts = WMP_TEXT; _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
     App a;
     if (!StartApp(a, st)) { FAIL(L"watermark: the program did not start"); StopApp(a, false); return -1; }
     int before = CountFiles(st.folder);

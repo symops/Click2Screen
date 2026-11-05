@@ -166,7 +166,7 @@ Tamaño del archivo
 Tecla rápida
 Añadir la marca de agua a las capturas
 Añadir la marca de agua a los vídeos
-Marca de agua:
+Fecha y hora:
 texto
 imagen
 Texto:

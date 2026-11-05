@@ -166,7 +166,7 @@ Ukuran berkas
 Tombol pintas
 Tambahkan watermark ke tangkapan layar
 Tambahkan watermark ke video
-Watermark:
+Tanggal dan waktu:
 teks
 gambar
 Teks:

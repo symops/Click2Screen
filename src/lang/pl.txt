@@ -166,7 +166,7 @@ Rozmiar pliku
 Skrót klawiszowy
 Dodawaj znak wodny do zrzutów ekranu
 Dodawaj znak wodny do filmów
-Znak wodny:
+Data i godzina:
 tekst
 obraz
 Tekst:

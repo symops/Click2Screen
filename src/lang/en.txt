@@ -166,7 +166,7 @@ File size
 Hotkey
 Add the watermark to screenshots
 Add the watermark to videos
-Watermark:
+Date and time:
 text
 picture
 Text:
