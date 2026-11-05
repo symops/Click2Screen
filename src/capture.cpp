@@ -287,8 +287,8 @@ HICON MakeStateIcon(HICON base, int state)
             for (size_t i = 0; i < (size_t)W * H; ++i) if (px[i] >> 24) { anyAlpha = true; break; }
             if (!anyAlpha && ii.hbmMask && GetDIBits(dc, ii.hbmMask, 0, H, mk, &bi, DIB_RGB_COLORS))      // an icon without alpha: the mask says what is see-through
                 for (size_t i = 0; i < (size_t)W * H; ++i) px[i] = (px[i] & 0x00FFFFFFu) | ((mk[i] & 0x00FFFFFFu) ? 0u : 0xFF000000u);
-            const double r = W * 0.30, cx = W - r - 0.5, cy = H - r - 0.5;
-            Badge(px, W, H, cx, cy, r + (W >= 24 ? 1.5 : 1.0), 255, 255, 255);                          // the white rim
+            const double r = W * 0.20, cx = W - r - 0.5, cy = H - r - 0.5;
+            Badge(px, W, H, cx, cy, r + (W >= 24 ? 1.2 : 0.8), 255, 255, 255);                          // the white rim
             switch (state) {
             case 1: Badge(px, W, H, cx, cy, r, 255, 190, 0); break;                                    // ready: amber
             case 2: Badge(px, W, H, cx, cy, r, 255, 110, 0); break;                                    // countdown: orange

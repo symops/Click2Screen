@@ -172,16 +172,33 @@ static void TrayRemove(NOTIFYICONDATAW* n)
 
 // ---- tray ----------------------------------------------------------------------------------------------------------
 // The icon of the tray tells the state: the icon of the program at rest, with a badge when a recording is ready (amber), counts down (orange), runs (red), is paused (bars).
+static bool g_trayBlinkOff;
 static HICON StateIcon()
 {
     const int idx = g_state == ST_ARMED ? 1 : g_state == ST_COUNTDOWN ? 2 : g_state == ST_RECORDING ? 3 : g_state == ST_PAUSED ? 4 : 0;
     if (!idx) return g_iconSmall;
+    if (idx == 3 && g_trayBlinkOff) return g_iconSmall;             // a recording: the red circle blinks
     if (!g_stateIcon[idx]) g_stateIcon[idx] = MakeStateIcon(g_iconSmall, idx);
     return g_stateIcon[idx] ? g_stateIcon[idx] : g_iconSmall;
 }
 
+// The red circle of the icon blinks while a recording runs (twice a second, with the timer of the panel).
+static void TrayBlink()
+{
+    static int tick;
+    const bool rec = g_state == ST_RECORDING;
+    if (!rec) { tick = 0; if (g_trayBlinkOff) { g_trayBlinkOff = false; } return; }
+    if (++tick & 1) return;
+    g_trayBlinkOff = !g_trayBlinkOff;
+    if (!g_trayAdded) return;
+    NOTIFYICONDATAW n = g_nid; n.uFlags = NIF_ICON; n.hIcon = StateIcon(); g_nid.hIcon = n.hIcon;
+    Shell_NotifyIconW(NIM_MODIFY, &n);
+}
+
 void TrayTip()
 {
+    if (g_state != ST_RECORDING) g_trayBlinkOff = false;
+    else if (g_trayBlinkOff) g_trayBlinkOff = false;          // (a new state starts with the circle lit)
     if (!g_trayAdded) return;
     const wchar_t* s = T(S_APP);
     if (g_state == ST_RECORDING) s = T(S_RECORDING);
@@ -720,6 +737,7 @@ LRESULT CALLBACK PanelProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             if (--g_countdown <= 0) { KillTimer(hw, TIMER_COUNTDOWN); BeginRecord(); }
             else { Beep(true); { RECT ar[16]; int an = RecordAreas(ar); CountdownShow(g_countdown, ar, an); } UpdatePanel(); }
         } else if (wp == TIMER_UI) {
+            TrayBlink();
             for (int i = 0; i < g_nrecs; ++i) if (g_recs[i]->LimitReached() || g_recs[i]->Failed()) { FinishRecording(true, false); return 0; }
             if (g_target.hwnd) PlaceOverlay();                       // a followed window moves
             UpdatePanel();
