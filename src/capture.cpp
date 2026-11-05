@@ -360,7 +360,7 @@ static uint32_t* MarkFromText(const Settings& s, const wchar_t* text, int* mw, i
                 const int as = sh * o * 6 / 1000;                                 // the halo: white, a little weaker, so the text can be read on a dark picture too
                 const int under = as * (255 - at) / 255;                          // the part of the halo that is not covered by the text
                 const int a = at + under;
-                const int c = at * 64 / 255 + under;                              // premultiplied: the grey 64 of the text + the white of the halo
+                const int c = at * 120 / 255 + under;                             // premultiplied: the mid-dark grey 120 of the text + the white of the halo
                 out[(size_t)y * W + x] = ((uint32_t)a << 24) | ((uint32_t)c << 16) | ((uint32_t)c << 8) | (uint32_t)c;
             }
             *mw = W; *mh = H;
