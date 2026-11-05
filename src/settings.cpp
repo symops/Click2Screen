@@ -291,13 +291,16 @@ void WatermarkDateString(const wchar_t* tpl, wchar_t* out, int cap)
 {
     SYSTEMTIME st; GetLocalTime(&st);
     int n = 0;
-    for (const wchar_t* p = tpl; p && *p && n < cap - 8; ++p) {
+    const wchar_t* p = tpl;
+    while (p && *p && n < cap - 8) {
         if (*p == L'$' && p[1] && wcschr(L"YMDHNS", p[1])) {
             int v = 0, w = 2;
             switch (p[1]) { case L'Y': v = st.wYear; w = 4; break; case L'M': v = st.wMonth; break; case L'D': v = st.wDay; break; case L'H': v = st.wHour; break; case L'N': v = st.wMinute; break; default: v = st.wSecond; break; }
-            n += _snwprintf(out + n, 8, L"%0*d", w, v); ++p; continue;
+            n += _snwprintf(out + n, 8, L"%0*d", w, v);
+            p += 2;                                                 // the letter and its '$'
+        } else {
+            out[n++] = *p++;
         }
-        out[n++] = *p;
     }
     out[n] = 0;
 }
