@@ -39,6 +39,8 @@ picture; older systems show it).
 
 ## Installation
 
+Get `Click2Screen-Setup.exe` from the [latest release](https://github.com/symops/Click2Screen/releases/latest) (the SHA-256 of the file is in the notes of each release), or build it yourself with `./build.sh` and `./package.sh` (Debian, clang + MinGW-w64; the installer ends up in `dist/`).
+
 Run `Click2Screen-Setup.exe` (administrator rights). It picks the 64- or 32-bit installer, which copies the program to
 `C:\Program Files\Click2Screen` (or the folder you choose in the window: "Install to" + "Browse..."), registers it in *Apps & features*, creates the shortcuts you tick and optionally starts
 the program with Windows (in the tray). "Remove" in the same window (or `uninstall.cmd`) takes it all away; your settings and
