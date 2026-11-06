@@ -4142,7 +4142,7 @@ static int WmRecordWhite(bool on)
     RecParams p; memset(&p, 0, sizeof(p));
     SettingsDefaults(p.cfg);
     p.cfg.videoCodec = VC_AVI; p.cfg.videoQuality = 0; p.cfg.fps = 15; p.cfg.mic = false; p.cfg.loopback = false; p.cfg.capMouse = false; p.cfg.highlight = false;
-    p.cfg.wmVideo = on; p.cfg.wmParts = WMP_TEXT; _snwprintf(p.cfg.wmText, 64, L"Watermark"); p.cfg.wmSize = 36; p.cfg.wmOpacity = 100; p.cfg.wmH = 1; p.cfg.wmV = 1;
+    p.cfg.wmVideo = on; p.cfg.wmParts = WMP_TEXT; p.cfg.wmMode = 0; p.cfg.wmColor = RGB(120, 120, 120); _snwprintf(p.cfg.wmText, 64, L"Watermark"); p.cfg.wmSize = 36; p.cfg.wmOpacity = 100; p.cfg.wmH = 1; p.cfg.wmV = 1;
     p.rc = FxScreenRect();
     wchar_t path[MAX_PATH]; _snwprintf(path, MAX_PATH, L"%s\\wm-video-%d.avi", g_dir, on ? 1 : 0);
     DeleteFileW(path); wcscpy(p.path, path);
@@ -4189,7 +4189,7 @@ static int WmShotCount(bool on, uint8_t** out, int* ow, int* oh)
 {
     Settings st; PrepareApp(st); st.imageFormat = IMG_PNG; st.notify = false; st.capMouse = false; st.highlight = false;
     st.separateMonitors = false;                                        // one file for the whole desktop (with virtual monitors the files of the monitors differ in size)
-    st.wmShot = on; st.wmParts = WMP_TEXT; _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
+    st.wmShot = on; st.wmParts = WMP_TEXT; st.wmMode = 0; st.wmColor = RGB(120, 120, 120); _snwprintf(st.wmText, 64, L"WATERMARK"); st.wmSize = 40; st.wmOpacity = 100; st.wmH = 0; st.wmV = 0;
     App a;
     if (!StartApp(a, st)) { FAIL(L"watermark: the program did not start"); StopApp(a, false); return -1; }
     int before = CountFiles(st.folder);
