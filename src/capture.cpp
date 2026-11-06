@@ -427,15 +427,22 @@ static void MarkCompose(Watermark* wm)
     int y = 0;
     for (const P& q : parts) {
         if (!q.px) continue;
-        const int x0 = wm->cfg.wmH == 0 ? 0 : wm->cfg.wmH == 2 ? W - q.w : (W - q.w) / 2;
+        const int hh = wm->cfg.wmMode == 1 ? 0 : wm->cfg.wmH;                // exact coordinates: the parts are flush left under the corner
+        const int x0 = hh == 0 ? 0 : hh == 2 ? W - q.w : (W - q.w) / 2;
         for (int r = 0; r < q.h; ++r) memcpy(out + (size_t)(y + r) * W + x0, q.px + (size_t)r * q.w, (size_t)q.w * 4);
         y += q.h + 4;
     }
     wm->px = out; wm->w = W; wm->h = H;
     const int picW = wm->picW, picH = wm->picH;
     const int margin = (picW < picH ? picW : picH) / 60 > 8 ? (picW < picH ? picW : picH) / 60 : 8;
-    wm->x = wm->cfg.wmH == 0 ? margin : wm->cfg.wmH == 2 ? picW - W - margin : (picW - W) / 2;
-    wm->y = wm->cfg.wmV == 0 ? margin : wm->cfg.wmV == 2 ? picH - H - margin : (picH - H) / 2;
+    if (wm->cfg.wmMode == 1) {                                                 // exact coordinates, kept inside the picture
+        wm->x = wm->cfg.wmX; wm->y = wm->cfg.wmY;
+        if (wm->x > picW - W) wm->x = picW - W;
+        if (wm->y > picH - H) wm->y = picH - H;
+    } else {
+        wm->x = wm->cfg.wmH == 0 ? margin : wm->cfg.wmH == 2 ? picW - W - margin : (picW - W) / 2;
+        wm->y = wm->cfg.wmV == 0 ? margin : wm->cfg.wmV == 2 ? picH - H - margin : (picH - H) / 2;
+    }
     if (wm->x < 0) wm->x = 0;
     if (wm->y < 0) wm->y = 0;
 }

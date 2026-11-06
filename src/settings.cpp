@@ -66,7 +66,7 @@ void SettingsDefaults(Settings& s)
     s.fps = 25; s.language = 0;
     s.panelMode = 0; s.panelH = 1; s.panelV = 2; s.panelX = 100; s.panelY = 100; s.panelInVideo = false;
     s.panelTime = s.panelSize = s.panelKey = true;
-    s.wmShot = s.wmVideo = false; s.wmParts = 0; wcscpy(s.wmDate, L"$D.$M.$Y $H-$N-$S"); wcscpy(s.wmText, L"Click2Screen"); s.wmImage[0] = 0; s.wmH = 2; s.wmV = 2; s.wmColor = RGB(120, 120, 120); s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
+    s.wmShot = s.wmVideo = false; s.wmParts = 0; wcscpy(s.wmDate, L"$D.$M.$Y $H-$N-$S"); wcscpy(s.wmText, L"Click2Screen"); s.wmImage[0] = 0; s.wmMode = 0; s.wmX = 20; s.wmY = 20; s.wmH = 2; s.wmV = 2; s.wmColor = RGB(120, 120, 120); s.wmOpacity = 60; s.wmSize = 28; s.wmScale = 100;
 }
 
 int PanelLayout(const Settings& s, int left[6])
@@ -208,6 +208,9 @@ void SettingsLoad(Settings& s)
     GetStr(k, L"WmDate", s.wmDate, 64, d.wmDate);
     GetStr(k, L"WmText", s.wmText, 64, d.wmText);
     GetStr(k, L"WmImage", s.wmImage, MAX_PATH, d.wmImage);
+    s.wmMode       = Clamp((int)GetDw(k, L"WmMode", d.wmMode), 0, 1);
+    s.wmX          = Clamp((int)GetDw(k, L"WmX", d.wmX), 0, 32000);
+    s.wmY          = Clamp((int)GetDw(k, L"WmY", d.wmY), 0, 32000);
     s.wmH          = Clamp((int)GetDw(k, L"WmH", d.wmH), 0, 2);
     s.wmV          = Clamp((int)GetDw(k, L"WmV", d.wmV), 0, 2);
     s.wmColor      = GetDw(k, L"WmColor", d.wmColor) & 0xFFFFFFu;
@@ -261,7 +264,7 @@ void SettingsSave(const Settings& s)
     PutDw(k, L"PanelInVideo", s.panelInVideo); PutDw(k, L"PanelTime", s.panelTime); PutDw(k, L"PanelSize", s.panelSize); PutDw(k, L"PanelKey", s.panelKey);
     PutDw(k, L"WmShot", s.wmShot); PutDw(k, L"WmVideo", s.wmVideo); PutDw(k, L"WmParts", s.wmParts); PutStr(k, L"WmDate", s.wmDate);
     PutStr(k, L"WmText", s.wmText); PutStr(k, L"WmImage", s.wmImage);
-    PutDw(k, L"WmH", s.wmH); PutDw(k, L"WmV", s.wmV); PutDw(k, L"WmColor", s.wmColor); PutDw(k, L"WmOpacity", s.wmOpacity); PutDw(k, L"WmSize", s.wmSize); PutDw(k, L"WmScale", s.wmScale);
+    PutDw(k, L"WmMode", s.wmMode); PutDw(k, L"WmX", s.wmX); PutDw(k, L"WmY", s.wmY); PutDw(k, L"WmH", s.wmH); PutDw(k, L"WmV", s.wmV); PutDw(k, L"WmColor", s.wmColor); PutDw(k, L"WmOpacity", s.wmOpacity); PutDw(k, L"WmSize", s.wmSize); PutDw(k, L"WmScale", s.wmScale);
     for (int i = 0; i < HKI_COUNT; ++i) PutDw(k, kHotkeyNames[i], s.hotkey[i]);
     RegCloseKey(k);
 }
@@ -513,7 +516,7 @@ bool SettingsExport(const Settings& s, const wchar_t* path)
     IniInt(path, L"PanelInVideo", s.panelInVideo); IniInt(path, L"PanelTime", s.panelTime); IniInt(path, L"PanelSize", s.panelSize); IniInt(path, L"PanelKey", s.panelKey);
     IniInt(path, L"WmShot", s.wmShot); IniInt(path, L"WmVideo", s.wmVideo); IniInt(path, L"WmParts", s.wmParts); IniStr(path, L"WmDate", s.wmDate);
     IniStr(path, L"WmText", s.wmText); IniStr(path, L"WmImage", s.wmImage);
-    IniInt(path, L"WmH", s.wmH); IniInt(path, L"WmV", s.wmV); IniInt(path, L"WmColor", (int)s.wmColor); IniInt(path, L"WmOpacity", s.wmOpacity); IniInt(path, L"WmSize", s.wmSize); IniInt(path, L"WmScale", s.wmScale);
+    IniInt(path, L"WmMode", s.wmMode); IniInt(path, L"WmX", s.wmX); IniInt(path, L"WmY", s.wmY); IniInt(path, L"WmH", s.wmH); IniInt(path, L"WmV", s.wmV); IniInt(path, L"WmColor", (int)s.wmColor); IniInt(path, L"WmOpacity", s.wmOpacity); IniInt(path, L"WmSize", s.wmSize); IniInt(path, L"WmScale", s.wmScale);
     IniInt(path, L"Fps", s.fps);
     wchar_t back[MAX_PATH];
     return GetPrivateProfileStringW(kSec, L"Fps", L"", back, MAX_PATH, path) > 0;
@@ -579,6 +582,9 @@ bool SettingsImport(Settings& s, const wchar_t* path)
     if (GetPrivateProfileStringW(kSec, L"WmDate", L"\x01", str, 64, path) > 0 && str[0] != 1) StrCopy(s.wmDate, 64, str);
     if (GetPrivateProfileStringW(kSec, L"WmText", L"\x01", str, 64, path) > 0 && str[0] != 1) StrCopy(s.wmText, 64, str);
     if (GetPrivateProfileStringW(kSec, L"WmImage", L"\x01", str, MAX_PATH, path) > 0 && str[0] != 1) StrCopy(s.wmImage, MAX_PATH, str);
+    if (IniGetInt(path, L"WmMode", 0, 1, &v)) s.wmMode = v;
+    if (IniGetInt(path, L"WmX", 0, 32000, &v)) s.wmX = v;
+    if (IniGetInt(path, L"WmY", 0, 32000, &v)) s.wmY = v;
     if (IniGetInt(path, L"WmH", 0, 2, &v)) s.wmH = v;
     if (IniGetInt(path, L"WmV", 0, 2, &v)) s.wmV = v;
     if (IniGetInt(path, L"WmColor", 0, 0xFFFFFF, &v)) s.wmColor = (unsigned)v;

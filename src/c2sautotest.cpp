@@ -226,7 +226,7 @@ static void RandomSettings(Settings& s)
     RandomHotkeys(s.hotkey, false);
     s.panelMode = R(0, 2); s.panelH = R(0, 2); s.panelV = R(0, 2); s.panelX = R(-300, 3000); s.panelY = R(-200, 2000); s.panelInVideo = Chance(30);
     s.panelTime = Chance(70); s.panelSize = Chance(70); s.panelKey = Chance(70);
-    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmParts = R(0, 7); s.wmColor = (unsigned)R(0, 0xFFFFFF); StrCopy(s.wmDate, 64, Chance(50) ? L"$D.$M.$Y $H-$N-$S" : L"$Y/$M/$D at $H:$N");
+    s.wmShot = Chance(40); s.wmVideo = Chance(40); s.wmMode = R(0, 1); s.wmX = R(0, 3000); s.wmY = R(0, 2000); s.wmParts = R(0, 7); s.wmColor = (unsigned)R(0, 0xFFFFFF); StrCopy(s.wmDate, 64, Chance(50) ? L"$D.$M.$Y $H-$N-$S" : L"$Y/$M/$D at $H:$N");
     RandomText(t, 20); _snwprintf(s.wmText, 64, L"%s", t); _snwprintf(s.wmImage, MAX_PATH, L"%s\\wm %s.png", g_dir, t);
     s.wmH = R(0, 2); s.wmV = R(0, 2); s.wmOpacity = R(10, 100); s.wmSize = R(8, 200); s.wmScale = R(10, 300);
 }
@@ -239,7 +239,7 @@ static bool SettingsEqual(const Settings& a, const Settings& b, bool withLanguag
     CMPI(openFolder) CMPI(topmost) CMPI(separateMonitors) CMPI(delaySec) CMPI(videoCodec) CMPI(audioCodec)
     CMPI(videoQuality) CMPI(audioQuality) CMPI(fps)
     CMPI(panelMode) CMPI(panelH) CMPI(panelV) CMPI(panelX) CMPI(panelY) CMPI(panelInVideo) CMPI(panelTime) CMPI(panelSize) CMPI(panelKey)
-    CMPI(wmShot) CMPI(wmVideo) CMPI(wmParts) CMPI(wmColor) CMPS(wmDate) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
+    CMPI(wmShot) CMPI(wmVideo) CMPI(wmParts) CMPI(wmMode) CMPI(wmX) CMPI(wmY) CMPI(wmColor) CMPS(wmDate) CMPS(wmText) CMPS(wmImage) CMPI(wmH) CMPI(wmV) CMPI(wmOpacity) CMPI(wmSize) CMPI(wmScale)
     for (int i = 0; i < HKI_COUNT; ++i) CMPI(hotkey[i])
     if (withLanguage) CMPI(language)
     return true;
@@ -2170,7 +2170,7 @@ static void T_App()
                 SendMessageW(GetDlgItem(o, O_PMODE), CB_SETCURSEL, w.panelMode, 0); SendMessageW(GetDlgItem(o, O_PH), CB_SETCURSEL, w.panelH, 0); SendMessageW(GetDlgItem(o, O_PV), CB_SETCURSEL, w.panelV, 0);
                 _snwprintf(n, 16, L"%d", w.panelX); SetText(GetDlgItem(o, O_PX), n); _snwprintf(n, 16, L"%d", w.panelY); SetText(GetDlgItem(o, O_PY), n);
                 chk(O_PVIDEO, w.panelInVideo); chk(O_PTIME, w.panelTime); chk(O_PSIZE, w.panelSize); chk(O_PKEY, w.panelKey);
-                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); SetWindowLongPtrW(GetDlgItem(o, O_WCOLOR), GWLP_USERDATA, (LONG_PTR)w.wmColor); chk(O_WTEXTC, (w.wmParts & WMP_TEXT) != 0); chk(O_WDATEC, (w.wmParts & WMP_DATE) != 0); chk(O_WIMGC, (w.wmParts & WMP_IMAGE) != 0); SetText(GetDlgItem(o, O_WDATE), w.wmDate);
+                chk(O_WSHOT, w.wmShot); chk(O_WVIDEO, w.wmVideo); SetWindowLongPtrW(GetDlgItem(o, O_WCOLOR), GWLP_USERDATA, (LONG_PTR)w.wmColor); SendMessageW(GetDlgItem(o, O_WMODE), CB_SETCURSEL, w.wmMode, 0); { wchar_t xy[16]; _snwprintf(xy, 16, L"%d", w.wmX); SetText(GetDlgItem(o, O_WX), xy); _snwprintf(xy, 16, L"%d", w.wmY); SetText(GetDlgItem(o, O_WY), xy); } chk(O_WTEXTC, (w.wmParts & WMP_TEXT) != 0); chk(O_WDATEC, (w.wmParts & WMP_DATE) != 0); chk(O_WIMGC, (w.wmParts & WMP_IMAGE) != 0); SetText(GetDlgItem(o, O_WDATE), w.wmDate);
                 SetText(GetDlgItem(o, O_WTEXT), w.wmText); SetText(GetDlgItem(o, O_WIMAGE), w.wmImage);
                 SendMessageW(GetDlgItem(o, O_WH), CB_SETCURSEL, w.wmH, 0); SendMessageW(GetDlgItem(o, O_WV), CB_SETCURSEL, w.wmV, 0);
                 _snwprintf(n, 16, L"%d", w.wmOpacity); SetText(GetDlgItem(o, O_WOPACITY), n); _snwprintf(n, 16, L"%d", w.wmSize); SetText(GetDlgItem(o, O_WSIZE), n);
@@ -4087,6 +4087,20 @@ static void T_WatermarkApply()
         wchar_t d[100]; _snwprintf(d, 100, L"%d red pixels, %d white or black ones", red, other);
         Check(red > 150, L"watermark: the text takes the colour chosen in the palette", d);
         st.wmParts = WMP_TEXT; st.wmColor = RGB(120, 120, 120);
+    }
+    {   // exact coordinates: the corner of the mark is where it is told, and the mark never leaves the picture
+        st.wmMode = 1; st.wmParts = WMP_TEXT; st.wmOpacity = 100; st.wmSize = 30; StrCopy(st.wmText, 64, L"Watermark"); st.wmColor = RGB(20, 20, 20);
+        st.wmX = 60; st.wmY = 50;
+        Watermark* wm = WatermarkCreate(st, W, H); grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+        int in = WmChanged(pic, W, H, 60, 50, 340, 140, G), left = WmChanged(pic, W, H, 0, 0, 56, H, G), above = WmChanged(pic, W, H, 0, 0, W, 46, G);
+        wchar_t d[160]; _snwprintf(d, 160, L"at 60,50: %d changed pixels in the box, %d left of it, %d above it", in, left, above);
+        Check(in > 150 && left == 0 && above == 0, L"watermark: exact coordinates put the corner of the mark where they say", d);
+        st.wmX = 9000; st.wmY = 9000;
+        wm = WatermarkCreate(st, W, H); grey(); WatermarkApply(wm, pic, W, H); WatermarkFree(wm);
+        int corner = WmChanged(pic, W, H, 150, 200, W, H, G), top = WmChanged(pic, W, H, 0, 0, W, 150, G);
+        _snwprintf(d, 160, L"at 9000,9000: %d changed pixels in the lower right, %d in the upper half", corner, top);
+        Check(corner > 150 && top == 0, L"watermark: coordinates outside the picture keep the mark inside it (at the lower right)", d);
+        st.wmMode = 0; st.wmX = 20; st.wmY = 20; st.wmColor = RGB(120, 120, 120);
     }
     {   // an empty text draws nothing
         st.wmText[0] = 0;

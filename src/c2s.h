@@ -111,7 +111,9 @@ struct Settings {
     wchar_t wmDate[64];             // the template of the date and time ($Y $M $D $H $N $S)
     wchar_t wmText[64];
     wchar_t wmImage[MAX_PATH];
+    int  wmMode;                    // 0 at a place (wmH, wmV), 1 at exact coordinates (wmX, wmY)
     int  wmH, wmV;                  // the place: 0 left / top, 1 centre / middle, 2 right / bottom
+    int  wmX, wmY;                  // exact coordinates: the top left corner of the mark in the picture, pixels (the mark stays inside the picture)
     unsigned wmColor;               // the colour of the text and of the date, 0x00BBGGRR (a COLORREF)
     int  wmOpacity;                 // 10..100 %
     int  wmSize;                    // height of the text, pixels (8..200)
