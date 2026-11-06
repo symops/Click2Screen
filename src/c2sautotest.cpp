@@ -1122,7 +1122,7 @@ static bool PictureMatchesFixture(const uint8_t* px, int w, int h, int tol, int*
 }
 
 static unsigned g_aviReal = 0;                    // the pictures of the last AVI that were encoded (not the empty repeats)
-static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc)
+static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, bool wantAudio, bool wantPicture, const wchar_t* desc, bool worstQuality = false)
 {
     uint8_t* d = nullptr;
     AviInfo a = ReadAvi(path, 1, &d);          // the first real picture: the pictures that do not change are not stored, a later one may already be the noise
@@ -1143,7 +1143,7 @@ static void VerifyAvi(const wchar_t* path, int ew, int eh, double el, int fps, b
         HANDLE h = CreateFileW(jp, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr);
         if (h != INVALID_HANDLE_VALUE) { DWORD wr; WriteFile(h, d + a.pickOff, a.pickSize, &wr, nullptr); CloseHandle(h); }
         int dw = 0, dh = 0; uint8_t* px = nullptr; int checked = 0;
-        bool ok = DecodePixels(jp, &dw, &dh, &px) && dw == ew && dh == eh && PictureMatchesFixture(px, dw, dh, 40, &checked);
+        bool ok = DecodePixels(jp, &dw, &dh, &px) && dw == ew && dh == eh && PictureMatchesFixture(px, dw, dh, worstQuality ? 90 : 40, &checked);       // the worst JPEG quality smears a saturated colour (255,0,0 came back as 188,44,17)
         Check(ok, L"recorder: a JPEG frame of the AVI has the colours of the screen in the right places", checked ? L"" : L"(no points)");
         delete[] px;
         DeleteFileW(jp);
@@ -1286,7 +1286,7 @@ static void RecordOnce(bool useNull, bool sched = false)
     Check(sz > (fmt == VC_GIF ? 300 : 1500), L"recorder: the video file exists and is not empty", desc);        // a still picture is one small GIF frame
     bool pictureOk = false, decoderMissing = false; int pictureChecked = 0;
     bool wantPicture = !move && p.cfg.capMouse == false;
-    if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic || p.cfg.loopback, wantPicture && mode != 1, desc); return; }
+    if (fmt == VC_AVI) { VerifyAvi(path, ew, eh, el, effFps, p.cfg.mic || p.cfg.loopback, wantPicture && mode != 1, desc, p.cfg.videoQuality == 2); return; }
     if (fmt == VC_GIF) { VerifyGif(path, ew, eh, el, effFps, wantPicture && mode != 1); return; }
     // the worst quality of a real-time H.264 encoder smears the colours of an early frame (140,149,50 for the blue 0,0,255 was seen near the yellow half): at that quality up to a quarter of the points may be off
     VideoInfo v = Inspect(path, wantPicture, &pictureOk, &pictureChecked, &decoderMissing, p.cfg.videoQuality == 2);
