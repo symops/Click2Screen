@@ -1718,13 +1718,13 @@ bool OptionsDialog()
         edit(6, O_WIMAGE, 160, 150, 291);
         add(6, L"BUTTON", L"...", WS_TABSTOP | BS_PUSHBUTTON, 459, 149, 33, 22, O_WBROWSE);
         label(6, S_WM_PLACE, 33, 184, 120);
-        HWND wmm = combo(6, O_WMODE, 160, 180, 110);
+        HWND wmm = combo(6, O_WMODE, 160, 180, 200);                  // wide: "at exact coordinates" in the longer languages
         ComboAdd(wmm, T(S_PNL_M_PLACE)); ComboAdd(wmm, T(S_PNL_M_EXACT));
-        HWND wh = combo(6, O_WH, 280, 180, 105), wv = combo(6, O_WV, 392, 180, 101);
-        add(6, L"STATIC", L"X:", SS_LEFT | SS_NOPREFIX, 160, 212, 20, 16, 0);
-        edit(6, O_WX, 184, 208, 70, ES_NUMBER);
-        add(6, L"STATIC", L"Y:", SS_LEFT | SS_NOPREFIX, 272, 212, 20, 16, 0);
-        edit(6, O_WY, 292, 208, 70, ES_NUMBER);
+        add(6, L"STATIC", L"X:", SS_LEFT | SS_NOPREFIX, 366, 184, 16, 16, 0);
+        edit(6, O_WX, 382, 180, 48, ES_NUMBER);
+        add(6, L"STATIC", L"Y:", SS_LEFT | SS_NOPREFIX, 436, 184, 16, 16, 0);
+        edit(6, O_WY, 452, 180, 41, ES_NUMBER);
+        HWND wh = combo(6, O_WH, 160, 208, 110), wv = combo(6, O_WV, 280, 208, 110);
         ComboAdd(wh, T(S_PNL_LEFT)); ComboAdd(wh, T(S_PNL_CENTRE)); ComboAdd(wh, T(S_PNL_RIGHT));
         ComboAdd(wv, T(S_PNL_TOP)); ComboAdd(wv, T(S_PNL_MIDDLE)); ComboAdd(wv, T(S_PNL_BOTTOM));
         label(6, S_WM_OPACITY, 33, 240, 120);
