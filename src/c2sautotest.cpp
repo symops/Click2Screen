@@ -2085,6 +2085,20 @@ static void T_App()
                 wchar_t dd[120]; _snwprintf(dd, 120, L"pointer on at start %d: highlight box enabled %d, after one click %d, after two %d", (int)pointerOn, (int)en0, (int)en1, (int)en2);
                 Check(en0 == pointerOn && en1 == !pointerOn && en2 == pointerOn, L"program: the outline-and-waves box is enabled only while the pointer box is checked", dd);
             }
+            {   // the watermark: its opacity is greyed while none of the three parts (text, date and time, picture) is ticked
+                static const int parts[3] = { O_WTEXTC, O_WDATEC, O_WIMGC };
+                for (int id : parts) if (SendMessageW(GetDlgItem(o, id), BM_GETCHECK, 0, 0) == BST_CHECKED) { SendMessageW(GetDlgItem(o, id), BM_CLICK, 0, 0); Sleep(100); }
+                const bool none = IsWindowEnabled(GetDlgItem(o, O_WOPACITY)) != 0;
+                bool each[3];
+                for (int k = 0; k < 3; ++k) {
+                    SendMessageW(GetDlgItem(o, parts[k]), BM_CLICK, 0, 0); Sleep(100);
+                    each[k] = IsWindowEnabled(GetDlgItem(o, O_WOPACITY)) != 0;
+                    SendMessageW(GetDlgItem(o, parts[k]), BM_CLICK, 0, 0); Sleep(100);
+                }
+                const bool again = IsWindowEnabled(GetDlgItem(o, O_WOPACITY)) != 0;
+                wchar_t dd[140]; _snwprintf(dd, 140, L"nothing ticked: enabled %d; only the text %d, only the date %d, only the picture %d; nothing again: %d", (int)none, (int)each[0], (int)each[1], (int)each[2], (int)again);
+                Check(!none && each[0] && each[1] && each[2] && !again, L"program: the watermark opacity is enabled only while a part of the mark is ticked", dd);
+            }
             {   // the order of the check boxes down the page, and none of them under the buttons
                 static const int order[] = { O_AUTOSTART, O_TOPMOST, O_OPENFOLDER, O_MOUSE, O_HILITE, O_SEPARATE, O_SOUNDS, O_NOTIFY, O_LOOPBACK, O_MIC };
                 int prev = -100000, outOfOrder = 0, missing = 0; RECT okr = {}; GetWindowRect(GetDlgItem(o, IDOK), &okr);

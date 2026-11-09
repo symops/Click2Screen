@@ -1303,6 +1303,7 @@ void OptEnable(OptState* o)
     EnableWindow(GetDlgItem(d, O_WH), wmode == 0); EnableWindow(GetDlgItem(d, O_WV), wmode == 0);
     EnableWindow(GetDlgItem(d, O_WX), wmode == 1); EnableWindow(GetDlgItem(d, O_WY), wmode == 1);
     EnableWindow(GetDlgItem(d, O_WTEXT), wt); EnableWindow(GetDlgItem(d, O_WDATE), wd); EnableWindow(GetDlgItem(d, O_WSIZE), wt || wd); EnableWindow(GetDlgItem(d, O_WCOLOR), wt || wd);
+    EnableWindow(GetDlgItem(d, O_WOPACITY), wt || wd || wi);                // the opacity belongs to every part: with none ticked there is nothing it could change
     EnableWindow(GetDlgItem(d, O_WIMAGE), wi); EnableWindow(GetDlgItem(d, O_WBROWSE), wi); EnableWindow(GetDlgItem(d, O_WSCALE), wi);
 }
 
