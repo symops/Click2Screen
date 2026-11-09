@@ -1302,9 +1302,13 @@ void OptEnable(OptState* o)
     const int wmode = (int)SendDlgItemMessageW(d, O_WMODE, CB_GETCURSEL, 0, 0);
     EnableWindow(GetDlgItem(d, O_WH), wmode == 0); EnableWindow(GetDlgItem(d, O_WV), wmode == 0);
     EnableWindow(GetDlgItem(d, O_WX), wmode == 1); EnableWindow(GetDlgItem(d, O_WY), wmode == 1);
-    EnableWindow(GetDlgItem(d, O_WTEXT), wt); EnableWindow(GetDlgItem(d, O_WDATE), wd); EnableWindow(GetDlgItem(d, O_WSIZE), wt || wd); EnableWindow(GetDlgItem(d, O_WCOLOR), wt || wd);
-    EnableWindow(GetDlgItem(d, O_WOPACITY), wt || wd || wi);                // the opacity belongs to every part: with none ticked there is nothing it could change
-    EnableWindow(GetDlgItem(d, O_WIMAGE), wi); EnableWindow(GetDlgItem(d, O_WBROWSE), wi); EnableWindow(GetDlgItem(d, O_WSCALE), wi);
+    // The parts of the mark (and what depends on them) are there only while the mark is asked for: in the screenshots or in the videos.
+    const bool wmOn = IsDlgButtonChecked(d, O_WSHOT) == BST_CHECKED || IsDlgButtonChecked(d, O_WVIDEO) == BST_CHECKED;
+    EnableWindow(GetDlgItem(d, O_WTEXTC), wmOn); EnableWindow(GetDlgItem(d, O_WDATEC), wmOn); EnableWindow(GetDlgItem(d, O_WIMGC), wmOn);
+    const bool tOn = wmOn && wt, dOn = wmOn && wd, iOn = wmOn && wi;
+    EnableWindow(GetDlgItem(d, O_WTEXT), tOn); EnableWindow(GetDlgItem(d, O_WDATE), dOn); EnableWindow(GetDlgItem(d, O_WSIZE), tOn || dOn); EnableWindow(GetDlgItem(d, O_WCOLOR), tOn || dOn);
+    EnableWindow(GetDlgItem(d, O_WOPACITY), tOn || dOn || iOn);             // the opacity belongs to every part: with none in use there is nothing it could change
+    EnableWindow(GetDlgItem(d, O_WIMAGE), iOn); EnableWindow(GetDlgItem(d, O_WBROWSE), iOn); EnableWindow(GetDlgItem(d, O_WSCALE), iOn);
 }
 
 void OptLoad(OptState* o)
@@ -1551,7 +1555,7 @@ LRESULT CALLBACK OptProc(HWND hw, UINT m, WPARAM wp, LPARAM lp)
             if (ChooseColorW(&cc)) { SetWindowLongPtrW(b, GWLP_USERDATA, (LONG_PTR)(cc.rgbResult & 0xFFFFFFu)); InvalidateRect(b, nullptr, TRUE); }
             break; }
         case O_PMODE: case O_WMODE: if (HIWORD(wp) == CBN_SELCHANGE) OptEnable(o); break;
-        case O_WTEXTC: case O_WDATEC: case O_WIMGC: OptEnable(o); break;
+        case O_WTEXTC: case O_WDATEC: case O_WIMGC: case O_WSHOT: case O_WVIDEO: OptEnable(o); break;
         case O_TPL: if (HIWORD(wp) == EN_CHANGE) TplPreview(hw); break;
         case O_EXPORT: OptExport(o); break;
         case O_IMPORT: OptImport(o); break;

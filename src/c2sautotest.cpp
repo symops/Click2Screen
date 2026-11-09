@@ -2085,6 +2085,17 @@ static void T_App()
                 wchar_t dd[120]; _snwprintf(dd, 120, L"pointer on at start %d: highlight box enabled %d, after one click %d, after two %d", (int)pointerOn, (int)en0, (int)en1, (int)en2);
                 Check(en0 == pointerOn && en1 == !pointerOn && en2 == pointerOn, L"program: the outline-and-waves box is enabled only while the pointer box is checked", dd);
             }
+            {   // the watermark: the three parts are greyed while neither "in the screenshots" nor "in the videos" is ticked
+                static const int masters[2] = { O_WSHOT, O_WVIDEO }, boxes[3] = { O_WTEXTC, O_WDATEC, O_WIMGC };
+                for (int id : masters) if (SendMessageW(GetDlgItem(o, id), BM_GETCHECK, 0, 0) == BST_CHECKED) { SendMessageW(GetDlgItem(o, id), BM_CLICK, 0, 0); Sleep(100); }
+                auto anyBox = [&]() { int n = 0; for (int id : boxes) if (IsWindowEnabled(GetDlgItem(o, id))) ++n; return n; };
+                const int offN = anyBox();
+                SendMessageW(GetDlgItem(o, O_WSHOT), BM_CLICK, 0, 0); Sleep(100); const int shotN = anyBox();
+                SendMessageW(GetDlgItem(o, O_WSHOT), BM_CLICK, 0, 0); Sleep(100); const int offAgain = anyBox();
+                SendMessageW(GetDlgItem(o, O_WVIDEO), BM_CLICK, 0, 0); Sleep(100); const int videoN = anyBox();     // (left ticked: the next check needs the mark asked for)
+                wchar_t dd[140]; _snwprintf(dd, 140, L"enabled boxes of the parts: neither %d, screenshots %d, neither again %d, videos %d", offN, shotN, offAgain, videoN);
+                Check(offN == 0 && shotN == 3 && offAgain == 0 && videoN == 3, L"program: the text / date / picture boxes are enabled only while the watermark is asked for (screenshots or videos)", dd);
+            }
             {   // the watermark: its opacity is greyed while none of the three parts (text, date and time, picture) is ticked
                 static const int parts[3] = { O_WTEXTC, O_WDATEC, O_WIMGC };
                 for (int id : parts) if (SendMessageW(GetDlgItem(o, id), BM_GETCHECK, 0, 0) == BST_CHECKED) { SendMessageW(GetDlgItem(o, id), BM_CLICK, 0, 0); Sleep(100); }
